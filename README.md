@@ -4,21 +4,7 @@
 
 Advanced MongoDB configuration and translation management library for Minecraft Paper/Bukkit plugins.
 
-## 🚀 Features
-
-### ⚡ High Performance
-- **Zero-allocation cache paths** with Caffeine
-- **Async MongoDB operations** with Reactive Streams Driver v5.5.0
-- **Change Streams** with auto-resume for real-time cache updates
-- **Advanced Caffeine caching** (50k entries, TTL, statist## 🆘 Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/aiikk/mongo-configs/issues)
-- **Discord**: Join our community server
-- **Documentation**: Check the wiki for advanced usage
-
 ---
-
-**Made with ❤️ and 🎨 for the Minecraft community**Async GUI building** to prevent main thread lag
 
 ### 🗄️ MongoDB Integration
 - Reactive Streams Driver with connection pooling
@@ -26,13 +12,6 @@ Advanced MongoDB configuration and translation management library for Minecraft 
 - Auto-resume on connection failures
 - Configurable timeouts and pool settings
 - PlayerLanguageDocument storage for language preferences
-
-### 💾 Smart Caching
-- Caffeine bounded cache with TTL and refresh policies
-- Pre-warming on startup
-- Cache-hit paths without allocations
-- Comprehensive statistics and monitoring
-- 6h write expiry, 2h access expiry for optimal performance
 
 ### 🌍 Multi-Language Support
 - `/language` command with configurable base64 display names
@@ -44,24 +23,12 @@ Advanced MongoDB configuration and translation management library for Minecraft 
 - Per-language translations and GUI customization
 
 ### 🎨 Advanced Color System
-- **All color formats supported**: Legacy (`&6`), Hex (`&#54DAF4`), RGB (`&{255,0,0}`)
+- **All color formats supported**: Legacy (`&6`), Hex (`&#54DAF4`)
 - **MiniMessage gradients**: `<gradient:#54daf4:#545eb6>text</gradient>`
 - **Bukkit RGB format**: `&x&5&4&D&A&F&4` 
 - **High-performance caching**: 10k entries, <0.001ms cached lookups
 - **Automatic processing**: Colors applied to all messages automatically
 - **Smart fallbacks**: Invalid colors preserved, graceful degradation
-
-### 🎮 Advanced GUI System
-- Configurable head textures per language
-- Async inventory building (zero main thread lag)
-- Custom language selection GUI
-- Base64 texture support
-- Individual language lore and messages
-
-### 📡 Event System
-- `ConfigChangeEvent` - Fired when configuration values change
-- `MessageChangeEvent` - Fired when translations are updated
-- Real-time notifications via MongoDB Change Streams
 
 ### 🔧 Easy API
 - Simple, intuitive API design
@@ -107,77 +74,6 @@ dependencies {
 2. Place in your `plugins/` folder
 3. Configure MongoDB connection in `config.yml`
 4. Restart server
-
-## 🔧 Configuration
-
-### Main Config (config.yml)
-```yaml
-# MongoDB connection settings
-mongodb:
-  connection-string: "mongodb://localhost:27017"
-  database: "minecraft"
-  connection-pool:
-    max-size: 20
-    min-size: 5
-    max-idle-time-ms: 60000
-    max-life-time-ms: 1800000
-  timeouts:
-    server-selection-ms: 5000
-    socket-timeout-ms: 10000
-    connect-timeout-ms: 5000
-
-# Cache configuration
-cache:
-  max-size: 10000
-  ttl-seconds: 300
-  refresh-after-seconds: 300
-  record-stats: true
-
-# Performance settings  
-performance:
-  io-threads: 4
-  worker-threads: 8
-
-# Logging configuration
-logging:
-  log-cache-stats: true
-  cache-stats-interval: 300
-```
-
-### Language Config (languages.yml)
-```yaml
-# Default and supported languages
-default: "en"
-supported: ["en", "pl", "de", "fr", "es"]
-
-# Display names for languages
-display-names:
-  en: "English"
-  pl: "Polski"
-  de: "Deutsch"
-
-# Custom head textures (base64 encoded)
-head-textures:
-  en: "eyJ0ZXh0dXJlcy..."  # UK flag
-  pl: "eyJ0ZXh0dXJlcy..."  # Poland flag
-
-# GUI configuration
-gui:
-  language-selection:
-    title: "&9&lLanguage Selection"
-    size: 27
-    start-slot: 10
-
-# Per-language messages
-messages:
-  selection-status:
-    selected:
-      en: "&a✓ &lCurrently selected"
-      pl: "&a✓ &lAktualnie wybrany"
-    not-selected:
-      en: "&7Click to select"
-      pl: "&7Kliknij aby wybrać"
-```
 
 ## 📚 API Usage
 
@@ -507,73 +403,8 @@ public class MyPlugin extends JavaPlugin {
 }
 ```
 
-## 🔍 Monitoring & Statistics
-
-The plugin provides comprehensive monitoring:
-
-- **Cache hit rates** and performance metrics
-- **Color cache statistics** with hit rates and processing times
-- **MongoDB operation** timings and counts  
-- **Connection pool** status and utilization
-- **Change streams** health and activity
-- **Memory usage** estimation
-
-Access via `/mongoconfigs stats` command or programmatically through the API.
-
-### 🎨 Color System Performance
-- **Lightning fast**: <0.001ms for cached colors, ~0.1ms for new gradients
-- **Intelligent caching**: 10,000 entries with 30min TTL, >95% hit rate
-- **Memory efficient**: ~2MB for 10k cached messages, automatic cleanup
-- **Zero-allocation paths**: Cached lookups don't create objects
-- **Pre-compiled regex**: Maximum processing speed for all formats
-- **Graceful fallbacks**: Invalid colors preserved, no crashes
-- **Batch processing**: Efficient for multiple messages at once
-
-### Color Processing Order (optimized)
-1. **MiniMessage gradients** - Most complex, processed first
-2. **Hex colors** (`&#54DAF4`) - Modern standard
-3. **Bukkit RGB** (`&x&5&4&D&A&F&4`) - Plugin compatibility  
-4. **Custom RGB** (`&{255,0,0}`) - Easy format
-5. **Legacy colors** (`&6`, `&c`) - Fastest, processed last
-
-### Real Performance Benchmarks
-- **10,000 cached lookups**: ~10ms total (0.001ms each)
-- **1,000 new gradients**: ~100ms total (0.1ms each)
-- **Mixed format message**: ~0.05ms average
-- **Cache memory**: 200 bytes per cached message
-- **Production hit rate**: 95-99% (depending on message variety)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch  
-5. Create a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## � Color System Quick Reference
-
-| Format | Example | Description |
-|--------|---------|-------------|
-| **Legacy** | `&6Gold &cRed &l&nBold` | Classic Bukkit colors |
-| **Hex** | `&#54DAF4Cyan &#FF0000Red` | Modern hex colors |
-| **Bukkit RGB** | `&x&5&4&D&A&F&4Text` | Bukkit's RGB format |
-| **Custom RGB** | `&{54,218,244}Blue` | Easy RGB format |
-| **Gradients** | `<gradient:#FF0000:#0000FF>Text</gradient>` | Beautiful gradients |
-
-**Performance**: All color formats are cached and processed in <0.001ms for maximum server performance! 🚀
-
 ## �🆘 Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/aiikk/mongo-configs/issues)
-- **Discord**: Join our community server
-- **Documentation**: Check the wiki for advanced usage
-- **Color System**: See [COLOR_SYSTEM.md](COLOR_SYSTEM.md) for detailed color documentation
+- **GitHub Issues**: [Report bugs or request features](https://github.com/WTJEE/mongo-configs/issues)
 
 ---
-
-**Made with ❤️ and 🎨 for the Minecraft community**
