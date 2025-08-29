@@ -1,0 +1,55 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+        cache: maven
+        
+    - name: Extract version
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Building version: $VERSION"
+        
+    - name: Set project version
+      run: mvn -B versions:set -DnewVersion=${{ env.VERSION }} -DgenerateBackupPoms=false
+      
+    - name: Build
+      run: mvn clean package -DskipTests
+      
+    - name: Find and upload JAR
+      run: |
+        JAR_FILE="configs-paper/target/MongoConfigs-${{ env.VERSION }}.jar"
+        
+        if [ ! -f "$JAR_FILE" ]; then
+          echo "JAR not found: $JAR_FILE"
+          echo "Contents of configs-paper/target/:"
+          ls -la configs-paper/target/
+          exit 1
+        fi
+        
+        echo "Found JAR: $JAR_FILE"
+        echo "Size: $(du -h "$JAR_FILE" | cut -f1)"
+        
+        # Upload to release
+        gh release upload ${{ github.event.release.tag_name }} "$JAR_FILE"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

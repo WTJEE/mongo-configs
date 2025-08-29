@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>xyz.wtje</groupId>
+        <artifactId>mongo-configs</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>configs-paper</artifactId>
+    <packaging>jar</packaging>
+
+    <name>MongoDB Configs Paper Plugin</name>
+    <description>Paper plugin implementation of MongoDB configuration management</description>
+
+    <dependencies>
+        <!-- API module -->
+        <dependency>
+            <groupId>xyz.wtje</groupId>
+            <artifactId>configs-api</artifactId>
+        </dependency>
+        
+        <!-- Core module -->
+        <dependency>
+            <groupId>xyz.wtje</groupId>
+            <artifactId>configs-core</artifactId>
+        </dependency>
+        
+        <!-- Paper API -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+        </dependency>
+        
+        <!-- Adventure -->
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-minimessage</artifactId>
+        </dependency>
+        
+        <!-- MongoDB -->
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-reactivestreams</artifactId>
+        </dependency>
+        
+        <!-- Caching -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        
+        <!-- High-performance collections -->
+        <dependency>
+            <groupId>org.jctools</groupId>
+            <artifactId>jctools-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>it.unimi.dsi</groupId>
+            <artifactId>fastutil</artifactId>
+        </dependency>
+        
+        <!-- JSON -->
+        <dependency>
+            <groupId>com.dslplatform</groupId>
+            <artifactId>dsl-json</artifactId>
+        </dependency>
+        
+        <!-- Metrics -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>MongoConfigs-${project.version}</finalName>
+        <defaultGoal>clean package</defaultGoal>
+        
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+        
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            
+                            <relocations>
+                                <!-- Relocate dependencies to avoid conflicts -->
+                                <relocation>
+                                    <pattern>com.mongodb</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.mongodb</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.github.benmanes.caffeine</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.caffeine</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.jctools</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.jctools</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>it.unimi.dsi.fastutil</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.fastutil</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.dslplatform.json</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.dsljson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.micrometer</pattern>
+                                    <shadedPattern>xyz.wtje.mongoconfigs.shaded.micrometer</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                        <exclude>META-INF/maven/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

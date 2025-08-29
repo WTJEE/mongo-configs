@@ -1,0 +1,37 @@
+name: MongoConfigs
+version: "${project.version}"
+main: xyz.wtje.mongoconfigs.paper.MongoConfigsPlugin
+api-version: "1.20"
+author: aiikk
+website: https://github.com/aiikk/mongo-configs
+description: Advanced MongoDB configuration and translation management library
+
+softdepend: []
+
+permissions:
+  mongoconfigs.admin:
+    description: Access to admin commands
+    default: op
+  mongoconfigs.language:
+    description: Access to language selection
+    default: true
+  mongoconfigs.reload:
+    description: Access to reload commands
+    default: op
+
+commands:
+  language:
+    description: Select your language
+    usage: /<command> [language]
+    permission: mongoconfigs.language
+    aliases: [lang, jezyk]
+  mongoconfigs:
+    description: MongoDB Configs management
+    usage: /<command> <subcommand>
+    permission: mongoconfigs.admin
+    aliases: [mconfig, mc]
+  configsmanager:
+    description: Configuration cache management
+    usage: /<command> <reload|stats|collections|create|info>
+    permission: mongoconfigs.admin
+    aliases: [cfgmgr, cm]

@@ -1,0 +1,59 @@
+# MongoDB Configs Plugin Configuration
+
+# MongoDB connection settings
+mongodb:
+  # Connection string - include authentication if needed
+  connection-string: "mongodb://localhost:27017"
+  
+  # Database name for storing configurations
+  database: "minecraft"
+  
+  # Player language preferences storage
+  player-languages:
+    # Database for storing player language preferences (can be different from main database)
+    database: "minecraft"
+    # Collection name for player language preferences
+    collection: "player_languages"
+  
+  # Connection pool settings
+  connection-pool:
+    max-size: 20
+    min-size: 5
+    max-idle-time-ms: 60000    # 60 seconds
+    max-life-time-ms: 1800000  # 30 minutes
+    
+  # Timeouts
+  timeouts:
+    server-selection-ms: 5000
+    socket-timeout-ms: 10000
+    connect-timeout-ms: 5000
+
+# Cache configuration
+cache:
+  # Maximum number of entries in cache
+  max-size: 10000
+  
+  # Time to live for cache entries (seconds)
+  ttl-seconds: 300
+  
+  # Cache refresh interval (seconds)
+  refresh-after-seconds: 300
+  
+  # Record cache statistics
+  record-stats: true
+
+# Performance settings
+performance:
+  # Number of I/O threads
+  io-threads: 4
+  
+  # Number of worker threads
+  worker-threads: 8
+
+# Logging configuration
+logging:
+  # Log cache statistics periodically
+  log-cache-stats: true
+  
+  # Cache stats log interval (seconds)
+  cache-stats-interval: 300
