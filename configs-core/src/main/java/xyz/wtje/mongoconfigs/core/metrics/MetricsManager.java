@@ -150,7 +150,7 @@ public class MetricsManager implements PerformanceMetrics {
     
     @Override
     public boolean isChangeStreamsActive() {
-        return false; // Change streams disabled
+        return false;
     }
     
     @Override

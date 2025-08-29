@@ -64,9 +64,10 @@ public class MongoConfigsPlugin extends JavaPlugin {
                     getLogger().info("Performance configuration: " + 
                         pluginConfig.getIoThreads() + " I/O threads, " + 
                         pluginConfig.getWorkerThreads() + " worker threads");
-                    getLogger().info("Cache configuration: max-size=" + pluginConfig.getCacheMaxSize() + 
+                    getLogger().info("Cache: Using simple in-memory maps (Caffeine cache settings ignored)");
+                    getLogger().info("Cache config values: max-size=" + pluginConfig.getCacheMaxSize() + 
                         ", ttl=" + pluginConfig.getCacheTtlSeconds() + "s" +
-                        ", refresh-after=" + pluginConfig.getCacheRefreshAfterSeconds() + "s");
+                        ", refresh-after=" + pluginConfig.getCacheRefreshAfterSeconds() + "s (NOT USED)");
                 } catch (Exception e) {
                     getLogger().log(Level.SEVERE, "Failed to initialize MongoDB Configs", e);
                     getServer().getPluginManager().disablePlugin(this);

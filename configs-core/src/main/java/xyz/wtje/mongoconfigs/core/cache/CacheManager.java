@@ -1,48 +1,28 @@
 package xyz.wtje.mongoconfigs.core.cache;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import xyz.wtje.mongoconfigs.core.config.MongoConfig;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class CacheManager {
     
-    private final Cache<String, Object> configCache;
-    private final Cache<String, String> messageCache;
     private final Map<String, Map<String, Object>> collectionConfigs = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Map<String, Object>>> collectionMessages = new ConcurrentHashMap<>();
     
-    public CacheManager(MongoConfig config) {
-        Caffeine<Object, Object> configCacheBuilder = Caffeine.newBuilder()
-                .maximumSize(config.getCacheMaxSize())
-                .expireAfterWrite(Duration.ofSeconds(config.getCacheTtlSeconds()))
-                .refreshAfterWrite(Duration.ofSeconds(config.getCacheRefreshAfterSeconds()));
-        
-        if (config.isCacheRecordStats()) {
-            configCacheBuilder.recordStats();
-        }
-        
-        this.configCache = configCacheBuilder.build();
-                
-        Caffeine<Object, Object> messageCacheBuilder = Caffeine.newBuilder()
-                .maximumSize(config.getCacheMaxSize() * 2)
-                .expireAfterWrite(Duration.ofSeconds(config.getCacheTtlSeconds()))
-                .refreshAfterWrite(Duration.ofSeconds(config.getCacheRefreshAfterSeconds()));
-        
-        if (config.isCacheRecordStats()) {
-            messageCacheBuilder.recordStats();
-        }
-        
-        this.messageCache = messageCacheBuilder.build();
+    // Simple statistics tracking
+    private final AtomicLong configRequests = new AtomicLong(0);
+    private final AtomicLong messageRequests = new AtomicLong(0);
+    
+    public CacheManager() {
+        // No configuration needed anymore
     }
 
     @SuppressWarnings("unchecked")
     public <T> T getConfig(String collection, String key, T defaultValue) {
+        configRequests.incrementAndGet();
+        
         Map<String, Object> collectionConfig = collectionConfigs.get(collection);
         if (collectionConfig == null) {
             return defaultValue;
@@ -63,15 +43,15 @@ public class CacheManager {
     public void putConfig(String collection, String key, Object value) {
         collectionConfigs.computeIfAbsent(collection, k -> new Object2ObjectOpenHashMap<>())
                          .put(key, value);
-        configCache.put(collection + ":" + key, value);
     }
     
     public void putConfigData(String collection, Map<String, Object> data) {
         collectionConfigs.put(collection, new Object2ObjectOpenHashMap<>(data));
-        data.forEach((key, value) -> configCache.put(collection + ":" + key, value));
     }
 
     public String getMessage(String collection, String language, String key, String defaultValue) {
+        messageRequests.incrementAndGet();
+        
         Map<String, Map<String, Object>> collectionLangs = collectionMessages.get(collection);
         if (collectionLangs == null) {
             return defaultValue;
@@ -90,14 +70,11 @@ public class CacheManager {
         collectionMessages.computeIfAbsent(collection, k -> new ConcurrentHashMap<>())
                           .computeIfAbsent(language, k -> new Object2ObjectOpenHashMap<>())
                           .put(key, value);
-        messageCache.put(collection + ":" + language + ":" + key, value);
     }
     
     public void putMessageData(String collection, String language, Map<String, Object> data) {
         collectionMessages.computeIfAbsent(collection, k -> new ConcurrentHashMap<>())
                           .put(language, new Object2ObjectOpenHashMap<>(data));
-        
-        flattenAndCache(data, "", collection, language);
     }
 
     private Object getNestedValue(Map<String, Object> data, String key) {
@@ -119,48 +96,30 @@ public class CacheManager {
         return current;
     }
     
-    private void flattenAndCache(Map<String, Object> data, String prefix, String collection, String language) {
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
-            String key = prefix.isEmpty() ? entry.getKey() : prefix + "." + entry.getKey();
-            Object value = entry.getValue();
-            
-            if (value instanceof Map) {
-                flattenAndCache((Map<String, Object>) value, key, collection, language);
-            } else {
-                messageCache.put(collection + ":" + language + ":" + key, value.toString());
-            }
-        }
-    }
-    
     public void invalidateCollection(String collection) {
         collectionConfigs.remove(collection);
         collectionMessages.remove(collection);
-
-        configCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
-        messageCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
     }
     
     public void invalidateAll() {
         collectionConfigs.clear();
         collectionMessages.clear();
-        configCache.invalidateAll();
-        messageCache.invalidateAll();
     }
     
     public boolean hasCollection(String collection) {
         return collectionConfigs.containsKey(collection) || collectionMessages.containsKey(collection);
     }
 
-    public CacheStats getConfigCacheStats() {
-        return configCache.stats();
+    public long getConfigRequests() {
+        return configRequests.get();
     }
     
-    public CacheStats getMessageCacheStats() {
-        return messageCache.stats();
+    public long getMessageRequests() {
+        return messageRequests.get();
     }
     
     public long getEstimatedSize() {
-        return configCache.estimatedSize() + messageCache.estimatedSize();
+        return collectionConfigs.size() + collectionMessages.size();
     }
 
 }

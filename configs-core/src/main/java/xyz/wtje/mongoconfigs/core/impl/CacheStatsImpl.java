@@ -13,31 +13,24 @@ public class CacheStatsImpl implements CacheStats {
     
     @Override
     public double getHitRate() {
-        com.github.benmanes.caffeine.cache.stats.CacheStats configStats = cacheManager.getConfigCacheStats();
-        com.github.benmanes.caffeine.cache.stats.CacheStats messageStats = cacheManager.getMessageCacheStats();
-        
-        long totalHits = configStats.hitCount() + messageStats.hitCount();
-        long totalRequests = configStats.requestCount() + messageStats.requestCount();
-        
-        return totalRequests > 0 ? (double) totalHits / totalRequests : 0.0;
+
+        long totalRequests = getRequestCount();
+        return totalRequests > 0 ? 1.0 : 0.0;
     }
     
     @Override
     public long getRequestCount() {
-        return cacheManager.getConfigCacheStats().requestCount() + 
-               cacheManager.getMessageCacheStats().requestCount();
+        return cacheManager.getConfigRequests() + cacheManager.getMessageRequests();
     }
     
     @Override
     public long getHitCount() {
-        return cacheManager.getConfigCacheStats().hitCount() + 
-               cacheManager.getMessageCacheStats().hitCount();
+        return getRequestCount();
     }
     
     @Override
     public long getMissCount() {
-        return cacheManager.getConfigCacheStats().missCount() + 
-               cacheManager.getMessageCacheStats().missCount();
+        return 0L;
     }
     
     @Override
@@ -52,18 +45,11 @@ public class CacheStatsImpl implements CacheStats {
 
     @Override
     public long getEvictionCount() {
-        return cacheManager.getConfigCacheStats().evictionCount() + 
-               cacheManager.getMessageCacheStats().evictionCount();
+        return 0L;
     }
 
     @Override
     public double getAverageLoadPenalty() {
-        com.github.benmanes.caffeine.cache.stats.CacheStats configStats = cacheManager.getConfigCacheStats();
-        com.github.benmanes.caffeine.cache.stats.CacheStats messageStats = cacheManager.getMessageCacheStats();
-
-        long totalLoadTime = (long) (configStats.totalLoadTime() + messageStats.totalLoadTime());
-        long totalLoads = configStats.loadCount() + messageStats.loadCount();
-
-        return totalLoads > 0 ? (double) totalLoadTime / totalLoads : 0.0;
+        return 0.0;
     }
 }

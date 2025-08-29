@@ -44,7 +44,7 @@ public class ConfigManagerImpl implements ConfigManager {
 
         this.mongoManager = new MongoManager(config);
         this.asyncExecutor = mongoManager.getExecutorService();
-        this.cacheManager = new CacheManager(config);
+        this.cacheManager = new CacheManager();
         this.metricsManager = new MetricsManager();
         this.messageFormatter = new MessageFormatter();
         
@@ -551,10 +551,10 @@ public class ConfigManagerImpl implements ConfigManager {
         LOGGER.info("Database: " + config.getDatabase());
         LOGGER.info("Connection Pool: max=" + config.getMaxPoolSize() + ", min=" + config.getMinPoolSize());
         LOGGER.info("Connection Timeouts: connect=" + config.getConnectTimeoutMs() + "ms, socket=" + config.getSocketTimeoutMs() + "ms, selection=" + config.getServerSelectionTimeoutMs() + "ms");
-        LOGGER.info("Cache: max-size=" + config.getCacheMaxSize() + ", ttl=" + config.getCacheTtlSeconds() + "s, refresh-after=" + config.getCacheRefreshAfterSeconds() + "s, stats=" + config.isCacheRecordStats());
+        LOGGER.info("Cache: Simple in-memory maps, size=" + cacheManager.getEstimatedSize());
         LOGGER.info("Performance: io-threads=" + config.getIoThreads() + ", worker-threads=" + config.getWorkerThreads());
-        LOGGER.info("Cache estimated size: " + cacheManager.getEstimatedSize());
+        LOGGER.info("Cache requests - Config: " + cacheManager.getConfigRequests() + ", Messages: " + cacheManager.getMessageRequests());
         LOGGER.info("Known collections: " + knownCollections.size());
-        LOGGER.info("=== All configuration values are being used ===");
+        LOGGER.info("=== Configuration simplified - removed unused Caffeine cache ===");
     }
 }
