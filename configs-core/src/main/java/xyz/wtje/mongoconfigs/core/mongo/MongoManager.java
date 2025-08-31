@@ -90,11 +90,15 @@ public class MongoManager {
     public CompletableFuture<Void> saveConfig(String collection, ConfigDocument config) {
         MongoCollection<Document> coll = database.getCollection(collection);
         config.updateTimestamp();
+
+        Document docToSave = config.toDocument();
+        docToSave.remove("_id");
+        docToSave.put("_id", "config");
         
         return PublisherAdapter.toCompletableFuture(
             coll.replaceOne(
                 Filters.eq("_id", "config"),
-                config.toDocument(),
+                docToSave,
                 new ReplaceOptions().upsert(true)
             )
         ).thenApply(result -> null);
@@ -111,11 +115,14 @@ public class MongoManager {
     public CompletableFuture<Void> saveLanguage(String collection, LanguageDocument languageDoc) {
         MongoCollection<Document> coll = database.getCollection(collection);
         languageDoc.updateTimestamp();
+
+        Document docToSave = languageDoc.toDocument();
+        docToSave.remove("_id");
         
         return PublisherAdapter.toCompletableFuture(
             coll.replaceOne(
                 Filters.eq("lang", languageDoc.getLang()),
-                languageDoc.toDocument(),
+                docToSave,
                 new ReplaceOptions().upsert(true)
             )
         ).thenApply(result -> null);

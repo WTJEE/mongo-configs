@@ -10,13 +10,11 @@ public class CacheManager {
     
     private final Map<String, Map<String, Object>> collectionConfigs = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Map<String, Object>>> collectionMessages = new ConcurrentHashMap<>();
-    
-    // Simple statistics tracking
+
     private final AtomicLong configRequests = new AtomicLong(0);
     private final AtomicLong messageRequests = new AtomicLong(0);
     
     public CacheManager() {
-        // No configuration needed anymore
     }
 
     @SuppressWarnings("unchecked")

@@ -30,10 +30,12 @@ public class ConfigDocument {
         if (idObj instanceof ObjectId) {
             config.id = (ObjectId) idObj;
         } else if (idObj instanceof String) {
-            try {
-                config.id = new ObjectId((String) idObj);
-            } catch (IllegalArgumentException e) {
-                config.id = new ObjectId();
+            if (!"config".equals(idObj)) {
+                try {
+                    config.id = new ObjectId((String) idObj);
+                } catch (IllegalArgumentException e) {
+                    config.id = new ObjectId();
+                }
             }
         }
         
