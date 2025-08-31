@@ -126,13 +126,279 @@ config.setConfigBatch("MojaWtyczka_Config", configValues); // Jedna operacja Mon
 ```
 
 ### Zarządzanie wiadomościami/tłumaczeniami
-```java
-// Pobieranie wiadomości z placeholderami - automatycznie kolorowane!
-String msg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", 
-    "player", player.getName(), 
-    "server", "SkyPvP");
 
-// ⚡ BATCH MESSAGES - 100+ wiadomości na raz (SUPER SZYBKO!)
+#### **Pobieranie wiadomości - podstawy**
+```java
+// Podstawowe pobieranie wiadomości (automatyczne kolorowanie!)
+String msg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", "Domyślna wiadomość");
+player.sendMessage(msg); // Wyśle wiadomość z kolorami!
+
+// Z placeholderami - {klucz} zostanie zastąpione wartością
+String personalMsg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", 
+    "player", player.getName(),           // {player} → nazwa gracza
+    "server", "SkyPvP",                  // {server} → nazwa serwera  
+    "level", String.valueOf(playerLevel) // {level} → poziom gracza
+);
+// Wynik: "&#54DAF4Witaj Gracz123 &ana serwerze SkyPvP! &eJesteś na poziomie 15"
+```
+
+#### **Różne sposoby pobierania wiadomości**
+```java
+// 1. getMessage() - z automatycznymi kolorami
+String coloredMsg = config.getMessage("Wtyczka", "pl", "welcome", 
+    "player", player.getName());
+// Wynik: kolorowa wiadomość gotowa do wyświetlenia
+
+// 2. getPlainMessage() - bez kolorów (do logów/konsoli)
+String plainMsg = config.getPlainMessage("Wtyczka", "pl", "welcome", 
+    "player", player.getName());
+// Wynik: czysty tekst bez kodów kolorów
+
+// 3. getMessageLore() - lista wiadomości (dla itemów)
+List<String> lore = config.getMessageLore("Wtyczka", "pl", "item.sword.lore");
+// Automatycznie dzieli po przecinkach i koloruje każdą linię
+```
+
+#### **Języki graczy - automatyczne pobieranie**
+```java
+// Pobieranie języka gracza
+LanguageManager langManager = MongoConfigsAPI.getLanguageManager();
+String playerLang = langManager.getPlayerLanguage(player.getUniqueId().toString());
+
+// Wiadomość w języku gracza
+String welcomeMsg = config.getMessage("MojaWtyczka", playerLang, "welcome",
+    "player", player.getName(),
+    "time", LocalTime.now().toString()
+);
+player.sendMessage(welcomeMsg);
+
+// Ustawianie języka gracza (zapisuje do MongoDB)
+langManager.setPlayerLanguage(player.getUniqueId(), "pl")
+    .thenRun(() -> {
+        player.sendMessage("Język zmieniony na polski!");
+    });
+```
+
+#### **Zagnieżdżone klucze wiadomości**
+```java
+// Struktura w MongoDB:
+// {
+//   "gui": {
+//     "buttons": {
+//       "close": "&#FF0000&lZamknij",
+//       "next": "&a&lDalej"
+//     },
+//     "title": "<gradient:#FFD700:#FF8C00>Menu Główne</gradient>"
+//   }
+// }
+
+// Pobieranie zagnieżdżonych kluczy
+String closeButton = config.getMessage("Wtyczka", "pl", "gui.buttons.close", "Zamknij");
+String guiTitle = config.getMessage("Wtyczka", "pl", "gui.title", "Menu");
+String nextButton = config.getMessage("Wtyczka", "pl", "gui.buttons.next", "Dalej");
+
+// Używanie w GUI
+Inventory inv = Bukkit.createInventory(null, 27, ColorHelper.parseText(guiTitle));
+ItemStack closeItem = new ItemStack(Material.BARRIER);
+ItemMeta meta = closeItem.getItemMeta();
+meta.setDisplayName(ColorHelper.parseText(closeButton));
+closeItem.setItemMeta(meta);
+```
+
+#### **Lore dla itemów**
+```java
+// W MongoDB zapisz jako string z przecinkami:
+// "sword.lore": "&7Potężna broń,&#54DAF4+15 Obrażeń,<gradient:#FF0000:#8B0000>Zaklęcie Ognia III</gradient>,&eKliknij aby użyć"
+
+// Pobieranie jako lista (automatyczny split i kolorowanie)
+List<String> swordLore = config.getMessageLore("Wtyczka", "pl", "sword.lore");
+// Rezultat:
+// [0] = "§7Potężna broń"
+// [1] = "§x§5§4§D§A§F§4+15 Obrażeń"  
+// [2] = "§x§F§F§0§0§0§0Zaklęcie Ognia III" (gradient)
+// [3] = "§eKliknij aby użyć"
+
+// Używanie w itemie
+ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
+ItemMeta swordMeta = sword.getItemMeta();
+swordMeta.setLore(swordLore); // Automatycznie kolorowe!
+sword.setItemMeta(swordMeta);
+```
+
+#### **Ustawianie wiadomości**
+#### **Ustawianie wiadomości**
+```java
+// Pojedyncza wiadomość
+config.setMessage("MojaWtyczka", "pl", "goodbye", 
+    "&#FF0000Do widzenia {player}!");
+
+// Z wszystkimi formatami kolorów jednocześnie
+config.setMessage("MojaWtyczka", "pl", "level_up", 
+    "&l&6AWANS! &r<gradient:#54daf4:#545eb6>Gratulacje</gradient> &#FFD700{player}! " +
+    "&aJesteś teraz na poziomie &{255,215,0}{level}");
+```
+
+### **Formaty kolorów - wszystkie obsługiwane**
+```java
+// 1. LEGACY COLORS (klasyczne Bukkit)
+"&6Złoty &cCzerwony &aBold &ltext"
+"&0Czarny &1Ciemny Niebieski &2Ciemny Zielony &3Ciemny Błękitny"
+"&4Ciemny Czerwony &5Ciemny Fioletowy &6Złoty &7Szary"
+"&8Ciemny Szary &9Niebieski &aZielony &bBłękitny"
+"&cCzerwony &dJasny Fioletowy &eŻółty &fBiały"
+"&lPogrubienie &mPrzekreślenie &nPodkreślenie &oKursywa &rReset"
+
+// 2. HEX COLORS (nowoczesne, czyste)
+"&#54DAF4Piękny błękitny &#FF0000jasny czerwony"
+"&#FFD700Złoty &#32CD32Limonka &#FF69B4Różowy"
+
+// 3. BUKKIT RGB FORMAT (obsługiwany przez większość pluginów)
+"&x&5&4&D&A&F&4Własny &x&F&F&0&0&0&0kolor"
+"&x&F&F&D&7&0&0Złoty &x&3&2&C&D&3&2Limonka"
+
+// 4. WŁASNY RGB FORMAT (łatwy w użyciu)
+"&{54,218,244}RGB niebieski &{255,0,0}RGB czerwony"
+"&{255,215,0}Złoty &{50,205,50}Limonka &{255,105,180}Różowy"
+
+// 5. MINIMESSAGE GRADIENTY (piękne przejścia)
+"<gradient:#54daf4:#545eb6>Niesamowity gradient</gradient>"
+"<gradient:#FF0000:#FFFF00:#00FF00>Tęczowe przejście</gradient>"
+"<gradient:#FFD700:#FF8C00>Złote zanikanie</gradient>"
+
+// 6. MIESZANE FORMATY (wszystko razem!)
+"&6Złoty &#54DAF4hex <gradient:#FF0000:#00FF00>gradient</gradient> &{255,255,0}rgb"
+"&l&6SERWER &r&8» <gradient:#54daf4:#545eb6>Witaj</gradient> &#FF0000{player}!"
+
+// Przykłady z życia wzięte:
+"&l&6AWANS POZIOMU! &r&#54DAF4Osiągnąłeś poziom &{255,215,0}{level}"
+"<gradient:#FF6B6B:#4ECDC4>Dzięki za grę!</gradient> &aOdwiedź nas ponownie!"
+"&8[&6VIP&8] &#54DAF4{player} &7dołączył na serwer"
+```
+
+### **Praktyczne przykłady użycia**
+
+#### **System powiadomień graczy**
+```java
+public class PlayerNotificationSystem {
+    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
+    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+    
+    public void sendLevelUpMessage(Player player, int newLevel) {
+        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+        
+        // Wiadomość z automatycznymi kolorami
+        String message = config.getMessage("LevelSystem", playerLang, "level_up",
+            "player", player.getName(),
+            "level", String.valueOf(newLevel),
+            "xp_needed", String.valueOf(getXpForLevel(newLevel + 1))
+        );
+        
+        player.sendMessage(message);
+        
+        // Opcjonalnie tytuł
+        String title = config.getMessage("LevelSystem", playerLang, "level_up_title",
+            "level", String.valueOf(newLevel)
+        );
+        player.sendTitle(ColorHelper.parseText(title), "", 10, 70, 20);
+    }
+    
+    public void sendDeathMessage(Player player, Player killer) {
+        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+        String killerLang = lang.getPlayerLanguage(killer.getUniqueId().toString());
+        
+        // Wiadomość dla zabitego
+        String deathMsg = config.getMessage("PvP", playerLang, "death.killed_by",
+            "killer", killer.getName(),
+            "weapon", getWeaponName(killer.getInventory().getItemInMainHand())
+        );
+        player.sendMessage(deathMsg);
+        
+        // Wiadomość dla zabójcy
+        String killMsg = config.getMessage("PvP", killerLang, "kill.player",
+            "victim", player.getName(),
+            "streak", String.valueOf(getKillStreak(killer))
+        );
+        killer.sendMessage(killMsg);
+    }
+}
+```
+
+#### **System GUI z wiadomościami**
+```java
+public class ShopGUI {
+    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
+    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+    
+    public void openShop(Player player) {
+        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+        
+        // Tytuł GUI z gradientem
+        String title = config.getMessage("Shop", playerLang, "gui.title", "Sklep");
+        Inventory inv = Bukkit.createInventory(null, 54, ColorHelper.parseText(title));
+        
+        // Item z lore
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
+        ItemMeta swordMeta = sword.getItemMeta();
+        
+        // Nazwa itemu
+        String itemName = config.getMessage("Shop", playerLang, "items.diamond_sword.name",
+            "price", "1000"
+        );
+        swordMeta.setDisplayName(ColorHelper.parseText(itemName));
+        
+        // Lore itemu (automatyczne dzielenie po przecinkach)
+        List<String> lore = config.getMessageLore("Shop", playerLang, "items.diamond_sword.lore");
+        swordMeta.setLore(lore);
+        
+        sword.setItemMeta(swordMeta);
+        inv.setItem(10, sword);
+        
+        player.openInventory(inv);
+    }
+}
+```
+
+#### **System ogłoszeń serwera**
+```java
+public class AnnouncementSystem {
+    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
+    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+    
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+        
+        // Wiadomość powitalna
+        String welcomeMsg = config.getMessage("Server", playerLang, "join.welcome",
+            "player", player.getName(),
+            "online", String.valueOf(Bukkit.getOnlinePlayers().size()),
+            "max", String.valueOf(Bukkit.getMaxPlayers())
+        );
+        
+        // Wyślij po 2 sekundach (żeby GUI się załadowało)
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            player.sendMessage(welcomeMsg);
+            
+            // Jeśli pierwszy raz
+            if (!player.hasPlayedBefore()) {
+                String firstJoinMsg = config.getMessage("Server", playerLang, "join.first_time",
+                    "player", player.getName()
+                );
+                player.sendMessage(firstJoinMsg);
+            }
+        }, 40L);
+    }
+    
+    // Globalny broadcast w różnych językach
+    public void broadcastMessage(String key, String... placeholders) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+            String message = config.getMessage("Broadcast", playerLang, key, placeholders);
+            player.sendMessage(message);
+        }
+    }
+}
 Map<String, String> messages = new HashMap<>();
 messages.put("welcome", "<gradient:#54daf4:#545eb6>Witaj {player}!</gradient>");
 messages.put("goodbye", "&#FF0000Do widzenia {player}!");
@@ -149,11 +415,14 @@ Map<String, Map<String, String>> allLanguages = new HashMap<>();
 allLanguages.put("en", getEnglishMessages());   // 100+ wiadomości EN
 allLanguages.put("pl", getPolishMessages());    // 100+ wiadomości PL  
 allLanguages.put("de", getGermanMessages());    // 100+ wiadomości DE
-config.setMessageBatchMultiLang("MojaWtyczka_Config", allLanguages); 
-// Jedna operacja dla WSZYSTKICH języków!
+}
+
+### **Zarządzanie kolekcjami - duża skala**
 ```
 
-### Zarządzanie kolekcjami - duża skala
+### **Batch operations - masowe operacje**
+```java
+// ⚡ BATCH MESSAGES - 100+ wiadomości na raz (SUPER SZYBKO!)
 ```java
 // 🚀 BATCH COLLECTION CREATION - 10+ kolekcji z 30+ dokumentami każda
 Set<CollectionSetupData> collections = new HashSet<>();
@@ -258,13 +527,105 @@ Duration avgMongoTime = metrics.getAverageMongoTime();
 long mongoOpsCount = metrics.getMongoOperationsCount();
 ```
 
-## 🗄️ MongoDB Document Structure
+## � **Troubleshooting i najlepsze praktyki**
 
-### Configuration Document
+### **Często spotykane problemy**
+
+#### **Wiadomość nie ma kolorów**
+```java
+// ❌ ŹLE - używasz ColorHelper ręcznie
+player.sendMessage(ColorHelper.parseText(message));
+
+// ✅ DOBRZE - getMessage() automatycznie koloruje
+String message = config.getMessage("Wtyczka", "pl", "welcome");
+player.sendMessage(message); // Już kolorowe!
+```
+
+#### **Placeholdery się nie zastępują**
+```java
+// ❌ ŹLE - nieparzysty liczba argumentów
+String msg = config.getMessage("Wtyczka", "pl", "welcome", "player"); // Brak wartości!
+
+// ✅ DOBRZE - para klucz-wartość
+String msg = config.getMessage("Wtyczka", "pl", "welcome", 
+    "player", player.getName()); // Klucz i wartość
+```
+
+#### **Kolekcja nie istnieje**
+```java
+// Zawsze sprawdź przed użyciem
+if (!config.collectionExists("MojaWtyczka")) {
+    // Utwórz kolekcję
+    config.createCollection("MojaWtyczka", Set.of("pl", "en"))
+          .thenRun(() -> {
+              // Dodaj domyślne wiadomości
+              setupDefaultMessages();
+          });
+}
+```
+
+### **Najlepsze praktyki**
+
+#### **1. Zawsze używaj domyślnych wartości**
+```java
+// ✅ DOBRZE - zawsze podaj fallback
+String message = config.getMessage("Wtyczka", lang, "welcome", "Witaj na serwerze!");
+
+// ❌ ŹLE - może zwrócić null
+String message = config.getMessage("Wtyczka", lang, "welcome", null);
+```
+
+#### **2. Cache języków graczy lokalnie**
+```java
+public class PlayerLanguageCache {
+    private final Map<UUID, String> languageCache = new ConcurrentHashMap<>();
+    private final LanguageManager langManager = MongoConfigsAPI.getLanguageManager();
+    
+    public String getPlayerLanguage(Player player) {
+        return languageCache.computeIfAbsent(player.getUniqueId(), uuid -> {
+            return langManager.getPlayerLanguage(uuid.toString());
+        });
+    }
+    
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        languageCache.remove(event.getPlayer().getUniqueId());
+    }
+}
+```
+
+#### **3. Używaj batch operations dla lepszej wydajności**
+```java
+// ✅ DOBRZE - jedna operacja
+Map<String, String> allMessages = prepareAllMessages();
+config.setMessageBatch("Wtyczka", "pl", allMessages);
+
+// ❌ ŹLE - 100 operacji MongoDB
+for (Entry<String, String> entry : allMessages.entrySet()) {
+    config.setMessage("Wtyczka", "pl", entry.getKey(), entry.getValue());
+}
+```
+
+#### **4. Obsługuj błędy async operations**
+```java
+config.createCollection("NewCollection", Set.of("pl", "en"))
+      .thenRun(() -> {
+          getLogger().info("Kolekcja utworzona!");
+      })
+      .exceptionally(throwable -> {
+          getLogger().severe("Błąd tworzenia kolekcji: " + throwable.getMessage());
+          return null;
+      });
+```
+
+## 🗄️ **Struktura dokumentów MongoDB**
+
+### **Dokument konfiguracji**
 ```json
 {
   "_id": "config",
-  "name": "config",
+  "name": "config", 
+  "type": "config",
   "data": {
     "database": "skyPvP",
     "maxPlayers": 100,
@@ -274,17 +635,22 @@ long mongoOpsCount = metrics.getMongoOperationsCount();
       "x": 0,
       "y": 64,
       "z": 0
+    },
+    "economy": {
+      "enabled": true,
+      "startingMoney": 1000
     }
   },
-  "updatedAt": {"$date": "2025-08-27T10:00:00Z"}
+  "updatedAt": {"$date": "2025-08-31T10:00:00Z"}
 }
 ```
 
-### Language Document (with colors!)
+### **Dokument językowy (z kolorami!)**
 ```json
 {
   "_id": "ObjectId(...)",
   "lang": "pl",
+  "type": "language", 
   "data": {
     "welcome": "<gradient:#54daf4:#545eb6>Witaj {player}</gradient> &ana serwerze!",
     "goodbye": "&#FF0000Do widzenia {player}!",
@@ -293,19 +659,35 @@ long mongoOpsCount = metrics.getMongoOperationsCount();
       "title": "<gradient:#FFD700:#FF8C00>Menu Główne</gradient>",
       "buttons": {
         "close": "&#FF0000&lZamknij",
-        "next": "&a&lNext Page"
+        "next": "&a&lNext Page",
+        "back": "&c&lWstecz"
       }
     },
     "item": {
       "sword": {
         "name": "<gradient:#FFD700:#FF8C00>Magiczny Miecz</gradient>",
-        "lore": "&7Powerful weapon,&#54DAF4+10 Attack Damage,<gradient:#FF0000:#8B0000>Fire Aspect III</gradient>"
+        "lore": "&7Potężna broń,&#54DAF4+10 Obrażeń,<gradient:#FF0000:#8B0000>Fire Aspect III</gradient>,&eKliknij PPM aby użyć"
+      }
+    },
+    "pvp": {
+      "death": {
+        "killed_by": "&#FF0000☠ &7Zostałeś zabity przez &#54DAF4{killer} &7używając &e{weapon}"
+      },
+      "kill": {
+        "player": "&#54DAF4⚔ &7Zabiłeś gracza &#FFD700{victim} &7(Seria: &a{streak}&7)"
       }
     }
   },
-  "updatedAt": {"$date": "2025-08-28T10:00:00Z"}
+  "updatedAt": {"$date": "2025-08-31T10:00:00Z"}
 }
 ```
+
+### **Jak dane są przechowywane**
+- **Jedna kolekcja MongoDB** = jedno ustawienie wtyczki (np. "MojaWtyczka_Config")
+- **Dokument config** = wszystkie ustawienia konfiguracyjne
+- **Dokumenty language** = po jednym dla każdego języka (pl, en, de, itp.)
+- **Zagnieżdżone obiekty** = klucze z kropkami (`gui.buttons.close`)
+- **Automatyczne timestampy** = `updatedAt` przy każdej zmianie
 
 ## 📋 **Komendy**
 
