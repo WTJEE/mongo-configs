@@ -119,5 +119,27 @@ public class CacheManager {
     public long getEstimatedSize() {
         return collectionConfigs.size() + collectionMessages.size();
     }
+    
+    public boolean hasConfigData(String collection) {
+        return collectionConfigs.containsKey(collection);
+    }
+    
+    public boolean hasMessageData(String collection, String language) {
+        Map<String, Map<String, Object>> collectionLangs = collectionMessages.get(collection);
+        return collectionLangs != null && collectionLangs.containsKey(language);
+    }
+    
+    public int getConfigKeyCount(String collection) {
+        Map<String, Object> config = collectionConfigs.get(collection);
+        return config != null ? config.size() : 0;
+    }
+    
+    public int getMessageKeyCount(String collection, String language) {
+        Map<String, Map<String, Object>> collectionLangs = collectionMessages.get(collection);
+        if (collectionLangs == null) return 0;
+        
+        Map<String, Object> langData = collectionLangs.get(language);
+        return langData != null ? langData.size() : 0;
+    }
 
 }

@@ -1,7 +1,7 @@
 package xyz.wtje.mongoconfigs.core.impl;
-
 import io.micrometer.core.instrument.Timer;
 import xyz.wtje.mongoconfigs.api.CacheStats;
+import xyz.wtje.mongoconfigs.api.CollectionSetupData;
 import xyz.wtje.mongoconfigs.api.ConfigManager;
 import xyz.wtje.mongoconfigs.api.PerformanceMetrics;
 import xyz.wtje.mongoconfigs.core.cache.CacheManager;
@@ -14,7 +14,6 @@ import xyz.wtje.mongoconfigs.core.mongo.PublisherAdapter;
 import xyz.wtje.mongoconfigs.core.util.ColorProcessor;
 import xyz.wtje.mongoconfigs.core.util.MessageFormatter;
 import com.mongodb.client.model.Filters;
-
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,12 +21,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-
 public class ConfigManagerImpl implements ConfigManager {
-    
     private static final Logger LOGGER = Logger.getLogger(ConfigManagerImpl.class.getName());
-    
     private final MongoManager mongoManager;
     private final CacheManager cacheManager;
     private final MetricsManager metricsManager;
@@ -35,47 +30,35 @@ public class ConfigManagerImpl implements ConfigManager {
     private final MongoConfig config;
     private final Executor asyncExecutor;
     private ColorProcessor colorProcessor;
-
     private final Set<String> knownCollections = ConcurrentHashMap.newKeySet();
     private final Map<String, Set<String>> collectionLanguages = new ConcurrentHashMap<>();
-    
     public ConfigManagerImpl(MongoConfig config) {
         this.config = config;
-
         this.mongoManager = new MongoManager(config);
         this.asyncExecutor = mongoManager.getExecutorService();
         this.cacheManager = new CacheManager();
         this.metricsManager = new MetricsManager();
         this.messageFormatter = new MessageFormatter();
-        
         metricsManager.updateConnectionPoolSize(config.getMaxPoolSize());
-        
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
-        
         LOGGER.info("ConfigManager initialized with MongoDB database: " + config.getDatabase());
     }
-    
     public void initialize() {
         preWarmCache();
         logConfigurationStatus();
-        
         LOGGER.info("ConfigManager fully initialized and ready");
     }
-    
     public void shutdown() {
         mongoManager.close();
         LOGGER.info("ConfigManager shutdown complete");
     }
-    
     public void setColorProcessor(ColorProcessor colorProcessor) {
         this.colorProcessor = colorProcessor;
         this.messageFormatter.setColorProcessor(colorProcessor);
     }
-
     @Override
     public <T> T getConfig(String collection, String key, T defaultValue) {
         Timer.Sample sample = metricsManager.startCacheOperation();
-        
         try {
             T result = cacheManager.getConfig(collection, key, defaultValue);
             metricsManager.recordCacheHit(sample, "config");
@@ -86,19 +69,16 @@ public class ConfigManagerImpl implements ConfigManager {
             return defaultValue;
         }
     }
-    
     @Override
     public <T> CompletableFuture<Optional<T>> getConfigAsync(String collection, String key, Class<T> type) {
         return CompletableFuture.supplyAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
                 T cached = cacheManager.getConfig(collection, key, null);
                 if (cached != null && type.isInstance(cached)) {
                     metricsManager.recordMongoOperation(sample, collection, "getConfig", "cache-hit");
                     return Optional.of(cached);
                 }
-                
                 return loadConfigFromMongo(collection, key, type, sample);
             } catch (Exception e) {
                 metricsManager.recordMongoOperation(sample, collection, "getConfig", "error");
@@ -107,17 +87,13 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-    
     @Override
     public <T> CompletableFuture<Void> setConfig(String collection, String key, T value) {
         return CompletableFuture.runAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
                 cacheManager.putConfig(collection, key, value);
-
                 updateConfigInMongo(collection, key, value).join();
-                
                 metricsManager.recordMongoOperation(sample, collection, "setConfig", "success");
                 LOGGER.fine("Updated config: " + collection + ":" + key);
             } catch (Exception e) {
@@ -127,11 +103,9 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-
     @Override
     public String getMessage(String collection, String language, String key, Object... placeholders) {
         Timer.Sample sample = metricsManager.startCacheOperation();
-        
         try {
             String message = cacheManager.getMessage(collection, language, key, null);
             if (message == null) {
@@ -140,7 +114,6 @@ public class ConfigManagerImpl implements ConfigManager {
             } else {
                 metricsManager.recordCacheHit(sample, "message");
             }
-            
             return messageFormatter.format(message, placeholders);
         } catch (Exception e) {
             metricsManager.recordCacheMiss(sample, "message");
@@ -148,34 +121,26 @@ public class ConfigManagerImpl implements ConfigManager {
             return key;
         }
     }
-    
     @Override
     public List<String> getMessageLore(String collection, String language, String key, Object... placeholders) {
         String message = getMessage(collection, language, key, placeholders);
-
         if (message.contains(",")) {
             return Arrays.asList(message.split(","));
         }
-        
         return List.of(message);
     }
-    
     @Override
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders) {
         return CompletableFuture.supplyAsync(() -> 
                 getMessage(collection, language, key, placeholders), asyncExecutor);
     }
-    
     @Override
     public CompletableFuture<Void> setMessage(String collection, String language, String key, String value) {
         return CompletableFuture.runAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
                 cacheManager.putMessage(collection, language, key, value);
-
                 updateMessageInMongo(collection, language, key, value).join();
-                
                 metricsManager.recordMongoOperation(sample, collection, "setMessage", "success");
                 LOGGER.fine("Updated message: " + collection + ":" + language + ":" + key);
             } catch (Exception e) {
@@ -185,12 +150,140 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-
+    @Override
+    public <T> CompletableFuture<Void> setConfigBatch(String collection, Map<String, T> configValues) {
+        return CompletableFuture.runAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                for (Map.Entry<String, T> entry : configValues.entrySet()) {
+                    cacheManager.putConfig(collection, entry.getKey(), entry.getValue());
+                }
+                updateConfigBatchInMongo(collection, configValues).join();
+                metricsManager.recordMongoOperation(sample, collection, "setConfigBatch", "success");
+                LOGGER.fine("Updated config batch for collection: " + collection + " (" + configValues.size() + " items)");
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, collection, "setConfigBatch", "error");
+                LOGGER.log(Level.SEVERE, "Error setting config batch for collection: " + collection, e);
+                throw new RuntimeException(e);
+            }
+        }, asyncExecutor);
+    }
+    @Override
+    public CompletableFuture<Void> setMessageBatch(String collection, String language, Map<String, String> messages) {
+        return CompletableFuture.runAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                for (Map.Entry<String, String> entry : messages.entrySet()) {
+                    cacheManager.putMessage(collection, language, entry.getKey(), entry.getValue());
+                }
+                updateMessageBatchInMongo(collection, language, messages).join();
+                metricsManager.recordMongoOperation(sample, collection, "setMessageBatch", "success");
+                LOGGER.fine("Updated message batch: " + collection + ":" + language + " (" + messages.size() + " items)");
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, collection, "setMessageBatch", "error");
+                LOGGER.log(Level.SEVERE, "Error setting message batch: " + collection + ":" + language, e);
+                throw new RuntimeException(e);
+            }
+        }, asyncExecutor);
+    }
+    @Override
+    public CompletableFuture<Void> setMessageBatchMultiLang(String collection, Map<String, Map<String, String>> languageMessages) {
+        return CompletableFuture.runAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                for (Map.Entry<String, Map<String, String>> langEntry : languageMessages.entrySet()) {
+                    String language = langEntry.getKey();
+                    for (Map.Entry<String, String> msgEntry : langEntry.getValue().entrySet()) {
+                        cacheManager.putMessage(collection, language, msgEntry.getKey(), msgEntry.getValue());
+                    }
+                }
+                List<CompletableFuture<Void>> updateFutures = languageMessages.entrySet().stream()
+                        .map(entry -> updateMessageBatchInMongo(collection, entry.getKey(), entry.getValue()))
+                        .toList();
+                CompletableFuture.allOf(updateFutures.toArray(new CompletableFuture[0])).join();
+                int totalMessages = languageMessages.values().stream().mapToInt(Map::size).sum();
+                metricsManager.recordMongoOperation(sample, collection, "setMessageBatchMultiLang", "success");
+                LOGGER.fine("Updated message batch for collection: " + collection + " (" + 
+                           languageMessages.size() + " languages, " + totalMessages + " total messages)");
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, collection, "setMessageBatchMultiLang", "error");
+                LOGGER.log(Level.SEVERE, "Error setting message batch multi-lang for collection: " + collection, e);
+                throw new RuntimeException(e);
+            }
+        }, asyncExecutor);
+    }
+    @Override
+    public CompletableFuture<Void> createCollectionsBatch(Map<String, CollectionSetupData> collectionsData) {
+        return createCollectionsBatch(collectionsData, 3);
+    }
+    @Override
+    public CompletableFuture<Void> createCollectionsBatch(Map<String, CollectionSetupData> collectionsData, int maxConcurrency) {
+        return CompletableFuture.runAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                LOGGER.info("Starting batch creation of " + collectionsData.size() + " collections with max concurrency: " + maxConcurrency);
+                List<String> collectionNames = new ArrayList<>(collectionsData.keySet());
+                List<CompletableFuture<Void>> allFutures = new ArrayList<>();
+                for (int i = 0; i < collectionNames.size(); i += maxConcurrency) {
+                    int endIndex = Math.min(i + maxConcurrency, collectionNames.size());
+                    List<String> batchCollections = collectionNames.subList(i, endIndex);
+                    LOGGER.info("Processing batch " + ((i / maxConcurrency) + 1) + ": collections " + batchCollections);
+                    List<CompletableFuture<Void>> batchFutures = batchCollections.stream()
+                            .map(collectionName -> {
+                                CollectionSetupData setupData = collectionsData.get(collectionName);
+                                return createSingleCollectionWithData(collectionName, setupData);
+                            })
+                            .toList();
+                    CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0])).join();
+                    allFutures.addAll(batchFutures);
+                    LOGGER.info("Completed batch " + ((i / maxConcurrency) + 1) + ", processed " + batchCollections.size() + " collections");
+                    if (endIndex < collectionNames.size()) {
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("Batch processing interrupted", e);
+                        }
+                    }
+                }
+                metricsManager.recordMongoOperation(sample, "batch", "createCollectionsBatch", "success");
+                LOGGER.info("Successfully completed batch creation of " + collectionsData.size() + " collections");
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, "batch", "createCollectionsBatch", "error");
+                LOGGER.log(Level.SEVERE, "Error in batch collection creation", e);
+                throw new RuntimeException(e);
+            }
+        }, asyncExecutor);
+    }
+    /**
+     * Create a single collection with all its data (config + messages)
+     */
+    private CompletableFuture<Void> createSingleCollectionWithData(String collectionName, CollectionSetupData setupData) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                LOGGER.info("Setting up collection: " + collectionName + " with " + 
+                           setupData.getLanguages().size() + " languages");
+                createCollection(collectionName, setupData.getLanguages()).join();
+                if (setupData.getConfigValues() != null && !setupData.getConfigValues().isEmpty()) {
+                    LOGGER.fine("Setting " + setupData.getConfigValues().size() + " config values for: " + collectionName);
+                    setConfigBatch(collectionName, setupData.getConfigValues()).join();
+                }
+                if (setupData.getLanguageMessages() != null && !setupData.getLanguageMessages().isEmpty()) {
+                    int totalMessages = setupData.getLanguageMessages().values().stream().mapToInt(Map::size).sum();
+                    LOGGER.fine("Setting " + totalMessages + " messages for: " + collectionName);
+                    setMessageBatchMultiLang(collectionName, setupData.getLanguageMessages()).join();
+                }
+                LOGGER.info("Successfully completed setup for collection: " + collectionName);
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error setting up collection: " + collectionName, e);
+                throw new RuntimeException("Failed to setup collection: " + collectionName, e);
+            }
+        }, asyncExecutor);
+    }
     @Override
     public CompletableFuture<Void> createCollection(String collection, Set<String> languages) {
         return CompletableFuture.runAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
                 boolean exists = mongoManager.collectionExists(collection).join();
                 if (exists) {
@@ -200,9 +293,7 @@ public class ConfigManagerImpl implements ConfigManager {
                     metricsManager.recordMongoOperation(sample, collection, "createCollection", "already-exists");
                     return;
                 }
-
                 mongoManager.createCollection(collection).join();
-
                 ConfigDocument existingConfigDoc = mongoManager.getConfig(collection).join();
                 if (existingConfigDoc == null) {
                     ConfigDocument configDoc = new ConfigDocument("config", new HashMap<>());
@@ -211,7 +302,6 @@ public class ConfigManagerImpl implements ConfigManager {
                 } else {
                     LOGGER.info("Config document already exists for collection: " + collection);
                 }
-
                 for (String language : languages) {
                     LanguageDocument existingLangDoc = mongoManager.getLanguage(collection, language).join();
                     if (existingLangDoc == null) {
@@ -222,7 +312,6 @@ public class ConfigManagerImpl implements ConfigManager {
                         LOGGER.info("Language document already exists: " + collection + ":" + language);
                     }
                 }
-
                 knownCollections.add(collection);
                 collectionLanguages.put(collection, new HashSet<>(languages));
                 metricsManager.recordMongoOperation(sample, collection, "createCollection", "success");
@@ -234,26 +323,20 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-    
     @Override
     public CompletableFuture<Void> copyLanguage(String collection, String sourceLanguage, String targetLanguage) {
         return CompletableFuture.runAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
                 LanguageDocument sourceDoc = mongoManager.getLanguage(collection, sourceLanguage).join();
                 if (sourceDoc == null) {
                     throw new IllegalArgumentException("Source language not found: " + sourceLanguage);
                 }
-
                 LanguageDocument targetDoc = new LanguageDocument(targetLanguage, 
                         new HashMap<>(sourceDoc.getData()));
                 mongoManager.saveLanguage(collection, targetDoc).join();
-
                 cacheManager.putMessageData(collection, targetLanguage, targetDoc.getData());
-
                 collectionLanguages.computeIfAbsent(collection, k -> new HashSet<>()).add(targetLanguage);
-                
                 metricsManager.recordMongoOperation(sample, collection, "copyLanguage", "success");
                 LOGGER.info("Copied language " + sourceLanguage + " to " + targetLanguage + " in collection: " + collection);
             } catch (Exception e) {
@@ -263,51 +346,59 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-    
     @Override
     public CompletableFuture<Set<String>> getCollections() {
         return CompletableFuture.supplyAsync(() -> new HashSet<>(knownCollections), asyncExecutor);
     }
-    
     @Override
     public Set<String> getSupportedLanguages(String collection) {
         return collectionLanguages.getOrDefault(collection, Set.of());
     }
-    
     @Override
     public boolean collectionExists(String collection) {
         return knownCollections.contains(collection) || cacheManager.hasCollection(collection);
     }
-    
     @Override
     public CompletableFuture<Void> reloadCollection(String collection) {
         return CompletableFuture.runAsync(() -> {
             Timer.Sample sample = metricsManager.startMongoOperation();
-            
             try {
+                LOGGER.info("Reloading collection: " + collection);
                 cacheManager.invalidateCollection(collection);
-
                 CompletableFuture<ConfigDocument> configFuture = mongoManager.getConfig(collection);
-
                 Set<String> languages = collectionLanguages.getOrDefault(collection, Set.of());
+                LOGGER.info("Loading " + languages.size() + " languages for collection: " + collection);
                 List<CompletableFuture<LanguageDocument>> languageFutures = languages.stream()
                         .map(lang -> mongoManager.getLanguage(collection, lang))
                         .toList();
-
-                ConfigDocument configDoc = configFuture.join();
+                ConfigDocument configDoc = null;
+                try {
+                    configDoc = configFuture.join();
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Failed to load config for collection: " + collection, e);
+                }
                 if (configDoc != null && configDoc.getData() != null) {
                     cacheManager.putConfigData(collection, configDoc.getData());
+                    LOGGER.info("Successfully cached config for collection: " + collection);
+                } else {
+                    LOGGER.warning("No config data found for collection: " + collection);
                 }
-                
+                int loadedLanguages = 0;
                 for (CompletableFuture<LanguageDocument> future : languageFutures) {
-                    LanguageDocument langDoc = future.join();
-                    if (langDoc != null && langDoc.getData() != null) {
-                        cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
+                    try {
+                        LanguageDocument langDoc = future.join();
+                        if (langDoc != null && langDoc.getData() != null) {
+                            cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
+                            loadedLanguages++;
+                        }
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, e);
                     }
                 }
-                
+                LOGGER.info("Successfully reloaded collection " + collection + " - Config: " + 
+                           (configDoc != null ? "loaded" : "missing") + ", Languages: " + 
+                           loadedLanguages + "/" + languages.size());
                 metricsManager.recordMongoOperation(sample, collection, "reloadCollection", "success");
-                LOGGER.info("Reloaded collection: " + collection);
             } catch (Exception e) {
                 metricsManager.recordMongoOperation(sample, collection, "reloadCollection", "error");
                 LOGGER.log(Level.SEVERE, "Error reloading collection: " + collection, e);
@@ -315,46 +406,74 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor);
     }
-    
     @Override
     public CompletableFuture<Void> reloadAll() {
         return CompletableFuture.runAsync(() -> {
             cacheManager.invalidateAll();
-            
             List<CompletableFuture<Void>> reloadFutures = knownCollections.parallelStream()
                     .map(this::reloadCollection)
                     .toList();
-            
             CompletableFuture.allOf(reloadFutures.toArray(new CompletableFuture[0])).join();
             LOGGER.info("Reloaded all collections");
         }, asyncExecutor);
     }
-
-
-    
+    @Override
+    public CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections) {
+        return reloadCollectionsBatch(collections, 3);
+    }
+    @Override
+    public CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections, int maxConcurrency) {
+        return CompletableFuture.runAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                LOGGER.info("Starting batch reload of " + collections.size() + " collections with max concurrency: " + maxConcurrency);
+                List<String> collectionNames = new ArrayList<>(collections);
+                for (int i = 0; i < collectionNames.size(); i += maxConcurrency) {
+                    int endIndex = Math.min(i + maxConcurrency, collectionNames.size());
+                    List<String> batchCollections = collectionNames.subList(i, endIndex);
+                    LOGGER.info("Reloading batch " + ((i / maxConcurrency) + 1) + ": " + batchCollections);
+                    List<CompletableFuture<Void>> batchFutures = batchCollections.stream()
+                            .map(this::reloadCollection)
+                            .toList();
+                    CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0])).join();
+                    LOGGER.info("Completed reload batch " + ((i / maxConcurrency) + 1));
+                    if (endIndex < collectionNames.size()) {
+                        try {
+                            Thread.sleep(300);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("Batch reload interrupted", e);
+                        }
+                    }
+                }
+                metricsManager.recordMongoOperation(sample, "batch", "reloadCollectionsBatch", "success");
+                LOGGER.info("Successfully completed batch reload of " + collections.size() + " collections");
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, "batch", "reloadCollectionsBatch", "error");
+                LOGGER.log(Level.SEVERE, "Error in batch collection reload", e);
+                throw new RuntimeException(e);
+            }
+        }, asyncExecutor);
+    }
     @Override
     public CacheStats getCacheStats() {
         return new CacheStatsImpl(cacheManager);
     }
-    
     @Override
     public PerformanceMetrics getMetrics() {
         return metricsManager;
     }
-    
     private <T> Optional<T> loadConfigFromMongo(String collection, String key, Class<T> type, Timer.Sample sample) {
         try {
             ConfigDocument configDoc = mongoManager.getConfig(collection).join();
             if (configDoc != null && configDoc.getData() != null) {
                 cacheManager.putConfigData(collection, configDoc.getData());
-                
                 Object value = configDoc.getData().get(key);
                 if (value != null && type.isInstance(value)) {
                     metricsManager.recordMongoOperation(sample, collection, "getConfig", "success");
                     return Optional.of(type.cast(value));
                 }
             }
-            
             metricsManager.recordMongoOperation(sample, collection, "getConfig", "not-found");
             return Optional.empty();
         } catch (Exception e) {
@@ -362,7 +481,6 @@ public class ConfigManagerImpl implements ConfigManager {
             throw e;
         }
     }
-    
     private <T> CompletableFuture<Void> updateConfigInMongo(String collection, String key, T value) {
         return mongoManager.getConfig(collection)
                 .thenCompose(configDoc -> {
@@ -370,19 +488,16 @@ public class ConfigManagerImpl implements ConfigManager {
                         configDoc = new ConfigDocument("config", new HashMap<>());
                         LOGGER.fine("Creating new config document for collection: " + collection);
                     }
-                    
                     Object currentValue = configDoc.getData().get(key);
                     if (java.util.Objects.equals(currentValue, value)) {
                         LOGGER.fine("Config value unchanged for " + collection + ":" + key + ", skipping update");
                         return CompletableFuture.completedFuture(null);
                     }
-                    
                     configDoc.getData().put(key, value);
                     LOGGER.fine("Updating config value for " + collection + ":" + key);
                     return mongoManager.saveConfig(collection, configDoc);
                 });
     }
-    
     private CompletableFuture<Void> updateMessageInMongo(String collection, String language, String key, String value) {
         return mongoManager.getLanguage(collection, language)
                 .thenCompose(langDoc -> {
@@ -390,90 +505,120 @@ public class ConfigManagerImpl implements ConfigManager {
                         langDoc = new LanguageDocument(language, new HashMap<>());
                         LOGGER.fine("Creating new language document for " + collection + ":" + language);
                     }
-                    
                     Map<String, Object> data = langDoc.getData();
                     Object currentValue = getNestedValue(data, key);
                     if (java.util.Objects.equals(currentValue, value)) {
                         LOGGER.fine("Message value unchanged for " + collection + ":" + language + ":" + key + ", skipping update");
                         return CompletableFuture.completedFuture(null);
                     }
-                    
                     setNestedValue(data, key, value);
                     LOGGER.fine("Updating message value for " + collection + ":" + language + ":" + key);
                     return mongoManager.saveLanguage(collection, langDoc);
                 });
     }
-    
+    private <T> CompletableFuture<Void> updateConfigBatchInMongo(String collection, Map<String, T> configValues) {
+        return mongoManager.getConfig(collection)
+                .thenCompose(configDoc -> {
+                    if (configDoc == null) {
+                        configDoc = new ConfigDocument("config", new HashMap<>());
+                        LOGGER.fine("Creating new config document for collection: " + collection);
+                    }
+                    Map<String, Object> data = configDoc.getData();
+                    boolean hasChanges = false;
+                    for (Map.Entry<String, T> entry : configValues.entrySet()) {
+                        Object currentValue = data.get(entry.getKey());
+                        if (!java.util.Objects.equals(currentValue, entry.getValue())) {
+                            data.put(entry.getKey(), entry.getValue());
+                            hasChanges = true;
+                        }
+                    }
+                    if (!hasChanges) {
+                        LOGGER.fine("No config changes detected for collection: " + collection + ", skipping update");
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    LOGGER.fine("Batch updating config values for collection: " + collection + " (" + configValues.size() + " items)");
+                    return mongoManager.saveConfig(collection, configDoc);
+                });
+    }
+    private CompletableFuture<Void> updateMessageBatchInMongo(String collection, String language, Map<String, String> messages) {
+        return mongoManager.getLanguage(collection, language)
+                .thenCompose(langDoc -> {
+                    if (langDoc == null) {
+                        langDoc = new LanguageDocument(language, new HashMap<>());
+                        LOGGER.fine("Creating new language document for " + collection + ":" + language);
+                    }
+                    Map<String, Object> data = langDoc.getData();
+                    boolean hasChanges = false;
+                    for (Map.Entry<String, String> entry : messages.entrySet()) {
+                        Object currentValue = getNestedValue(data, entry.getKey());
+                        if (!java.util.Objects.equals(currentValue, entry.getValue())) {
+                            setNestedValue(data, entry.getKey(), entry.getValue());
+                            hasChanges = true;
+                        }
+                    }
+                    if (!hasChanges) {
+                        LOGGER.fine("No message changes detected for " + collection + ":" + language + ", skipping update");
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    LOGGER.fine("Batch updating message values for " + collection + ":" + language + " (" + messages.size() + " items)");
+                    return mongoManager.saveLanguage(collection, langDoc);
+                });
+    }
     private Object getNestedValue(Map<String, Object> data, String key) {
         if (!key.contains(".")) {
             return data.get(key);
         }
-        
         String[] parts = key.split("\\.", 2);
         String currentKey = parts[0];
         String remainingKey = parts[1];
-        
         Object nested = data.get(currentKey);
         if (nested instanceof Map) {
             return getNestedValue((Map<String, Object>) nested, remainingKey);
         }
-        
         return null;
     }
-    
     private void setNestedValue(Map<String, Object> data, String key, Object value) {
         if (!key.contains(".")) {
             data.put(key, value);
             return;
         }
-        
         String[] parts = key.split("\\.", 2);
         String currentKey = parts[0];
         String remainingKey = parts[1];
-        
         Map<String, Object> nested = (Map<String, Object>) data.computeIfAbsent(currentKey, k -> new HashMap<>());
         setNestedValue(nested, remainingKey, value);
     }
-    
     private void preWarmCache() {
         CompletableFuture.runAsync(() -> {
             try {
                 LOGGER.info("Pre-warming cache - discovering existing collections...");
-                
                 Set<String> existingCollections = PublisherAdapter.toCompletableFutureList(
                     mongoManager.getDatabase().listCollectionNames()
                 ).join()
                 .stream()
                 .collect(java.util.stream.Collectors.toSet());
-                
                 LOGGER.info("Found existing collections: " + existingCollections);
-                
                 for (String collection : existingCollections) {
                     if (!collection.equals(config.getPlayerLanguagesCollection())) {
                         loadCollectionIntoCache(collection).join();
                     }
                 }
-                
                 knownCollections.addAll(existingCollections);
-                
                 LOGGER.info("Pre-warming cache completed for " + existingCollections.size() + " collections");
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error pre-warming cache", e);
             }
         }, asyncExecutor);
     }
-    
     private CompletableFuture<Void> loadCollectionIntoCache(String collection) {
         return CompletableFuture.runAsync(() -> {
             try {
                 LOGGER.info("Loading collection into cache: " + collection);
-                
                 ConfigDocument configDoc = mongoManager.getConfig(collection).join();
                 if (configDoc != null && configDoc.getData() != null) {
                     cacheManager.putConfigData(collection, configDoc.getData());
                     LOGGER.fine("Loaded config data for collection: " + collection);
                 }
-                
                 Set<String> languages = PublisherAdapter.toCompletableFutureList(
                     mongoManager.getCollection(collection)
                         .find(Filters.exists("lang"))
@@ -482,9 +627,7 @@ public class ConfigManagerImpl implements ConfigManager {
                 .map(doc -> doc.getString("lang"))
                 .filter(lang -> lang != null)
                 .collect(java.util.stream.Collectors.toSet());
-                
                 LOGGER.info("Found languages in collection " + collection + ": " + languages);
-                
                 for (String language : languages) {
                     LanguageDocument langDoc = mongoManager.getLanguage(collection, language).join();
                     if (langDoc != null && langDoc.getData() != null) {
@@ -492,33 +635,27 @@ public class ConfigManagerImpl implements ConfigManager {
                         LOGGER.fine("Loaded language data for " + collection + ":" + language);
                     }
                 }
-                
                 collectionLanguages.put(collection, languages);
-                
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error loading collection into cache: " + collection, e);
             }
         }, asyncExecutor);
     }
-    
     @Override
     public void invalidateCache(String collection) {
         cacheManager.invalidateCollection(collection);
         metricsManager.recordCacheOperation("invalidate_collection", "success");
         LOGGER.info("Cache invalidated for collection: " + collection);
     }
-    
     @Override
     public void invalidateCache() {
         cacheManager.invalidateAll();
         metricsManager.recordCacheOperation("invalidate_all", "success");
         LOGGER.info("All cache invalidated");
     }
-    
     @Override
     public String getPlainMessage(String collection, String language, String key, Object... placeholders) {
         Timer.Sample sample = metricsManager.startCacheOperation();
-        
         try {
             String message = cacheManager.getMessage(collection, language, key, null);
             if (message == null) {
@@ -527,7 +664,6 @@ public class ConfigManagerImpl implements ConfigManager {
             } else {
                 metricsManager.recordCacheHit(sample, "message");
             }
-            
             String formatted = messageFormatter.formatPlain(message, placeholders);
             return colorProcessor != null ? colorProcessor.stripColors(formatted) : formatted;
         } catch (Exception e) {
@@ -536,16 +672,13 @@ public class ConfigManagerImpl implements ConfigManager {
             return key;
         }
     }
-    
     @Override
     public Object getColorCacheStats() {
         return colorProcessor != null ? colorProcessor.getCacheStats() : "No color processor available";
     }
-    
     public MongoManager getMongoManager() {
         return mongoManager;
     }
-    
     public void logConfigurationStatus() {
         LOGGER.info("=== MongoDB Configs Configuration Status ===");
         LOGGER.info("Database: " + config.getDatabase());

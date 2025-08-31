@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.Set;
 
 
@@ -42,6 +43,7 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase()) {
             case "reload" -> handleReload(sender, args);
+            case "reloadall" -> handleReloadAll(sender);
             case "stats" -> handleStats(sender);
             case "collections" -> handleCollections(sender);
             case "create" -> handleCreate(sender, args);
@@ -53,20 +55,39 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleReload(CommandSender sender, String[] args) {
-        sender.sendMessage(Component.text("Reloading cache...", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("Reloading from MongoDB...", NamedTextColor.YELLOW));
         
-        if (args.length == 1) {
-            configManager.invalidateCache();
-            sender.sendMessage(Component.text("✓ All caches reloaded successfully!", NamedTextColor.GREEN));
-        } else {
-            String collection = args[1];
-            if (configManager.collectionExists(collection)) {
-                configManager.invalidateCache(collection);
-                sender.sendMessage(Component.text("✓ Collection '" + collection + "' reloaded successfully!", NamedTextColor.GREEN));
-            } else {
-                sender.sendMessage(Component.text("✗ Collection '" + collection + "' not found!", NamedTextColor.RED));
+        CompletableFuture.runAsync(() -> {
+            try {
+                if (args.length == 1) {
+                    configManager.reloadAll().join();
+                    sender.sendMessage(Component.text("✓ All collections reloaded from MongoDB!", NamedTextColor.GREEN));
+                } else {
+                    String collection = args[1];
+                    if (configManager.collectionExists(collection)) {
+                        configManager.reloadCollection(collection).join();
+                        sender.sendMessage(Component.text("✓ Collection '" + collection + "' reloaded from MongoDB!", NamedTextColor.GREEN));
+                    } else {
+                        sender.sendMessage(Component.text("✗ Collection '" + collection + "' not found!", NamedTextColor.RED));
+                    }
+                }
+            } catch (Exception e) {
+                sender.sendMessage(Component.text("✗ Error reloading: " + e.getMessage(), NamedTextColor.RED));
             }
-        }
+        });
+    }
+
+    private void handleReloadAll(CommandSender sender) {
+        sender.sendMessage(Component.text("Reloading all collections from MongoDB...", NamedTextColor.YELLOW));
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                configManager.reloadAll().join();
+                sender.sendMessage(Component.text("✓ All collections reloaded successfully from MongoDB!", NamedTextColor.GREEN));
+            } catch (Exception e) {
+                sender.sendMessage(Component.text("✗ Error reloading all collections: " + e.getMessage(), NamedTextColor.RED));
+            }
+        });
     }
 
     private void handleStats(CommandSender sender) {
@@ -163,7 +184,8 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(Component.text("=== ConfigsManager Commands ===", NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("/configsmanager reload [collection] - Reload cache", NamedTextColor.AQUA));
+        sender.sendMessage(Component.text("/configsmanager reload [collection] - Reload specific collection", NamedTextColor.AQUA));
+        sender.sendMessage(Component.text("/configsmanager reloadall - Reload ALL collections from MongoDB", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/configsmanager stats - Show statistics", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/configsmanager collections - List collections", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/configsmanager create <collection> <langs...> - Create collection", NamedTextColor.AQUA));
@@ -190,7 +212,7 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            return Arrays.asList("reload", "stats", "collections", "create", "info");
+            return Arrays.asList("reload", "reloadall", "stats", "collections", "create", "info");
         }
 
         if (args.length == 2) {

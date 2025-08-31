@@ -52,6 +52,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         
         switch (subcommand) {
             case "reload" -> handleReload(sender, args);
+            case "reloadall" -> handleReloadAll(sender);
             case "stats" -> handleStats(sender);
             case "collections" -> handleCollections(sender);
             case "create" -> handleCreate(sender, args);
@@ -97,6 +98,22 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                     String reloadSuccessMessage = languageConfig.getMessage("commands.admin.reload-success", senderLanguage);
                     sender.sendMessage(ColorHelper.parseComponent(reloadSuccessMessage));
                 }
+            } catch (Exception e) {
+                String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
+                    .replace("{error}", e.getMessage());
+                sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
+            }
+        });
+    }
+    
+    private void handleReloadAll(CommandSender sender) {
+        String senderLanguage = getSenderLanguage(sender);
+        sender.sendMessage(ColorHelper.parseComponent("&eReloading all collections from MongoDB..."));
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                configManager.reloadAll().join();
+                sender.sendMessage(ColorHelper.parseComponent("&a✓ All collections reloaded successfully from MongoDB!"));
             } catch (Exception e) {
                 String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                     .replace("{error}", e.getMessage());
@@ -217,7 +234,8 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     private void showHelp(CommandSender sender) {
         sender.sendMessage(Component.text("§6=== MongoDB Configs Commands ===")
                 .color(NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("§f/mongoconfigs reload [collection] §7- Reload configuration"));
+        sender.sendMessage(Component.text("§f/mongoconfigs reload [collection] §7- Reload specific collection"));
+        sender.sendMessage(Component.text("§f/mongoconfigs reloadall §7- Reload ALL collections from MongoDB"));
         sender.sendMessage(Component.text("§f/mongoconfigs stats §7- Show cache and performance statistics"));
         sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
         sender.sendMessage(Component.text("§f/mongoconfigs create <collection> <languages...> §7- Create new collection"));
@@ -233,7 +251,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            return List.of("reload", "stats", "collections", "create", "copy", "help")
+            return List.of("reload", "reloadall", "stats", "collections", "create", "copy", "help")
                     .stream()
                     .filter(sub -> sub.startsWith(partial))
                     .toList();
