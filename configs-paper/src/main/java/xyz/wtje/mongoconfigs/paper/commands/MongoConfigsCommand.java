@@ -83,43 +83,85 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     private void handleReload(CommandSender sender, String[] args) {
         String senderLanguage = getSenderLanguage(sender);
         String reloadingMessage = languageConfig.getMessage("commands.admin.reloading", senderLanguage);
-    sender.sendMessage(ColorHelper.parseComponent(reloadingMessage));
+        sender.sendMessage(ColorHelper.parseComponent(reloadingMessage));
         
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (args.length > 1) {
-                    String collection = args[1];
-                    configManager.reloadCollection(collection).join();
-                    String reloadedCollectionMessage = languageConfig.getMessage("commands.admin.reloaded-collection", senderLanguage)
-                        .replace("{collection}", collection);
-                    sender.sendMessage(ColorHelper.parseComponent(reloadedCollectionMessage));
-                } else {
+        if (args.length > 1) {
+            String collection = args[1];
+            sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading collection: &f" + collection));
+            
+            configManager.reloadCollection(collection)
+                .thenRun(() -> {
+                    // Wykonaj w głównym wątku
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        String reloadedCollectionMessage = languageConfig.getMessage("commands.admin.reloaded-collection", senderLanguage)
+                            .replace("{collection}", collection);
+                        sender.sendMessage(ColorHelper.parseComponent(reloadedCollectionMessage));
+                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Collection '" + collection + "' reloaded successfully!"));
+                    });
+                })
+                .exceptionally(throwable -> {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
+                            .replace("{error}", throwable.getMessage());
+                        sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
+                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collection '" + collection + "': " + throwable.getMessage()));
+                    });
+                    return null;
+                });
+        } else {
+            sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading plugin configuration..."));
+            
+            CompletableFuture.runAsync(() -> {
+                try {
                     plugin.reloadPlugin();
-                    String reloadSuccessMessage = languageConfig.getMessage("commands.admin.reload-success", senderLanguage);
-                    sender.sendMessage(ColorHelper.parseComponent(reloadSuccessMessage));
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        String reloadSuccessMessage = languageConfig.getMessage("commands.admin.reload-success", senderLanguage);
+                        sender.sendMessage(ColorHelper.parseComponent(reloadSuccessMessage));
+                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Plugin configuration reloaded!"));
+                    });
+                } catch (Exception e) {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
+                            .replace("{error}", e.getMessage());
+                        sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
+                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading plugin: " + e.getMessage()));
+                    });
                 }
-            } catch (Exception e) {
-                String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
-                    .replace("{error}", e.getMessage());
-                sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-            }
-        });
+            });
+        }
     }
     
     private void handleReloadAll(CommandSender sender) {
         String senderLanguage = getSenderLanguage(sender);
-        sender.sendMessage(ColorHelper.parseComponent("&eReloading all collections from MongoDB..."));
+        sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading ALL collections from MongoDB..."));
         
-        CompletableFuture.runAsync(() -> {
-            try {
-                configManager.reloadAll().join();
-                sender.sendMessage(ColorHelper.parseComponent("&a✓ All collections reloaded successfully from MongoDB!"));
-            } catch (Exception e) {
-                String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
-                    .replace("{error}", e.getMessage());
-                sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-            }
-        });
+        configManager.reloadAll()
+            .thenRun(() -> {
+                // Wykonaj w głównym wątku serwera
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
+                    
+                    // Pokaż dodatkowe informacje
+                    try {
+                        var collections = configManager.getCollections().join();
+                        sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));
+                        for (String collection : collections) {
+                            sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                        }
+                    } catch (Exception e) {
+                        sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: " + e.getMessage()));
+                    }
+                });
+            })
+            .exceptionally(throwable -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
+                        .replace("{error}", throwable.getMessage());
+                    sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
+                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collections: " + throwable.getMessage()));
+                });
+                return null;
+            });
     }
     
     private void handleStats(CommandSender sender) {
@@ -151,29 +193,45 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     }
     
     private void handleCollections(CommandSender sender) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                Set<String> collections = configManager.getCollections().join();
-                
-                sender.sendMessage(Component.text("§6=== Available Collections ===")
-                        .color(NamedTextColor.GOLD));
-                
-                if (collections.isEmpty()) {
-                    sender.sendMessage(Component.text("§7No collections found.")
-                            .color(NamedTextColor.GRAY));
-                } else {
-                    for (String collection : collections) {
-                        Set<String> languages = configManager.getSupportedLanguages(collection);
-                        sender.sendMessage(Component.text(String.format("§a%s §7- Languages: §f%s", 
-                                collection, String.join(", ", languages))));
+        sender.sendMessage(ColorHelper.parseComponent("&e🔍 Loading collections from MongoDB..."));
+        
+        configManager.getCollections()
+            .thenAccept(collections -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(Component.text("§6=== Available Collections ===")
+                            .color(NamedTextColor.GOLD));
+                    
+                    if (collections.isEmpty()) {
+                        sender.sendMessage(Component.text("§c❌ No collections found in MongoDB!")
+                                .color(NamedTextColor.RED));
+                        sender.sendMessage(Component.text("§7Create collections using: /mongoconfigs create <name> <languages...>")
+                                .color(NamedTextColor.GRAY));
+                    } else {
+                        sender.sendMessage(Component.text("§7Found " + collections.size() + " collections:")
+                                .color(NamedTextColor.GRAY));
+                        
+                        for (String collection : collections) {
+                            try {
+                                Set<String> languages = configManager.getSupportedLanguages(collection);
+                                boolean exists = configManager.collectionExists(collection);
+                                String status = exists ? "§a✅" : "§c❌";
+                                sender.sendMessage(Component.text(String.format("%s §f%s §7- Languages: §e%s", 
+                                        status, collection, String.join(", ", languages))));
+                            } catch (Exception e) {
+                                sender.sendMessage(Component.text(String.format("§c❌ §f%s §7- Error: %s", 
+                                        collection, e.getMessage())));
+                            }
+                        }
                     }
-                }
-                
-            } catch (Exception e) {
-                sender.sendMessage(Component.text("§cError getting collections: " + e.getMessage())
-                        .color(NamedTextColor.RED));
-            }
-        });
+                });
+            })
+            .exceptionally(throwable -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(Component.text("§c❌ Error getting collections: " + throwable.getMessage())
+                            .color(NamedTextColor.RED));
+                });
+                return null;
+            });
     }
     
     private void handleCreate(CommandSender sender, String[] args) {

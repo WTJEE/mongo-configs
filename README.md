@@ -618,6 +618,54 @@ config.createCollection("NewCollection", Set.of("pl", "en"))
       });
 ```
 
+#### **5. Upewnij się że kolekcja istnieje przed reload**
+```java
+public class LevelConfigManager {
+    
+    public void ensureCollectionExists() {
+        if (!configManager.collectionExists(CONFIG_COLLECTION)) {
+            getLogger().info("Kolekcja nie istnieje, tworzenie...");
+            setupDefaultConfig(); // Tworzy kolekcję i ustawia domyślne dane
+        } else {
+            getLogger().info("Kolekcja już istnieje: " + CONFIG_COLLECTION);
+        }
+    }
+    
+    // Wywołaj to przy starcie wtyczki PRZED innymi operacjami
+    @Override
+    public void onEnable() {
+        levelConfigManager = new LevelConfigManager(this);
+        levelConfigManager.ensureCollectionExists(); // WAŻNE!
+        
+        // Dopiero potem rejestruj komendy, eventy itp.
+        registerCommands();
+        registerEvents();
+    }
+}
+```
+
+#### **6. Jeśli kolekcja nie przeładowuje się po reloadall**
+```java
+// Problem: kolekcja nie była "known" przez MongoDB Configs
+// Rozwiązanie: wymuś reload konkretnej kolekcji
+
+public void forceReloadConfig() {
+    if (configManager.collectionExists(CONFIG_COLLECTION)) {
+        configManager.reloadCollection(CONFIG_COLLECTION)
+            .thenRun(() -> {
+                getLogger().info("Kolekcja " + CONFIG_COLLECTION + " przeładowana!");
+            })
+            .exceptionally(throwable -> {
+                getLogger().severe("Błąd przeładowania: " + throwable.getMessage());
+                return null;
+            });
+    } else {
+        getLogger().warning("Kolekcja " + CONFIG_COLLECTION + " nie istnieje!");
+        setupDefaultConfig(); // Utwórz ją
+    }
+}
+```
+
 ## 🗄️ **Struktura dokumentów MongoDB**
 
 ### **Dokument konfiguracji**

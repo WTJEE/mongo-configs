@@ -348,7 +348,31 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     @Override
     public CompletableFuture<Set<String>> getCollections() {
-        return CompletableFuture.supplyAsync(() -> new HashSet<>(knownCollections), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> {
+            Timer.Sample sample = metricsManager.startMongoOperation();
+            try {
+                // Pobierz wszystkie kolekcje z MongoDB
+                Set<String> mongoCollections = mongoManager.getMongoCollections();
+                
+                // Połącz z known collections
+                Set<String> allCollections = new HashSet<>(knownCollections);
+                allCollections.addAll(mongoCollections);
+                
+                // Aktualizuj known collections
+                knownCollections.addAll(mongoCollections);
+                
+                LOGGER.info("📋 Found " + allCollections.size() + " total collections (MongoDB: " + 
+                           mongoCollections.size() + ", Known: " + knownCollections.size() + ")");
+                
+                metricsManager.recordMongoOperation(sample, "ALL", "getCollections", "success");
+                return allCollections;
+                
+            } catch (Exception e) {
+                metricsManager.recordMongoOperation(sample, "ALL", "getCollections", "error");
+                LOGGER.warning("⚠️ Error getting MongoDB collections, returning known collections: " + e.getMessage());
+                return new HashSet<>(knownCollections);
+            }
+        }, asyncExecutor);
     }
     @Override
     public Set<String> getSupportedLanguages(String collection) {
@@ -409,12 +433,39 @@ public class ConfigManagerImpl implements ConfigManager {
     @Override
     public CompletableFuture<Void> reloadAll() {
         return CompletableFuture.runAsync(() -> {
+            LOGGER.info("🔄 Starting reloadAll() - clearing cache first...");
             cacheManager.invalidateAll();
-            List<CompletableFuture<Void>> reloadFutures = knownCollections.parallelStream()
-                    .map(this::reloadCollection)
+            
+            // Pobierz wszystkie kolekcje z MongoDB, nie tylko znane
+            Set<String> allCollections;
+            try {
+                allCollections = getCollections().join();
+                LOGGER.info("📋 Found " + allCollections.size() + " collections in MongoDB: " + allCollections);
+                LOGGER.info("🔍 Known collections: " + knownCollections);
+                
+                // Dodaj wszystkie kolekcje do known collections
+                knownCollections.addAll(allCollections);
+                
+            } catch (Exception e) {
+                LOGGER.severe("❌ Error getting collections from MongoDB: " + e.getMessage());
+                allCollections = new HashSet<>(knownCollections);
+            }
+            
+            if (allCollections.isEmpty()) {
+                LOGGER.warning("⚠️ No collections found to reload!");
+                return;
+            }
+            
+            LOGGER.info("🔄 Reloading " + allCollections.size() + " collections...");
+            List<CompletableFuture<Void>> reloadFutures = allCollections.parallelStream()
+                    .map(collection -> {
+                        LOGGER.info("🔄 Reloading collection: " + collection);
+                        return reloadCollection(collection);
+                    })
                     .toList();
+                    
             CompletableFuture.allOf(reloadFutures.toArray(new CompletableFuture[0])).join();
-            LOGGER.info("Reloaded all collections");
+            LOGGER.info("✅ Reloaded all " + allCollections.size() + " collections successfully!");
         }, asyncExecutor);
     }
     @Override

@@ -174,6 +174,29 @@ public class MongoManager {
         return mongoClient.getDatabase(databaseName).getCollection(collection);
     }
     
+    /**
+     * Pobiera wszystkie nazwy kolekcji z MongoDB (używa reactive streams)
+     */
+    public java.util.Set<String> getMongoCollections() {
+        try {
+            java.util.Set<String> collections = new java.util.HashSet<>();
+            
+            // Używamy reactive streams z adapter dla list
+            java.util.List<String> collectionList = PublisherAdapter.toCompletableFutureList(
+                database.listCollectionNames()
+            ).join();
+            
+            collections.addAll(collectionList);
+            
+            LOGGER.info("📋 Found " + collections.size() + " collections in MongoDB: " + collections);
+            return collections;
+            
+        } catch (Exception e) {
+            LOGGER.warning("❌ Error listing MongoDB collections: " + e.getMessage());
+            return java.util.Set.of();
+        }
+    }
+    
     public ExecutorService getExecutorService() {
         return executorService;
     }
