@@ -179,6 +179,8 @@ public class MongoManager {
      */
     public java.util.Set<String> getMongoCollections() {
         try {
+            LOGGER.info("🔍 Starting getMongoCollections() - listing all collections from MongoDB...");
+            
             java.util.Set<String> collections = new java.util.HashSet<>();
             
             // Używamy reactive streams z adapter dla list
@@ -189,10 +191,25 @@ public class MongoManager {
             collections.addAll(collectionList);
             
             LOGGER.info("📋 Found " + collections.size() + " collections in MongoDB: " + collections);
+            
+            // Szczegółowe logowanie dla każdej kolekcji
+            for (String collection : collections) {
+                LOGGER.info("📋 Collection: " + collection);
+            }
+            
+            if (collections.isEmpty()) {
+                LOGGER.warning("⚠️ No collections found in MongoDB! This might indicate:");
+                LOGGER.warning("⚠️ 1. Database is empty");
+                LOGGER.warning("⚠️ 2. Connection issues");
+                LOGGER.warning("⚠️ 3. Wrong database name");
+                LOGGER.warning("⚠️ 4. Collections were not created yet");
+            }
+            
             return collections;
             
         } catch (Exception e) {
             LOGGER.warning("❌ Error listing MongoDB collections: " + e.getMessage());
+            LOGGER.warning("❌ Exception details: ", e);
             return java.util.Set.of();
         }
     }

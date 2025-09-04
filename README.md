@@ -1,8 +1,166 @@
 # MongoDB Configs Library
 
-[![](https://jitpack.io/v/aiikk/mongo-configs.svg)](https://jitpack.io/#aiikk/mongo-configs)
+[![](https://jitpack.io/v/WTJEE/mongo-configs.svg)](https://jitpack.io/#WTJEE/mongo-configs)
 
-**Zaawansowana biblioteka MongoDB do zarządzania konfiguracjami i tłumaczeniami dla wtyczek Minecraft Paper/Bukkit z wysokowydajnymi operacjami batch.**
+Zaawansowana biblioteka MongoDB do zarządzania konfiguracjami i tłumaczeniami dla wtyczek Minecraft Paper/Bukkit z wysokowydajnymi operacjami batch.
+
+## 🚀 Kluczowe możliwości
+
+### ⚡ Wydajność na dużą skalę
+- 100+ wiadomości jednocześnie - batch operations bez limitów
+- 30+ dokumentów w 10 kolekcjach - kontrola współbieżności
+- Operacje batch - jedna operacja MongoDB zamiast setek
+
+### 🗄️ Integracja MongoDB
+- MongoDB Reactive Streams z connection pooling
+- Change Streams do hot-reload
+- Auto-resume przy błędach połączenia
+- Konfigurowalne timeouty i pool settings
+
+### 🌍 Wsparcie wielojęzyczne
+- Komenda `/language` z konfigurowalnymi nazwami
+- Automatyczny zapis preferencji do MongoDB
+- Wsparcie zagnieżdżonych kluczy (`warrior.openTitle`)
+- Lore support - separacja przecinkami
+- Fallback do domyślnego języka
+
+### 🎨 Zaawansowany system kolorów
+- Wszystkie formaty: Legacy, Hex, RGB, MiniMessage gradienty
+- Cache 10k wpisów z <0.001ms dostępem
+- Automatyczne przetwarzanie wszystkich wiadomości
+
+## 📦 Instalacja
+
+**Maven:**
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+	<dependency>
+	    <groupId>com.github.WTJEE.mongo-configs</groupId>
+	    <artifactId>configs-api</artifactId>
+	    <version>{WersjaRelease}</version>
+	</dependency>
+</dependencies>
+```
+
+**Gradle:**
+```gradle
+repositories {
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.WTJEE.mongo-configs:configs-api:{WersjaRelease}'
+}
+```
+
+## 📚 Jak używać API
+
+### Pobieranie instancji API
+```java
+ConfigManager config = MongoConfigsAPI.getConfigManager();
+LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+```
+
+### Zarządzanie konfiguracją
+```java
+String dbName = config.getConfig("MojaWtyczka_Config", "database", "default");
+boolean enabled = config.getConfig("MojaWtyczka_Config", "enabled", true);
+int maxPlayers = config.getConfig("MojaWtyczka_Config", "maxPlayers", 100);
+
+config.setConfig("MojaWtyczka_Config", "maintenance", false);
+config.setConfig("MojaWtyczka_Config", "spawn.world", "world");
+
+// ⚡ BATCH OPERATIONS - Wiele konfigów na raz (DUŻO SZYBCIEJ!)
+Map<String, Object> configValues = new HashMap<>();
+configValues.put("maintenance", false);
+configValues.put("maxPlayers", 200);
+configValues.put("spawn.world", "world");
+configValues.put("economy.enabled", true);
+config.setConfigBatch("MojaWtyczka_Config", configValues); // Jedna operacja MongoDB!
+```
+
+### Zarządzanie wiadomościami/tłumaczeniami
+```java
+String msg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", "Domyślna wiadomość");
+player.sendMessage(msg); // Wyśle wiadomość z kolorami!
+
+String personalMsg = config.getMessage("MojaWtyczka_Config", "pl", "welcome",
+    "player", player.getName(),
+    "server", "SkyPvP",
+    "level", String.valueOf(playerLevel)
+);
+```
+
+### Języki graczy - automatyczne pobieranie
+```java
+String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+String welcomeMsg = config.getMessage("MojaWtyczka", playerLang, "welcome",
+    "player", player.getName(),
+    "time", LocalTime.now().toString()
+);
+player.sendMessage(welcomeMsg);
+
+lang.setPlayerLanguage(player.getUniqueId(), "pl")
+    .thenRun(() -> {
+        player.sendMessage("Język zmieniony na polski!");
+    });
+```
+
+### Zagnieżdżone klucze wiadomości
+```java
+String closeButton = config.getMessage("Wtyczka", "pl", "gui.buttons.close", "Zamknij");
+String guiTitle = config.getMessage("Wtyczka", "pl", "gui.title", "Menu");
+String nextButton = config.getMessage("Wtyczka", "pl", "gui.buttons.next", "Dalej");
+```
+
+### Lore dla itemów
+```java
+List<String> swordLore = config.getMessageLore("Wtyczka", "pl", "sword.lore");
+ItemMeta meta = sword.getItemMeta();
+meta.setLore(swordLore); // Automatycznie kolorowe!
+sword.setItemMeta(meta);
+```
+
+### Ustawianie wiadomości
+```java
+config.setMessage("MojaWtyczka", "pl", "goodbye", "&#FF0000Do widzenia {player}!");
+
+Map<String, String> messages = new HashMap<>();
+messages.put("welcome", "<gradient:#54daf4:#545eb6>Witaj {player}!</gradient>");
+messages.put("goodbye", "&#FF0000Do widzenia {player}!");
+config.setMessageBatch("MojaWtyczka_Config", "pl", messages); // Jedna operacja!
+
+// ⚡ MULTI-LANGUAGE BATCH - Wszystkie języki na raz!
+Map<String, Map<String, String>> allMessages = new HashMap<>();
+allMessages.put("en", getEnglishMessages());
+allMessages.put("pl", getPolishMessages());
+config.setMessageBatchMultiLang("MojaWtyczka_Config", allMessages);
+```
+
+## 📋 Komendy
+
+### Komendy dla graczy
+- `/language [język]` - Wybierz język lub otwórz GUI
+
+### Komendy administracyjne (mongoconfigs)
+- `/mongoconfigs reload [kolekcja]` - Przeładuj konfiguracje
+- `/mongoconfigs reloadall` - Przeładuj wszystkie kolekcje
+- `/mongoconfigs stats` - Pokaż statystyki cache i wydajności
+- `/mongoconfigs collections` - Lista wszystkich kolekcji
+- `/mongoconfigs create <kolekcja> <języki...>` - Utwórz nową kolekcję
+- `/mongoconfigs testcollections` - Test wykrywania kolekcji
+- `/mongoconfigs help` - Pomoc
+
+## 🆘 Wsparcie
+
+- **GitHub Issues**: [Zgłoś błędy lub poproś o nowe funkcje](https://github.com/WTJEE/mongo-configs/issues)
 
 ---
 

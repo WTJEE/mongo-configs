@@ -57,6 +57,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             case "collections" -> handleCollections(sender);
             case "create" -> handleCreate(sender, args);
             case "copy" -> handleCopy(sender, args);
+            case "testcollections" -> handleTestCollections(sender);
             case "help" -> showHelp(sender);
             default -> {
                 String unknownSubcommandMessage = languageConfig.getMessage("commands.admin.unknown-subcommand", senderLanguage)
@@ -289,6 +290,62 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         });
     }
     
+    private void handleTestCollections(CommandSender sender) {
+        sender.sendMessage(ColorHelper.parseComponent("&e🔬 Testing MongoDB collections detection..."));
+        
+        // Test bezpośredniego dostępu do MongoDB
+        try {
+            var mongoManager = configManager.getMongoManager();
+            var mongoCollections = mongoManager.getMongoCollections();
+            
+            sender.sendMessage(ColorHelper.parseComponent("&7📋 Direct MongoDB collections: " + mongoCollections.size()));
+            for (String collection : mongoCollections) {
+                sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+            }
+            
+        } catch (Exception e) {
+            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error accessing MongoDB directly: " + e.getMessage()));
+        }
+        
+        // Test przez ConfigManager
+        configManager.getCollections()
+            .thenAccept(collections -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(ColorHelper.parseComponent("&7📋 ConfigManager collections: " + collections.size()));
+                    for (String collection : collections) {
+                        sender.sendMessage(ColorHelper.parseComponent("&7  - &b" + collection));
+                    }
+                    
+                    // Test reload dla każdej kolekcji
+                    sender.sendMessage(ColorHelper.parseComponent("&e🔄 Testing reload for each collection..."));
+                    for (String collection : collections) {
+                        try {
+                            configManager.reloadCollection(collection)
+                                .thenRun(() -> {
+                                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Reloaded: " + collection));
+                                    });
+                                })
+                                .exceptionally(throwable -> {
+                                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading " + collection + ": " + throwable.getMessage()));
+                                    });
+                                    return null;
+                                });
+                        } catch (Exception e) {
+                            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error queuing reload for " + collection + ": " + e.getMessage()));
+                        }
+                    }
+                });
+            })
+            .exceptionally(throwable -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error getting collections from ConfigManager: " + throwable.getMessage()));
+                });
+                return null;
+            });
+    }
+    
     private void showHelp(CommandSender sender) {
         sender.sendMessage(Component.text("§6=== MongoDB Configs Commands ===")
                 .color(NamedTextColor.GOLD));
@@ -298,6 +355,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
         sender.sendMessage(Component.text("§f/mongoconfigs create <collection> <languages...> §7- Create new collection"));
         sender.sendMessage(Component.text("§f/mongoconfigs copy <collection> <source> <target> §7- Copy language data"));
+        sender.sendMessage(Component.text("§f/mongoconfigs testcollections §7- Test MongoDB collections detection"));
         sender.sendMessage(Component.text("§f/mongoconfigs help §7- Show this help"));
     }
     
@@ -309,7 +367,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            return List.of("reload", "reloadall", "stats", "collections", "create", "copy", "help")
+            return List.of("reload", "reloadall", "stats", "collections", "create", "copy", "testcollections", "help")
                     .stream()
                     .filter(sub -> sub.startsWith(partial))
                     .toList();

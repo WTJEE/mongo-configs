@@ -435,37 +435,56 @@ public class ConfigManagerImpl implements ConfigManager {
         return CompletableFuture.runAsync(() -> {
             LOGGER.info("🔄 Starting reloadAll() - clearing cache first...");
             cacheManager.invalidateAll();
-            
-            // Pobierz wszystkie kolekcje z MongoDB, nie tylko znane
+
+            // Pobierz wszystkie kolekcje z MongoDB BEZPOŚREDNIO
             Set<String> allCollections;
             try {
-                allCollections = getCollections().join();
-                LOGGER.info("📋 Found " + allCollections.size() + " collections in MongoDB: " + allCollections);
-                LOGGER.info("🔍 Known collections: " + knownCollections);
-                
-                // Dodaj wszystkie kolekcje do known collections
-                knownCollections.addAll(allCollections);
-                
+                // Najpierw spróbuj pobrać z MongoDB bezpośrednio
+                allCollections = mongoManager.getMongoCollections();
+                LOGGER.info("📋 Found " + allCollections.size() + " collections directly from MongoDB: " + allCollections);
+
+                // Jeśli nie znaleziono kolekcji w MongoDB, użyj known collections
+                if (allCollections.isEmpty()) {
+                    allCollections = new HashSet<>(knownCollections);
+                    LOGGER.info("� Using known collections: " + allCollections);
+                } else {
+                    // Zaktualizuj known collections
+                    knownCollections.addAll(allCollections);
+                }
+
             } catch (Exception e) {
                 LOGGER.severe("❌ Error getting collections from MongoDB: " + e.getMessage());
+                // Fallback do known collections
                 allCollections = new HashSet<>(knownCollections);
+                LOGGER.info("📋 Fallback to known collections: " + allCollections);
             }
-            
+
             if (allCollections.isEmpty()) {
                 LOGGER.warning("⚠️ No collections found to reload!");
                 return;
             }
-            
+
             LOGGER.info("🔄 Reloading " + allCollections.size() + " collections...");
-            List<CompletableFuture<Void>> reloadFutures = allCollections.parallelStream()
+            List<CompletableFuture<Void>> reloadFutures = allCollections.stream()
                     .map(collection -> {
-                        LOGGER.info("🔄 Reloading collection: " + collection);
-                        return reloadCollection(collection);
+                        try {
+                            LOGGER.info("🔄 Reloading collection: " + collection);
+                            return reloadCollection(collection);
+                        } catch (Exception e) {
+                            LOGGER.severe("❌ Error queuing reload for collection: " + collection + " - " + e.getMessage());
+                            return CompletableFuture.completedFuture(null);
+                        }
                     })
                     .toList();
-                    
-            CompletableFuture.allOf(reloadFutures.toArray(new CompletableFuture[0])).join();
-            LOGGER.info("✅ Reloaded all " + allCollections.size() + " collections successfully!");
+
+            // Poczekaj na wszystkie reload operacje
+            try {
+                CompletableFuture.allOf(reloadFutures.toArray(new CompletableFuture[0])).join();
+                LOGGER.info("✅ Reloaded all " + allCollections.size() + " collections successfully!");
+            } catch (Exception e) {
+                LOGGER.severe("❌ Error during reload operations: " + e.getMessage());
+                throw e;
+            }
         }, asyncExecutor);
     }
     @Override
