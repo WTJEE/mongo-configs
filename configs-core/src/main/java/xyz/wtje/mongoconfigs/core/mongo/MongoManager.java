@@ -179,25 +179,27 @@ public class MongoManager {
      */
     public java.util.Set<String> getMongoCollections() {
         try {
-            LOGGER.info("🔍 Starting getMongoCollections() - listing all collections from MongoDB...");
+            if (config.isDebugLogging()) {
+                LOGGER.info("🔍 Starting getMongoCollections() - listing all collections from MongoDB...");
+            }
             
             java.util.Set<String> collections = new java.util.HashSet<>();
             
-            // Używamy reactive streams z adapter dla list
             java.util.List<String> collectionList = PublisherAdapter.toCompletableFutureList(
                 database.listCollectionNames()
             ).join();
             
             collections.addAll(collectionList);
             
-            LOGGER.info("📋 Found " + collections.size() + " collections in MongoDB: " + collections);
-            
-            // Szczegółowe logowanie dla każdej kolekcji
-            for (String collection : collections) {
-                LOGGER.info("📋 Collection: " + collection);
+            if (config.isDebugLogging()) {
+                LOGGER.info("📋 Found " + collections.size() + " collections in MongoDB: " + collections);
+                
+                for (String collection : collections) {
+                    LOGGER.info("📋 Collection: " + collection);
+                }
             }
             
-            if (collections.isEmpty()) {
+            if (collections.isEmpty() && config.isVerboseLogging()) {
                 LOGGER.warning("⚠️ No collections found in MongoDB! This might indicate:");
                 LOGGER.warning("⚠️ 1. Database is empty");
                 LOGGER.warning("⚠️ 2. Connection issues");
@@ -209,7 +211,9 @@ public class MongoManager {
             
         } catch (Exception e) {
             LOGGER.warning("❌ Error listing MongoDB collections: " + e.getMessage());
-            LOGGER.warning("❌ Exception details: ", e);
+            if (config.isDebugLogging()) {
+                LOGGER.log(java.util.logging.Level.WARNING, "❌ Exception details: ", e);
+            }
             return java.util.Set.of();
         }
     }

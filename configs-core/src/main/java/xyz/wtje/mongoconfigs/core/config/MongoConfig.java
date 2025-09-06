@@ -34,6 +34,9 @@ public class MongoConfig {
     );
     private String playerLanguagesCollection = "player_languages";
     
+    private boolean debugLogging = false;
+    private boolean verboseLogging = false;
+    
     public String getConnectionString() { return connectionString; }
     public void setConnectionString(String connectionString) { this.connectionString = connectionString; }
     
@@ -99,4 +102,10 @@ public class MongoConfig {
     
     public String getPlayerLanguagesCollection() { return playerLanguagesCollection; }
     public void setPlayerLanguagesCollection(String playerLanguagesCollection) { this.playerLanguagesCollection = playerLanguagesCollection; }
+    
+    public boolean isDebugLogging() { return debugLogging; }
+    public void setDebugLogging(boolean debugLogging) { this.debugLogging = debugLogging; }
+    
+    public boolean isVerboseLogging() { return verboseLogging; }
+    public void setVerboseLogging(boolean verboseLogging) { this.verboseLogging = verboseLogging; }
 }

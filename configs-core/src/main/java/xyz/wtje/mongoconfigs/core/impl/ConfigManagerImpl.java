@@ -468,11 +468,13 @@ public class ConfigManagerImpl implements ConfigManager {
             List<CompletableFuture<Void>> reloadFutures = allCollections.stream()
                     .map(collection -> {
                         try {
-                            LOGGER.info("🔄 Reloading collection: " + collection);
+                            if (config.isVerboseLogging()) {
+                                LOGGER.info("🔄 Reloading collection: " + collection);
+                            }
                             return reloadCollection(collection);
                         } catch (Exception e) {
                             LOGGER.severe("❌ Error queuing reload for collection: " + collection + " - " + e.getMessage());
-                            return CompletableFuture.completedFuture(null);
+                            return CompletableFuture.<Void>completedFuture(null);
                         }
                     })
                     .toList();

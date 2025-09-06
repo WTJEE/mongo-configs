@@ -139,6 +139,9 @@ public class MongoConfigsPlugin extends JavaPlugin {
         config.setIoThreads(pluginConfig.getIoThreads());
         config.setWorkerThreads(pluginConfig.getWorkerThreads());
         
+        config.setDebugLogging(pluginConfig.isDebugLogging());
+        config.setVerboseLogging(pluginConfig.isVerboseLogging());
+        
         config.setDefaultLanguage(languageConfig.getDefaultLanguage());
         config.setSupportedLanguages(languageConfig.getSupportedLanguages());
         config.setLanguageDisplayNames(languageConfig.getLanguageDisplayNames());

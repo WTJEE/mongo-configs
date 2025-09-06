@@ -100,4 +100,12 @@ public class PluginConfiguration {
         return config.getLong("logging.cache-stats-interval", 300);
     }
 
+    public boolean isDebugLogging() {
+        return config.getBoolean("logging.debug", false);
+    }
+    
+    public boolean isVerboseLogging() {
+        return config.getBoolean("logging.verbose", false);
+    }
+
 }

@@ -57,3 +57,9 @@ logging:
   
   # Cache stats log interval (seconds)
   cache-stats-interval: 300
+  
+  # Debug logging - shows detailed operation logs
+  debug: false
+  
+  # Verbose logging - shows detailed process information  
+  verbose: false
