@@ -188,6 +188,7 @@ config.setMessageBatchMultiLang("MojaWtyczka_Config", allMessages);
 ✅ **Async/Sync API** - elastyczne operacje  
 ✅ **Hot-reload** - Change Streams monitoring  
 ✅ **Error resilience** - timeout handling  
+✅ **Automatyczna regeneracja** - odtwarzanie usunętych dokumentów językowych podczas `reloadAll()`  
 
 **MongoDB Configs Library - wydajne zarządzanie konfiguracjami na dużą skalę! 🚀**dna operacja MongoDB zamiast setek
 - **Smart Cache** - buforowanie kolorów i danych z <0.001ms dostępem
@@ -204,6 +205,7 @@ config.setMessageBatchMultiLang("MojaWtyczka_Config", allMessages);
 - Automatyczny zapis preferencji do MongoDB
 - Wsparcie zagnieżdżonych kluczy (`warrior.openTitle`)
 - **Wsparcie lore** z separacją przecinkami
+- **Automatyczna regeneracja brakujących dokumentów** - system sam odtwarza usunięte języki podczas `reloadAll()`
 - Fallback do domyślnego języka
 
 ### 🎨 **Zaawansowany system kolorów**
@@ -699,6 +701,18 @@ String message = config.getMessage("Wtyczka", "pl", "welcome");
 player.sendMessage(message); // Już kolorowe!
 ```
 
+#### **Usunięte dokumenty językowe z MongoDB**
+```java
+// ✅ ROZWIĄZANIE - reloadAll() automatycznie regeneruje
+// Jeśli ktoś usunął dokument "pl" z MongoDB:
+config.reloadAll(); // Automatycznie odtworzy brakujące dokumenty językowe
+// System sprawdza "_system.supported_languages" w konfiguracji
+// i tworzy wszystkie brakujące dokumenty z pustymi danymi
+
+// Upewnij się że masz w konfiguracji kolekcji:
+// "_system.supported_languages": ["en", "pl", "de"]
+```
+
 #### **Placeholdery się nie zastępują**
 ```java
 // ❌ ŹLE - nieparzysty liczba argumentów
@@ -826,7 +840,7 @@ public void forceReloadConfig() {
 
 ## 🗄️ **Struktura dokumentów MongoDB**
 
-### **Dokument konfiguracji**
+### **Dokument konfiguracji (z metadanymi systemu)**
 ```json
 {
   "_id": "config",
@@ -836,6 +850,7 @@ public void forceReloadConfig() {
     "database": "skyPvP",
     "maxPlayers": 100,
     "maintenance": false,
+    "_system.supported_languages": ["en", "pl", "de"],
     "spawn": {
       "world": "world",
       "x": 0,
@@ -890,10 +905,12 @@ public void forceReloadConfig() {
 
 ### **Jak dane są przechowywane**
 - **Jedna kolekcja MongoDB** = jedno ustawienie wtyczki (np. "MojaWtyczka_Config")
-- **Dokument config** = wszystkie ustawienia konfiguracyjne
+- **Dokument config** = wszystkie ustawienia konfiguracyjne + metadane systemowe
+- **`_system.supported_languages`** = lista języków do automatycznej regeneracji (["en", "pl", "de"])
 - **Dokumenty language** = po jednym dla każdego języka (pl, en, de, itp.)
 - **Zagnieżdżone obiekty** = klucze z kropkami (`gui.buttons.close`)
 - **Automatyczne timestampy** = `updatedAt` przy każdej zmianie
+- **Auto-regeneracja** = `reloadAll()` sprawdza metadane i odtwarza brakujące dokumenty
 
 ## 📋 **Komendy**
 
@@ -901,7 +918,8 @@ public void forceReloadConfig() {
 - `/language [język]` - Wybierz język lub otwórz GUI (aliasy: `/lang`, `/jezyk`)
 
 ### Komendy administracyjne (mongoconfigs)
-- `/mongoconfigs reload [kolekcja]` - Przeładuj konfiguracje
+- `/mongoconfigs reload [kolekcja]` - Przeładuj konfiguracje (automatycznie regeneruje brakujące dokumenty)
+- `/mongoconfigs reloadall` - Przeładuj wszystkie kolekcje (z auto-regeneracją brakujących języków)
 - `/mongoconfigs reloadbatch <kolekcje...>` - Przeładuj wiele kolekcji naraz
 - `/mongoconfigs stats` - Pokaż statystyki cache i wydajności
 - `/mongoconfigs collections` - Lista wszystkich kolekcji
@@ -950,6 +968,8 @@ public class MyPlugin extends JavaPlugin {
         configValues.put("spawn.x", 0);
         configValues.put("spawn.y", 64);
         configValues.put("spawn.z", 0);
+        // ✅ WAŻNE: Ustaw obsługiwane języki dla auto-regeneracji
+        configValues.put("_system.supported_languages", List.of("en", "pl"));
         
         // Prepare messages for all languages
         Map<String, Map<String, String>> allMessages = new HashMap<>();

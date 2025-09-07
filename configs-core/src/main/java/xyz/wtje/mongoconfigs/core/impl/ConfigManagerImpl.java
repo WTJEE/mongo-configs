@@ -311,26 +311,37 @@ public class ConfigManagerImpl implements ConfigManager {
                 boolean exists = mongoManager.collectionExists(collection).join();
                 if (exists) {
                     if (config.isDebugLogging()) {
-                        LOGGER.info("Collection already exists: " + collection + ", skipping creation");
+                        LOGGER.info("Collection already exists: " + collection + ", updating supported languages");
                     }
                     knownCollections.add(collection);
                     collectionLanguages.put(collection, new HashSet<>(languages));
+                    
+                    ConfigDocument existingConfigDoc = mongoManager.getConfig(collection).join();
+                    if (existingConfigDoc != null && existingConfigDoc.getData() != null) {
+                        existingConfigDoc.getData().put("_system.supported_languages", new ArrayList<>(languages));
+                        mongoManager.saveConfig(collection, existingConfigDoc).join();
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Updated supported languages in config for collection: " + collection + " -> " + languages);
+                        }
+                    }
+                    
                     metricsManager.recordMongoOperation(sample, collection, "createCollection", "already-exists");
                     return;
                 }
                 mongoManager.createCollection(collection).join();
                 ConfigDocument existingConfigDoc = mongoManager.getConfig(collection).join();
-                if (existingConfigDoc == null) {
-                    ConfigDocument configDoc = new ConfigDocument("config", new HashMap<>());
-                    mongoManager.saveConfig(collection, configDoc).join();
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Created config document for collection: " + collection);
-                    }
-                } else {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Config document already exists for collection: " + collection);
-                    }
+                Map<String, Object> configData = new HashMap<>();
+                if (existingConfigDoc != null && existingConfigDoc.getData() != null) {
+                    configData.putAll(existingConfigDoc.getData());
                 }
+                
+                configData.put("_system.supported_languages", new ArrayList<>(languages));
+                ConfigDocument configDoc = new ConfigDocument("config", configData);
+                mongoManager.saveConfig(collection, configDoc).join();
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Created config document for collection: " + collection + " with supported languages: " + languages);
+                }
+                
                 for (String language : languages) {
                     LanguageDocument existingLangDoc = mongoManager.getLanguage(collection, language).join();
                     if (existingLangDoc == null) {
@@ -430,16 +441,7 @@ public class ConfigManagerImpl implements ConfigManager {
                 }
                 cacheManager.invalidateCollection(collection);
                 
-                Set<String> expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
-                if (!expectedLanguages.isEmpty()) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Checking for missing language documents in collection: " + collection);
-                    }
-                    ensureLanguageDocumentsExist(collection, expectedLanguages).join();
-                }
-                
                 CompletableFuture<ConfigDocument> configFuture = mongoManager.getConfig(collection);
-                
                 ConfigDocument configDoc = null;
                 try {
                     configDoc = configFuture.join();
@@ -454,6 +456,34 @@ public class ConfigManagerImpl implements ConfigManager {
                 } catch (Exception e) {
                     if (config.isVerboseLogging()) {
                         LOGGER.log(Level.WARNING, "Failed to load config for collection: " + collection, e);
+                    }
+                }
+                
+                Set<String> expectedLanguages = Set.of();
+                if (configDoc != null && configDoc.getData() != null) {
+                    Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
+                    if (supportedLanguagesObj instanceof List) {
+                        expectedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
+                        collectionLanguages.put(collection, expectedLanguages);
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Found supported languages in config for " + collection + ": " + expectedLanguages);
+                        }
+                    } else {
+                        expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("No supported languages in config, using known languages for " + collection + ": " + expectedLanguages);
+                        }
+                    }
+                }
+                
+                if (!expectedLanguages.isEmpty()) {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
+                    }
+                    ensureLanguageDocumentsExist(collection, expectedLanguages).join();
+                } else {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("No expected languages found for collection: " + collection + ", skipping document check");
                     }
                 }
                 
@@ -544,14 +574,34 @@ public class ConfigManagerImpl implements ConfigManager {
             }
             
             if (config.isDebugLogging()) {
-                LOGGER.info("Phase 1: Checking for missing language documents in all collections...");
+                LOGGER.info("Phase 1: Loading config documents and checking for missing language documents...");
             }
             for (String collection : allCollections) {
                 try {
-                    Set<String> expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
+                    ConfigDocument configDoc = mongoManager.getConfig(collection).join();
+                    Set<String> expectedLanguages = Set.of();
+                    
+                    if (configDoc != null && configDoc.getData() != null) {
+                        Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
+                        if (supportedLanguagesObj instanceof List) {
+                            expectedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
+                            collectionLanguages.put(collection, expectedLanguages);
+                            if (config.isVerboseLogging()) {
+                                LOGGER.info("Found supported languages in config for " + collection + ": " + expectedLanguages);
+                            }
+                        }
+                    }
+                    
+                    if (expectedLanguages.isEmpty()) {
+                        expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
+                        if (config.isVerboseLogging() && !expectedLanguages.isEmpty()) {
+                            LOGGER.info("Using known languages for collection: " + collection + " -> " + expectedLanguages);
+                        }
+                    }
+                    
                     if (!expectedLanguages.isEmpty()) {
                         if (config.isVerboseLogging()) {
-                            LOGGER.info("Checking collection: " + collection + " for languages: " + expectedLanguages);
+                            LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
                         }
                         ensureLanguageDocumentsExist(collection, expectedLanguages).join();
                     } else if (config.isVerboseLogging()) {
@@ -835,8 +885,18 @@ public class ConfigManagerImpl implements ConfigManager {
                     if (config.isVerboseLogging()) {
                         LOGGER.info("Loaded config data for collection: " + collection);
                     }
+                    
+                    Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
+                    if (supportedLanguagesObj instanceof List) {
+                        Set<String> supportedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
+                        collectionLanguages.put(collection, supportedLanguages);
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Found supported languages in config for " + collection + ": " + supportedLanguages);
+                        }
+                    }
                 }
-                Set<String> languages = PublisherAdapter.toCompletableFutureList(
+                
+                Set<String> actualLanguages = PublisherAdapter.toCompletableFutureList(
                     mongoManager.getCollection(collection)
                         .find(Filters.exists("lang"))
                 ).join()
@@ -844,10 +904,23 @@ public class ConfigManagerImpl implements ConfigManager {
                 .map(doc -> doc.getString("lang"))
                 .filter(lang -> lang != null)
                 .collect(java.util.stream.Collectors.toSet());
+                
                 if (config.isVerboseLogging()) {
-                    LOGGER.info("Found languages in collection " + collection + ": " + languages);
+                    LOGGER.info("Found actual languages in collection " + collection + ": " + actualLanguages);
                 }
-                for (String language : languages) {
+                
+                Set<String> expectedLanguages = collectionLanguages.getOrDefault(collection, actualLanguages);
+                if (actualLanguages.isEmpty() && !expectedLanguages.isEmpty()) {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("No actual languages found but expected languages exist for " + collection + ", will regenerate during reload");
+                    }
+                } else if (!expectedLanguages.isEmpty()) {
+                    collectionLanguages.put(collection, expectedLanguages);
+                } else {
+                    collectionLanguages.put(collection, actualLanguages);
+                }
+                
+                for (String language : actualLanguages) {
                     LanguageDocument langDoc = mongoManager.getLanguage(collection, language).join();
                     if (langDoc != null && langDoc.getData() != null) {
                         cacheManager.putMessageData(collection, language, langDoc.getData());
@@ -856,7 +929,6 @@ public class ConfigManagerImpl implements ConfigManager {
                         }
                     }
                 }
-                collectionLanguages.put(collection, languages);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error loading collection into cache: " + collection, e);
             }
@@ -978,6 +1050,36 @@ public class ConfigManagerImpl implements ConfigManager {
                     LOGGER.log(Level.WARNING, "Error getting existing languages for collection: " + collection, e);
                 }
                 return Set.of();
+            }
+        }, asyncExecutor);
+    }
+    
+    public CompletableFuture<Void> updateSupportedLanguages(String collection, Set<String> languages) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Updating supported languages for collection: " + collection + " -> " + languages);
+                }
+                
+                ConfigDocument configDoc = mongoManager.getConfig(collection).join();
+                Map<String, Object> configData = new HashMap<>();
+                if (configDoc != null && configDoc.getData() != null) {
+                    configData.putAll(configDoc.getData());
+                }
+                
+                configData.put("_system.supported_languages", new ArrayList<>(languages));
+                ConfigDocument updatedConfigDoc = new ConfigDocument("config", configData);
+                mongoManager.saveConfig(collection, updatedConfigDoc).join();
+                
+                collectionLanguages.put(collection, new HashSet<>(languages));
+                
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Successfully updated supported languages for collection: " + collection);
+                }
+                
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error updating supported languages for collection: " + collection, e);
+                throw new RuntimeException(e);
             }
         }, asyncExecutor);
     }
