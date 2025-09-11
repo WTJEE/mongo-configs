@@ -160,7 +160,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
 
                 List<CompletableFuture<LanguageDocument>> languageFutures = expectedLanguages.stream()
                         .map(lang -> mongoManager.getLanguage(collection, lang))
-                        .toList();
+                        .collect(Collectors.toList());
 
                 if (configDoc != null && configDoc.getData() != null) {
                     cacheManager.putConfigData(collection, configDoc.getData());
@@ -307,7 +307,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                     }
                 }
             }, asyncExecutor))
-            .toList();
+            .collect(Collectors.toList());
 
         return CompletableFuture.allOf(preparationFutures.toArray(new CompletableFuture[0]));
     }
@@ -330,7 +330,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                             return null;
                         });
                 })
-                .toList();
+                .collect(Collectors.toList());
 
         return CompletableFuture.allOf(reloadFutures.toArray(new CompletableFuture[0]));
     }
@@ -373,7 +373,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
 
         List<CompletableFuture<Void>> batchFutures = batchCollections.stream()
                 .map(this::reloadCollection)
-                .toList();
+                .collect(Collectors.toList());
 
         return CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0]))
                 .thenCompose(result -> {
@@ -755,7 +755,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                                         return null;
                                     });
                         })
-                        .toList();
+                        .collect(Collectors.toList());
 
                 CompletableFuture.allOf(createFutures.toArray(new CompletableFuture[0])).join();
                 if (config.isDebugLogging()) {
@@ -907,9 +907,9 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             @Override
             public <T> T get(String lang, String key, Class<T> type) {
                 try {
-                    Object raw = cacheManager.getMessage(id, lang, key, null);
+                    Object raw = cacheManager.getMessage(id + ":" + lang, null);
                     if (raw == null) {
-                        raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, null);
+                        raw = cacheManager.getMessage(id + ":" + config.getDefaultLanguage(), null);
                     }
                     if (raw == null) return null;
                     if (type.isInstance(raw)) return type.cast(raw);
@@ -922,9 +922,9 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             @Override
             public String get(String lang, String key, Object... placeholders) {
                 try {
-                    String message = cacheManager.getMessage(id, lang, key, null);
+                    String message = cacheManager.getMessage(id + ":" + lang, null);
                     if (message == null) {
-                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
+                        message = cacheManager.getMessage(id + ":" + config.getDefaultLanguage(), null);
                     }
                     return messageFormatter.format(message, placeholders);
                 } catch (Exception e) {
