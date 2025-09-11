@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: xyz.wtje.mongoconfigs.core.impl.ConfigManagerImplTest
--------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.365 s -- in xyz.wtje.mongoconfigs.core.impl.ConfigManagerImplTest
