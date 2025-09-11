@@ -21,6 +21,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import java.time.Duration;
 public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.api.ConfigCollectionsOps {
     private static final Logger LOGGER = Logger.getLogger(ConfigManagerImpl.class.getName());
@@ -907,9 +908,9 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             @Override
             public <T> T get(String lang, String key, Class<T> type) {
                 try {
-                    Object raw = cacheManager.getMessage(id + ":" + lang, null);
+                    Object raw = cacheManager.getMessage(id, lang, key, (Object) null);
                     if (raw == null) {
-                        raw = cacheManager.getMessage(id + ":" + config.getDefaultLanguage(), null);
+                        raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, (Object) null);
                     }
                     if (raw == null) return null;
                     if (type.isInstance(raw)) return type.cast(raw);
@@ -922,9 +923,9 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             @Override
             public String get(String lang, String key, Object... placeholders) {
                 try {
-                    String message = cacheManager.getMessage(id + ":" + lang, null);
+                    String message = cacheManager.getMessage(id, lang, key, (String) null);
                     if (message == null) {
-                        message = cacheManager.getMessage(id + ":" + config.getDefaultLanguage(), null);
+                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
                     }
                     return messageFormatter.format(message, placeholders);
                 } catch (Exception e) {
