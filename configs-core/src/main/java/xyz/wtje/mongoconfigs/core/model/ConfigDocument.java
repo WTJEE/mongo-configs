@@ -12,17 +12,17 @@ public class ConfigDocument {
     private String name;
     private Map<String, Object> data;
     private Date updatedAt;
-    
+
     public ConfigDocument() {
         this.updatedAt = Date.from(Instant.now());
     }
-    
+
     public ConfigDocument(String name, Map<String, Object> data) {
         this.name = name;
         this.data = data;
         this.updatedAt = Date.from(Instant.now());
     }
-    
+
     public static ConfigDocument fromDocument(Document doc) {
         ConfigDocument config = new ConfigDocument();
 
@@ -38,13 +38,13 @@ public class ConfigDocument {
                 }
             }
         }
-        
+
         config.name = doc.getString("name");
         config.data = doc.get("data", Document.class);
         config.updatedAt = doc.getDate("updatedAt");
         return config;
     }
-    
+
     public Document toDocument() {
         Document doc = new Document();
         if (id != null) {
@@ -55,23 +55,23 @@ public class ConfigDocument {
         doc.put("updatedAt", updatedAt);
         return doc;
     }
-    
+
     public void updateTimestamp() {
         this.updatedAt = Date.from(Instant.now());
     }
 
     public ObjectId getId() { return id; }
     public void setId(ObjectId id) { this.id = id; }
-    
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
-    
+
     public Map<String, Object> getData() { return data; }
     public void setData(Map<String, Object> data) { this.data = data; }
-    
+
     public Date getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Date updatedAt) { this.updatedAt = updatedAt; }
-    
+
     @Override
     public String toString() {
         return "ConfigDocument{" +

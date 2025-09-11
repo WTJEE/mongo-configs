@@ -1,1140 +1,1131 @@
-# MongoDB Configs Library
+# 🔥 MongoDB Configs API
 
-[![](https://jitpack.io/v/WTJEE/mongo-configs.svg)](https://jitpack.io/#WTJEE/mongo-configs)
+**Najlepsza biblioteka do konfiguracji Minecraft serwerów. Jedna linia = cała konfiguracja!**
 
-Zaawansowana biblioteka MongoDB do zarządzania konfiguracjami i tłumaczeniami dla wtyczek Minecraft Paper/Bukkit z wysokowydajnymi operacjami batch.
+```java
+// To wszystko w jednej linii! 🎯
+ServerConfig config = cm.loadObject(ServerConfig.class);  // ⚡ GOTOWE!
+```
 
-## 🚀 Kluczowe możliwości
+## 🚀 Dlaczego to najlepsze?
 
-### ⚡ Wydajność na dużą skalę
-- 100+ wiadomości jednocześnie - batch operations bez limitów
-- 30+ dokumentów w 10 kolekcjach - kontrola współbieżności
-- Operacje batch - jedna operacja MongoDB zamiast setek
-
-### 🗄️ Integracja MongoDB
-- MongoDB Reactive Streams z connection pooling
-- Change Streams do hot-reload
-- Auto-resume przy błędach połączenia
-- Konfigurowalne timeouty i pool settings
-
-### 🌍 Wsparcie wielojęzyczne
-- Komenda `/language` z konfigurowalnymi nazwami
-- Automatyczny zapis preferencji do MongoDB
-- Wsparcie zagnieżdżonych kluczy (`warrior.openTitle`)
-- Lore support - separacja przecinkami
-- Fallback do domyślnego języka
-
-### 🎨 Zaawansowany system kolorów
-- Wszystkie formaty: Legacy, Hex, RGB, MiniMessage gradienty
-- Cache 10k wpisów z <0.001ms dostępem
-- Automatyczne przetwarzanie wszystkich wiadomości
+| 🏆 Mongo Configs | 💀 YAML/JSON |
+|------------------|---------------|
+| **1 linia** kodu | 20-50 linii boilerplate |
+| ✅ Type Safety | ❌ Runtime errors |
+| ✅ Auto-sync serwerów | ❌ Manual reload |
+| ✅ Complex objects | ❌ Limited support |
+| ✅ Smart caching | ❌ Slow file I/O |
 
 ## 📦 Instalacja
 
-**Maven:**
 ```xml
-<repositories>
-    <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
-    </repository>
-</repositories>
-
-<dependencies>
-	<dependency>
-	    <groupId>com.github.WTJEE.mongo-configs</groupId>
-	    <artifactId>configs-api</artifactId>
-	    <version>{WersjaRelease}</version>
-	</dependency>
-</dependencies>
+<dependency>
+    <groupId>xyz.wtje</groupId>
+    <artifactId>mongo-configs-api</artifactId>
+    <version>1.0.0</version>
+</dependency>
 ```
 
-**Gradle:**
-```gradle
-repositories {
-    maven { url 'https://jitpack.io' }
-}
+## ⚙️ Config (plugin.yml)
 
-dependencies {
-    implementation 'com.github.WTJEE.mongo-configs:configs-api:{WersjaRelease}'
-}
+```yaml
+mongo:
+  connection-string: "mongodb://localhost:27017"
+  database: "my-server-configs"
+  change-streams-enabled: true  # Auto-sync między serwerami
+
+languages:
+  default: "en"
+  supported: ["en", "pl", "de"]
 ```
 
-## 📚 Jak używać API
+## 🎯 Podstawy - 3 kroki
 
-### Pobieranie instancji API
+### 1. Stwórz klasę config (zwykła Java klasa!)
 ```java
-ConfigManager config = MongoConfigsAPI.getConfigManager();
-LanguageManager lang = MongoConfigsAPI.getLanguageManager();
-```
-
-### Zarządzanie konfiguracją
-```java
-String dbName = config.getConfig("MojaWtyczka_Config", "database", "default");
-boolean enabled = config.getConfig("MojaWtyczka_Config", "enabled", true);
-int maxPlayers = config.getConfig("MojaWtyczka_Config", "maxPlayers", 100);
-
-config.setConfig("MojaWtyczka_Config", "maintenance", false);
-config.setConfig("MojaWtyczka_Config", "spawn.world", "world");
-
-// ⚡ BATCH OPERATIONS - Wiele konfigów na raz (DUŻO SZYBCIEJ!)
-Map<String, Object> configValues = new HashMap<>();
-configValues.put("maintenance", false);
-configValues.put("maxPlayers", 200);
-configValues.put("spawn.world", "world");
-configValues.put("economy.enabled", true);
-config.setConfigBatch("MojaWtyczka_Config", configValues); // Jedna operacja MongoDB!
-```
-
-### Zarządzanie wiadomościami/tłumaczeniami
-```java
-String msg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", "Domyślna wiadomość");
-player.sendMessage(msg); // Wyśle wiadomość z kolorami!
-
-String personalMsg = config.getMessage("MojaWtyczka_Config", "pl", "welcome",
-    "player", player.getName(),
-    "server", "SkyPvP",
-    "level", String.valueOf(playerLevel)
-);
-```
-
-### Języki graczy - automatyczne pobieranie
-```java
-String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-String welcomeMsg = config.getMessage("MojaWtyczka", playerLang, "welcome",
-    "player", player.getName(),
-    "time", LocalTime.now().toString()
-);
-player.sendMessage(welcomeMsg);
-
-lang.setPlayerLanguage(player.getUniqueId(), "pl")
-    .thenRun(() -> {
-        player.sendMessage("Język zmieniony na polski!");
-    });
-```
-
-### Zagnieżdżone klucze wiadomości
-```java
-String closeButton = config.getMessage("Wtyczka", "pl", "gui.buttons.close", "Zamknij");
-String guiTitle = config.getMessage("Wtyczka", "pl", "gui.title", "Menu");
-String nextButton = config.getMessage("Wtyczka", "pl", "gui.buttons.next", "Dalej");
-```
-
-### Lore dla itemów
-```java
-List<String> swordLore = config.getMessageLore("Wtyczka", "pl", "sword.lore");
-ItemMeta meta = sword.getItemMeta();
-meta.setLore(swordLore); // Automatycznie kolorowe!
-sword.setItemMeta(meta);
-```
-
-### Ustawianie wiadomości
-```java
-config.setMessage("MojaWtyczka", "pl", "goodbye", "&#FF0000Do widzenia {player}!");
-
-Map<String, String> messages = new HashMap<>();
-messages.put("welcome", "<gradient:#54daf4:#545eb6>Witaj {player}!</gradient>");
-messages.put("goodbye", "&#FF0000Do widzenia {player}!");
-config.setMessageBatch("MojaWtyczka_Config", "pl", messages); // Jedna operacja!
-
-// ⚡ MULTI-LANGUAGE BATCH - Wszystkie języki na raz!
-Map<String, Map<String, String>> allMessages = new HashMap<>();
-allMessages.put("en", getEnglishMessages());
-allMessages.put("pl", getPolishMessages());
-config.setMessageBatchMultiLang("MojaWtyczka_Config", allMessages);
-```
-
-## 📋 Komendy
-
-### Komendy dla graczy
-- `/language [język]` - Wybierz język lub otwórz GUI
-
-### Komendy administracyjne (mongoconfigs)
-- `/mongoconfigs reload [kolekcja]` - Przeładuj konfiguracje
-- `/mongoconfigs reloadall` - Przeładuj wszystkie kolekcje
-- `/mongoconfigs stats` - Pokaż statystyki cache i wydajności
-- `/mongoconfigs collections` - Lista wszystkich kolekcji
-- `/mongoconfigs create <kolekcja> <języki...>` - Utwórz nową kolekcję
-- `/mongoconfigs testcollections` - Test wykrywania kolekcji
-- `/mongoconfigs help` - Pomoc
-
-## 🆘 Wsparcie
-
-- **GitHub Issues**: [Zgłoś błędy lub poproś o nowe funkcje](https://github.com/WTJEE/mongo-configs/issues)
-
----
-
-## 🚀 **Kluczowe możliwości**
-
-### ⚡ **Wydajność na dużą skalę**
-- **100+ wiadomości jednocześnie** - batch operations bez limitów
-- **30+ dokumentów w 10 kolekcjach** - kontrola współbieżności
-- **Operacje batch**## 🆘 **Wsparcie**
-
-- **GitHub Issues**: [Zgłoś błędy lub poproś o nowe funkcje](https://github.com/WTJEE/mongo-configs/issues)
-
----
-
-## 📊 **Podsumowanie możliwości**
-
-✅ **100+ wiadomości jednocześnie** - batch operations bez limitów  
-✅ **30+ dokumentów w 10 kolekcjach** - kontrolowana współbieżność  
-✅ **Wszystkie formaty kolorów** - Legacy, Hex, RGB, MiniMessage gradienty  
-✅ **Cache 10k wpisów** - <0.001ms dostęp do kolorów  
-✅ **MongoDB Reactive Streams** - connection pooling i auto-resume  
-✅ **Multi-język z GUI** - automatyczne preferencje graczy  
-✅ **Zagnieżdżone klucze** - `gui.buttons.close` support  
-✅ **Lore support** - separacja przecinkami  
-✅ **Async/Sync API** - elastyczne operacje  
-✅ **Hot-reload** - Change Streams monitoring  
-✅ **Error resilience** - timeout handling  
-✅ **Automatyczna regeneracja** - odtwarzanie usunętych dokumentów językowych podczas `reloadAll()`  
-
-**MongoDB Configs Library - wydajne zarządzanie konfiguracjami na dużą skalę! 🚀**dna operacja MongoDB zamiast setek
-- **Smart Cache** - buforowanie kolorów i danych z <0.001ms dostępem
-- **Connection pooling** - kontrolowane wykorzystanie zasobów
-
-### 🗄️ **Integracja MongoDB**
-- MongoDB Reactive Streams z connection pooling
-- Change Streams do hot-reload
-- Auto-resume przy błędach połączenia
-- Konfigurowalne timeouty i pool settings
-
-### 🌍 **Wsparcie wielojęzyczne**
-- Komenda `/language` z konfigurowalnymi nazwami
-- Automatyczny zapis preferencji do MongoDB
-- Wsparcie zagnieżdżonych kluczy (`warrior.openTitle`)
-- **Wsparcie lore** z separacją przecinkami
-- **Automatyczna regeneracja brakujących dokumentów** - system sam odtwarza usunięte języki podczas `reloadAll()`
-- Fallback do domyślnego języka
-
-### 🎨 **Zaawansowany system kolorów**
-- **Wszystkie formaty**: Legacy (`&6`), Hex (`&#54DAF4`), MiniMessage
-- **Gradienty MiniMessage**: `<gradient:#54daf4:#545eb6>tekst</gradient>`
-- **Format Bukkit RGB**: `&x&5&4&D&A&F&4`
-- **Własny format RGB**: `&{54,218,244}`
-- **Cache 10k wpisów** z <0.001ms dostępem
-- **Automatyczne przetwarzanie** wszystkich wiadomości
-
-## 📦 **Instalacja**
-
-**Maven:**
-```xml
-<repositories>
-    <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
-    </repository>
-</repositories>
-
-<dependencies>
-	<dependency>
-	    <groupId>com.github.WTJEE.mongo-configs</groupId>
-	    <artifactId>configs-api</artifactId>
-	    <version>{WersjaRelease}</version>
-	</dependency>
-</dependencies>
-```
-
-**Gradle:**
-```gradle
-repositories {
-    maven { url 'https://jitpack.io' }
-}
-
-dependencies {
-    implementation 'com.github.WTJEE.mongo-configs:configs-api:{WersjaRelease}'
-}
-```
-
-**Na serwer:**
-1. Pobierz plugin z releases
-2. Umieść w folderze `plugins/`
-3. Skonfiguruj połączenie MongoDB w `config.yml`
-4. Restart serwera
-
-## 📚 **Jak używać API**
-
-### Pobieranie instancji API
-```java
-ConfigManager config = MongoConfigsAPI.getConfigManager();
-LanguageManager lang = MongoConfigsAPI.getLanguageManager();
-```
-
-### Zarządzanie konfiguracją
-```java
-// Pobieranie wartości konfiguracji z domyślnymi
-String dbName = config.getConfig("MojaWtyczka_Config", "database", "default");
-boolean enabled = config.getConfig("MojaWtyczka_Config", "enabled", true);
-int maxPlayers = config.getConfig("MojaWtyczka_Config", "maxPlayers", 100);
-
-// Ustawianie wartości (async)
-config.setConfig("MojaWtyczka_Config", "maintenance", false);
-config.setConfig("MojaWtyczka_Config", "spawn.world", "world");
-
-// ⚡ BATCH OPERATIONS - Wiele konfigów na raz (DUŻO SZYBCIEJ!)
-Map<String, Object> configValues = new HashMap<>();
-configValues.put("maintenance", false);
-configValues.put("maxPlayers", 200);
-configValues.put("spawn.world", "world");
-configValues.put("economy.enabled", true);
-// Dodaj nawet 100+ wartości - bez problemu!
-for (int i = 1; i <= 100; i++) {
-    configValues.put("setting_" + i, "value_" + i);
-}
-config.setConfigBatch("MojaWtyczka_Config", configValues); // Jedna operacja MongoDB!
-```
-
-### Zarządzanie wiadomościami/tłumaczeniami
-
-#### **Pobieranie wiadomości - podstawy**
-```java
-// Podstawowe pobieranie wiadomości (automatyczne kolorowanie!)
-String msg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", "Domyślna wiadomość");
-player.sendMessage(msg); // Wyśle wiadomość z kolorami!
-
-// Z placeholderami - {klucz} zostanie zastąpione wartością
-String personalMsg = config.getMessage("MojaWtyczka_Config", "pl", "welcome", 
-    "player", player.getName(),           // {player} → nazwa gracza
-    "server", "SkyPvP",                  // {server} → nazwa serwera  
-    "level", String.valueOf(playerLevel) // {level} → poziom gracza
-);
-// Wynik: "&#54DAF4Witaj Gracz123 &ana serwerze SkyPvP! &eJesteś na poziomie 15"
-```
-
-#### **Różne sposoby pobierania wiadomości**
-```java
-// 1. getMessage() - z automatycznymi kolorami
-String coloredMsg = config.getMessage("Wtyczka", "pl", "welcome", 
-    "player", player.getName());
-// Wynik: kolorowa wiadomość gotowa do wyświetlenia
-
-// 2. getPlainMessage() - bez kolorów (do logów/konsoli)
-String plainMsg = config.getPlainMessage("Wtyczka", "pl", "welcome", 
-    "player", player.getName());
-// Wynik: czysty tekst bez kodów kolorów
-
-// 3. getMessageLore() - lista wiadomości (dla itemów)
-List<String> lore = config.getMessageLore("Wtyczka", "pl", "item.sword.lore");
-// Automatycznie dzieli po przecinkach i koloruje każdą linię
-```
-
-#### **Języki graczy - automatyczne pobieranie**
-```java
-// Pobieranie języka gracza
-LanguageManager langManager = MongoConfigsAPI.getLanguageManager();
-String playerLang = langManager.getPlayerLanguage(player.getUniqueId().toString());
-
-// Wiadomość w języku gracza
-String welcomeMsg = config.getMessage("MojaWtyczka", playerLang, "welcome",
-    "player", player.getName(),
-    "time", LocalTime.now().toString()
-);
-player.sendMessage(welcomeMsg);
-
-// Ustawianie języka gracza (zapisuje do MongoDB)
-langManager.setPlayerLanguage(player.getUniqueId(), "pl")
-    .thenRun(() -> {
-        player.sendMessage("Język zmieniony na polski!");
-    });
-```
-
-#### **Zagnieżdżone klucze wiadomości**
-```java
-// Struktura w MongoDB:
-// {
-//   "gui": {
-//     "buttons": {
-//       "close": "&#FF0000&lZamknij",
-//       "next": "&a&lDalej"
-//     },
-//     "title": "<gradient:#FFD700:#FF8C00>Menu Główne</gradient>"
-//   }
-// }
-
-// Pobieranie zagnieżdżonych kluczy
-String closeButton = config.getMessage("Wtyczka", "pl", "gui.buttons.close", "Zamknij");
-String guiTitle = config.getMessage("Wtyczka", "pl", "gui.title", "Menu");
-String nextButton = config.getMessage("Wtyczka", "pl", "gui.buttons.next", "Dalej");
-
-// Używanie w GUI
-Inventory inv = Bukkit.createInventory(null, 27, ColorHelper.parseText(guiTitle));
-ItemStack closeItem = new ItemStack(Material.BARRIER);
-ItemMeta meta = closeItem.getItemMeta();
-meta.setDisplayName(ColorHelper.parseText(closeButton));
-closeItem.setItemMeta(meta);
-```
-
-#### **Lore dla itemów**
-```java
-// W MongoDB zapisz jako string z przecinkami:
-// "sword.lore": "&7Potężna broń,&#54DAF4+15 Obrażeń,<gradient:#FF0000:#8B0000>Zaklęcie Ognia III</gradient>,&eKliknij aby użyć"
-
-// Pobieranie jako lista (automatyczny split i kolorowanie)
-List<String> swordLore = config.getMessageLore("Wtyczka", "pl", "sword.lore");
-// Rezultat:
-// [0] = "§7Potężna broń"
-// [1] = "§x§5§4§D§A§F§4+15 Obrażeń"  
-// [2] = "§x§F§F§0§0§0§0Zaklęcie Ognia III" (gradient)
-// [3] = "§eKliknij aby użyć"
-
-// Używanie w itemie
-ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
-ItemMeta swordMeta = sword.getItemMeta();
-swordMeta.setLore(swordLore); // Automatycznie kolorowe!
-sword.setItemMeta(swordMeta);
-```
-
-#### **Ustawianie wiadomości**
-#### **Ustawianie wiadomości**
-```java
-// Pojedyncza wiadomość
-config.setMessage("MojaWtyczka", "pl", "goodbye", 
-    "&#FF0000Do widzenia {player}!");
-
-// Z wszystkimi formatami kolorów jednocześnie
-config.setMessage("MojaWtyczka", "pl", "level_up", 
-    "&l&6AWANS! &r<gradient:#54daf4:#545eb6>Gratulacje</gradient> &#FFD700{player}! " +
-    "&aJesteś teraz na poziomie &{255,215,0}{level}");
-```
-
-### **Formaty kolorów - wszystkie obsługiwane**
-```java
-// 1. LEGACY COLORS (klasyczne Bukkit)
-"&6Złoty &cCzerwony &aBold &ltext"
-"&0Czarny &1Ciemny Niebieski &2Ciemny Zielony &3Ciemny Błękitny"
-"&4Ciemny Czerwony &5Ciemny Fioletowy &6Złoty &7Szary"
-"&8Ciemny Szary &9Niebieski &aZielony &bBłękitny"
-"&cCzerwony &dJasny Fioletowy &eŻółty &fBiały"
-"&lPogrubienie &mPrzekreślenie &nPodkreślenie &oKursywa &rReset"
-
-// 2. HEX COLORS (nowoczesne, czyste)
-"&#54DAF4Piękny błękitny &#FF0000jasny czerwony"
-"&#FFD700Złoty &#32CD32Limonka &#FF69B4Różowy"
-
-// 3. BUKKIT RGB FORMAT (obsługiwany przez większość pluginów)
-"&x&5&4&D&A&F&4Własny &x&F&F&0&0&0&0kolor"
-"&x&F&F&D&7&0&0Złoty &x&3&2&C&D&3&2Limonka"
-
-// 4. WŁASNY RGB FORMAT (łatwy w użyciu)
-"&{54,218,244}RGB niebieski &{255,0,0}RGB czerwony"
-"&{255,215,0}Złoty &{50,205,50}Limonka &{255,105,180}Różowy"
-
-// 5. MINIMESSAGE GRADIENTY (piękne przejścia)
-"<gradient:#54daf4:#545eb6>Niesamowity gradient</gradient>"
-"<gradient:#FF0000:#FFFF00:#00FF00>Tęczowe przejście</gradient>"
-"<gradient:#FFD700:#FF8C00>Złote zanikanie</gradient>"
-
-// 6. MIESZANE FORMATY (wszystko razem!)
-"&6Złoty &#54DAF4hex <gradient:#FF0000:#00FF00>gradient</gradient> &{255,255,0}rgb"
-"&l&6SERWER &r&8» <gradient:#54daf4:#545eb6>Witaj</gradient> &#FF0000{player}!"
-
-// Przykłady z życia wzięte:
-"&l&6AWANS POZIOMU! &r&#54DAF4Osiągnąłeś poziom &{255,215,0}{level}"
-"<gradient:#FF6B6B:#4ECDC4>Dzięki za grę!</gradient> &aOdwiedź nas ponownie!"
-"&8[&6VIP&8] &#54DAF4{player} &7dołączył na serwer"
-```
-
-### **Praktyczne przykłady użycia**
-
-#### **System powiadomień graczy**
-```java
-public class PlayerNotificationSystem {
-    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
-    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+// ✅ Zwykła klasa Java - NIE MUSISZ dziedziczyć niczego!
+@ConfigsFileProperties(name = "server-settings")
+public class ServerConfig {
+    private int maxPlayers = 100;
+    private String serverName = "My Server";
+    private boolean pvpEnabled = true;
+    private List<String> bannedItems = new ArrayList<>();
     
-    public void sendLevelUpMessage(Player player, int newLevel) {
-        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-        
-        // Wiadomość z automatycznymi kolorami
-        String message = config.getMessage("LevelSystem", playerLang, "level_up",
-            "player", player.getName(),
-            "level", String.valueOf(newLevel),
-            "xp_needed", String.valueOf(getXpForLevel(newLevel + 1))
-        );
-        
-        player.sendMessage(message);
-        
-        // Opcjonalnie tytuł
-        String title = config.getMessage("LevelSystem", playerLang, "level_up_title",
-            "level", String.valueOf(newLevel)
-        );
-        player.sendTitle(ColorHelper.parseText(title), "", 10, 70, 20);
+    // gettery/settery (lub użyj Lombok @Data)
+}
+
+// 🎪 OPCJONALNIE - extend MongoConfig dla convenience methods:
+public class AdvancedConfig extends MongoConfig<AdvancedConfig> {
+    private String setting = "default";
+    
+    // Teraz masz: save(), load(), saveAsync(), loadAsync()
+}
+```
+
+### 2. Load & Save - jedna linia!
+```java
+ConfigManager cm = MongoConfigsAPI.getConfigManager();
+
+// 🔥 LOAD - jedna linia (działa z każdą klasą!)
+ServerConfig config = cm.loadObject(ServerConfig.class);
+
+// Zmień coś
+config.setMaxPlayers(200);
+config.getBannedItems().add("bedrock");
+
+// 🔥 SAVE - jedna linia  
+cm.saveObject(config);
+// ⚡ Wszystkie serwery automatycznie dostaną update!
+```
+
+### 3. Messages wielojęzyczne (też zwykłe klasy!)
+```java
+// ✅ Zwykła klasa - NIE MUSISZ dziedziczyć MongoMessages!
+@ConfigsFileProperties(name = "my-messages")
+public class MyMessages {
+    // Pusta klasa - system automatycznie obsługuje wszystkie języki
+}
+
+Messages messages = cm.messagesOf(MyMessages.class);
+String msg = messages.get("en", "welcome.player", playerName);
+
+// 🎪 OPCJONALNIE - extend MongoMessages dla dodatkowych metod:
+public class AdvancedMessages extends MongoMessages<AdvancedMessages> {
+    // Implementuj abstract methods jeśli chcesz custom logic
+}
+```
+
+## 🚀 Zaawansowane features
+
+### Zwykłe klasy vs Klasy bazowe
+```java
+// ✅ ZWYKŁA KLASA (preferowane - prostsze!)
+@ConfigsFileProperties(name = "simple-config") 
+public class SimpleConfig {
+    private String value = "default";
+    // gettery/settery
+}
+
+// 🎪 KLASA Z MongoConfig (opcjonalne convenience methods)
+public class ConvenienceConfig extends MongoConfig<ConvenienceConfig> {
+    private String value = "default";
+    
+    // Dodatkowe metody:
+    // save() - zapisz siebie
+    // load() - przeładuj siebie
+    // saveAsync() - async save
+    // loadAsync() - async load
+}
+
+// Obie działają identycznie:
+SimpleConfig simple = cm.loadObject(SimpleConfig.class);        // ⚡
+ConvenienceConfig conv = cm.loadObject(ConvenienceConfig.class); // ⚡
+
+// Różnica: convenience config ma extra metody
+conv.save();  // to samo co cm.saveObject(conv)
+```
+
+### Multi-database & Collections
+```java
+@ConfigsDatabase("economy-server")     // Inna baza
+@ConfigsCollection("shop-data")        // Inna kolekcja  
+@ConfigsFileProperties(name = "shop")
+public class ShopConfig {
+    private Map<String, Double> prices = new HashMap<>();
+}
+```
+
+### Complex objects - wszystko działa!
+```java
+public class PlayerData {
+    private UUID playerId;
+    private LocalDateTime lastSeen;
+    private Map<String, Integer> stats = new HashMap<>();
+    private List<Achievement> achievements = new ArrayList<>();
+    private PlayerBank bank = new PlayerBank();
+    
+    public static class PlayerBank {
+        private double balance;
+        private List<Transaction> history = new ArrayList<>();
     }
+}
+
+// 🔥 Jedna linia = full serialization!
+PlayerData data = cm.loadObject(PlayerData.class);
+```
+
+## 🔄 Hot Reload
+
+```bash
+# In-game commands
+/mongoconfigs reload server-settings    # Konkretna konfiguracja
+/mongoconfigs reloadall                 # Wszystkie 
+/mongoconfigs collections               # Lista kolekcji
+```
+## 💡 Praktyczne przykłady
+
+### MMO Server
+```java
+// 🔥 Każda klasa = jedna linia!
+CharacterConfig chars = cm.loadObject(CharacterConfig.class);    // ⚡
+GuildConfig guilds = cm.loadObject(GuildConfig.class);           // ⚡  
+EconomyConfig economy = cm.loadObject(EconomyConfig.class);      // ⚡
+Messages guildMsgs = cm.messagesOf(GuildMessages.class);         // ⚡
+
+// Use them instantly
+int maxLevel = chars.getMaxLevel();
+long guildCost = guilds.getCreationCost();
+String joinMsg = guildMsgs.get(playerLang, "guild.joined", guildName);
+```
+
+### Dynamic Shop
+```java
+@ConfigsFileProperties(name = "dynamic-shop")
+public class ShopConfig {
+    private Map<String, ItemPrice> items = new HashMap<>();
+    private double globalMultiplier = 1.0;
     
-    public void sendDeathMessage(Player player, Player killer) {
-        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-        String killerLang = lang.getPlayerLanguage(killer.getUniqueId().toString());
+    public static class ItemPrice {
+        private double basePrice;
+        private double currentPrice;
+        private int stock;
+    }
+}
+
+// Business logic
+ShopConfig shop = cm.loadObject(ShopConfig.class);              // ⚡
+ItemPrice item = shop.getItems().get("diamond");
+item.setCurrentPrice(item.getBasePrice() * 1.1);  // +10% price
+cm.saveObject(shop);                                           // ⚡
+// 💥 Wszystkie serwery natychmiast widzą nową cenę!
+```
+
+### Event System  
+```java
+@ConfigsDatabase("events-db")
+@ConfigsFileProperties(name = "events")
+public class EventConfig {
+    private Map<String, Event> activeEvents = new HashMap<>();
+    private Map<UUID, PlayerStats> playerStats = new HashMap<>();
+}
+
+EventConfig events = cm.loadObject(EventConfig.class);         // ⚡
+events.getActiveEvents().put("pvp-tournament", newTournament);
+cm.saveObject(events);                                         // ⚡
+// 💥 Wszystkie serwery widzą nowy event!
+```
+
+## 🎯 Podsumowanie
+
+**Jedna linia = cała konfiguracja!** 🔥
+```java
+MyConfig config = cm.loadObject(MyConfig.class);  // ⚡ GOTOWE!
+```
+
+**Najlepsza biblioteka config na Minecraft!** 🏆🚀
+    
+    private ConfigManager configManager;
+    private ServerConfig serverConfig;
+    
+    @Override
+    public void onEnable() {
+        // API jest już zainicjalizowane przez mongo-configs plugin
+        this.configManager = MongoConfigsAPI.getConfigManager();
         
-        // Wiadomość dla zabitego
-        String deathMsg = config.getMessage("PvP", playerLang, "death.killed_by",
-            "killer", killer.getName(),
-            "weapon", getWeaponName(killer.getInventory().getItemInMainHand())
-        );
-        player.sendMessage(deathMsg);
+        // Załaduj konfigurację
+        this.serverConfig = configManager.getConfigOrGenerate(ServerConfig.class, 
+            () -> new ServerConfig()).join();
         
-        // Wiadomość dla zabójcy
-        String killMsg = config.getMessage("PvP", killerLang, "kill.player",
-            "victim", player.getName(),
-            "streak", String.valueOf(getKillStreak(killer))
-        );
-        killer.sendMessage(killMsg);
+        getLogger().info("Max players: " + serverConfig.getMaxPlayers());
     }
 }
 ```
 
-#### **System GUI z wiadomościami**
-```java
-public class ShopGUI {
-    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
-    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
-    
-    public void openShop(Player player) {
-        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-        
-        // Tytuł GUI z gradientem
-        String title = config.getMessage("Shop", playerLang, "gui.title", "Sklep");
-        Inventory inv = Bukkit.createInventory(null, 54, ColorHelper.parseText(title));
-        
-        // Item z lore
-        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
-        ItemMeta swordMeta = sword.getItemMeta();
-        
-        // Nazwa itemu
-        String itemName = config.getMessage("Shop", playerLang, "items.diamond_sword.name",
-            "price", "1000"
-        );
-        swordMeta.setDisplayName(ColorHelper.parseText(itemName));
-        
-        // Lore itemu (automatyczne dzielenie po przecinkach)
-        List<String> lore = config.getMessageLore("Shop", playerLang, "items.diamond_sword.lore");
-        swordMeta.setLore(lore);
-        
-        sword.setItemMeta(swordMeta);
-        inv.setItem(10, sword);
-        
-        player.openInventory(inv);
-    }
-}
-```
+### Event handler z wiadomościami
 
-#### **System ogłoszeń serwera**
 ```java
-public class AnnouncementSystem {
-    private final ConfigManager config = MongoConfigsAPI.getConfigManager();
-    private final LanguageManager lang = MongoConfigsAPI.getLanguageManager();
+public class PlayerJoinListener implements Listener {
+    
+    private final Messages messages;
+    
+    public PlayerJoinListener() {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        this.messages = cm.messagesOf(WelcomeMessages.class);
+    }
     
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
+        String playerLang = getPlayerLanguage(player); // twoja logika
         
-        // Wiadomość powitalna
-        String welcomeMsg = config.getMessage("Server", playerLang, "join.welcome",
-            "player", player.getName(),
-            "online", String.valueOf(Bukkit.getOnlinePlayers().size()),
-            "max", String.valueOf(Bukkit.getMaxPlayers())
-        );
+        String welcome = messages.get(playerLang, "welcome.message", 
+            player.getName(), player.getLevel());
         
-        // Wyślij po 2 sekundach (żeby GUI się załadowało)
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            player.sendMessage(welcomeMsg);
-            
-            // Jeśli pierwszy raz
-            if (!player.hasPlayedBefore()) {
-                String firstJoinMsg = config.getMessage("Server", playerLang, "join.first_time",
-                    "player", player.getName()
-                );
-                player.sendMessage(firstJoinMsg);
-            }
-        }, 40L);
-    }
-    
-    // Globalny broadcast w różnych językach
-    public void broadcastMessage(String key, String... placeholders) {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-            String message = config.getMessage("Broadcast", playerLang, key, placeholders);
-            player.sendMessage(message);
-        }
-    }
-}
-Map<String, String> messages = new HashMap<>();
-messages.put("welcome", "<gradient:#54daf4:#545eb6>Witaj {player}!</gradient>");
-messages.put("goodbye", "&#FF0000Do widzenia {player}!");
-messages.put("level_up", "&l&6AWANS! &r&#54DAF4Jesteś na poziomie &{255,215,0}{level}");
-
-// Dodaj nawet 100+ wiadomości jednocześnie
-for (int i = 1; i <= 100; i++) {
-    messages.put("message_" + i, "&#54DAF4Wiadomość numer " + i + " dla {player}!");
-}
-config.setMessageBatch("MojaWtyczka_Config", "pl", messages); // Jedna operacja!
-
-// ⚡ MULTI-LANGUAGE BATCH - Wszystkie języki na raz!
-Map<String, Map<String, String>> allLanguages = new HashMap<>();
-allLanguages.put("en", getEnglishMessages());   // 100+ wiadomości EN
-allLanguages.put("pl", getPolishMessages());    // 100+ wiadomości PL  
-allLanguages.put("de", getGermanMessages());    // 100+ wiadomości DE
-}
-
-### **Zarządzanie kolekcjami - duża skala**
-```
-
-### **Batch operations - masowe operacje**
-```java
-// ⚡ BATCH MESSAGES - 100+ wiadomości na raz (SUPER SZYBKO!)
-```java
-// 🚀 BATCH COLLECTION CREATION - 10+ kolekcji z 30+ dokumentami każda
-Set<CollectionSetupData> collections = new HashSet<>();
-
-for (int gameId = 1; gameId <= 10; gameId++) {
-    Map<String, Object> gameConfigs = new HashMap<>();
-    // 30+ konfigów na grę
-    for (int i = 1; i <= 30; i++) {
-        gameConfigs.put("config_" + i, "value_" + i);
-    }
-    
-    Map<String, Map<String, String>> gameMessages = new HashMap<>();
-    Map<String, String> plMessages = new HashMap<>();
-    Map<String, String> enMessages = new HashMap<>();
-    
-    // 50+ wiadomości per język
-    for (int i = 1; i <= 50; i++) {
-        plMessages.put("msg_" + i, "Wiadomość " + i + " dla gry " + gameId);
-        enMessages.put("msg_" + i, "Message " + i + " for game " + gameId);
-    }
-    
-    gameMessages.put("pl", plMessages);
-    gameMessages.put("en", enMessages);
-    
-    CollectionSetupData gameData = new CollectionSetupData.Builder("game_" + gameId)
-            .addLanguage("pl")
-            .addLanguage("en")
-            .configValues(gameConfigs)
-            .languageMessages(gameMessages)
-            .build();
-    
-    collections.add(gameData);
-}
-
-// Tworzenie WSZYSTKICH kolekcji z kontrolą współbieżności (max 3 na raz)
-config.createCollectionsBatch(collections, 3)
-      .thenRun(() -> {
-          System.out.println("Utworzono " + collections.size() + " kolekcji z setkami dokumentów!");
-      });
-
-// 🚀 BATCH RELOAD - Przeładowanie wielu kolekcji na raz
-Set<String> collectionsToReload = Set.of("game_1", "game_2", "game_3", "game_4", "game_5", "game_6", "game_7", "game_8", "game_9", "game_10");
-config.reloadCollectionsBatch(collectionsToReload, 4) // Max 4 na raz
-      .thenRun(() -> {
-          System.out.println("Przeładowano wszystkie 10 kolekcji z setkami dokumentów!");
-      });
-```
-
-### Language Management
-```java
-// Get player's language
-String playerLang = lang.getPlayerLanguage(player.getUniqueId().toString());
-
-// Set player's language (sync operation)
-lang.setPlayerLanguage(player.getUniqueId().toString(), "pl");
-
-// Set player's language (async with UUID)
-lang.setPlayerLanguage(player.getUniqueId(), "pl")
-    .thenRun(() -> {
-        // Language saved to database
-    });
-
-// Set player's language (async with String)
-lang.setPlayerLanguageAsync(player.getUniqueId().toString(), "pl")
-    .thenRun(() -> {
-        // Language saved to database
-    });
-
-// Get default language
-String defaultLang = lang.getDefaultLanguage();
-
-// Get all supported languages
-String[] supportedLangs = lang.getSupportedLanguages();
-
-// Check supported languages
-if (lang.isLanguageSupported("de")) {
-    // German is supported
-}
-
-// Get display name (supports base64)
-String displayName = lang.getLanguageDisplayName("pl"); // "Polski"
-```
-
-### Performance Monitoring
-```java
-// Get cache statistics
-CacheStats stats = config.getCacheStats();
-double hitRate = stats.getHitRate();
-long cacheSize = stats.getSize();
-long hitCount = stats.getHitCount();
-long missCount = stats.getMissCount();
-
-// Get color cache statistics
-var colorStats = config.getColorCacheStats();
-System.out.println("Color cache hit rate: " + colorStats.hitRate());
-
-// Get performance metrics
-PerformanceMetrics metrics = config.getMetrics();
-boolean changeStreamsActive = metrics.isChangeStreamsActive();
-int activeConnections = metrics.getActiveConnections();
-Duration avgMongoTime = metrics.getAverageMongoTime();
-long mongoOpsCount = metrics.getMongoOperationsCount();
-```
-
-## � **Troubleshooting i najlepsze praktyki**
-
-### **Często spotykane problemy**
-
-#### **Wiadomość nie ma kolorów**
-```java
-// ❌ ŹLE - używasz ColorHelper ręcznie
-player.sendMessage(ColorHelper.parseText(message));
-
-// ✅ DOBRZE - getMessage() automatycznie koloruje
-String message = config.getMessage("Wtyczka", "pl", "welcome");
-player.sendMessage(message); // Już kolorowe!
-```
-
-#### **Usunięte dokumenty językowe z MongoDB**
-```java
-// ✅ ROZWIĄZANIE - reloadAll() automatycznie regeneruje
-// Jeśli ktoś usunął dokument "pl" z MongoDB:
-config.reloadAll(); // Automatycznie odtworzy brakujące dokumenty językowe
-// System sprawdza "_system.supported_languages" w konfiguracji
-// i tworzy wszystkie brakujące dokumenty z pustymi danymi
-
-// Upewnij się że masz w konfiguracji kolekcji:
-// "_system.supported_languages": ["en", "pl", "de"]
-```
-
-#### **Placeholdery się nie zastępują**
-```java
-// ❌ ŹLE - nieparzysty liczba argumentów
-String msg = config.getMessage("Wtyczka", "pl", "welcome", "player"); // Brak wartości!
-
-// ✅ DOBRZE - para klucz-wartość
-String msg = config.getMessage("Wtyczka", "pl", "welcome", 
-    "player", player.getName()); // Klucz i wartość
-```
-
-#### **Kolekcja nie istnieje**
-```java
-// Zawsze sprawdź przed użyciem
-if (!config.collectionExists("MojaWtyczka")) {
-    // Utwórz kolekcję
-    config.createCollection("MojaWtyczka", Set.of("pl", "en"))
-          .thenRun(() -> {
-              // Dodaj domyślne wiadomości
-              setupDefaultMessages();
-          });
-}
-```
-
-### **Najlepsze praktyki**
-
-#### **1. Zawsze używaj domyślnych wartości**
-```java
-// ✅ DOBRZE - zawsze podaj fallback
-String message = config.getMessage("Wtyczka", lang, "welcome", "Witaj na serwerze!");
-
-// ❌ ŹLE - może zwrócić null
-String message = config.getMessage("Wtyczka", lang, "welcome", null);
-```
-
-#### **2. Cache języków graczy lokalnie**
-```java
-public class PlayerLanguageCache {
-    private final Map<UUID, String> languageCache = new ConcurrentHashMap<>();
-    private final LanguageManager langManager = MongoConfigsAPI.getLanguageManager();
-    
-    public String getPlayerLanguage(Player player) {
-        return languageCache.computeIfAbsent(player.getUniqueId(), uuid -> {
-            return langManager.getPlayerLanguage(uuid.toString());
-        });
-    }
-    
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        languageCache.remove(event.getPlayer().getUniqueId());
+        player.sendMessage(welcome);
     }
 }
 ```
 
-#### **3. Używaj batch operations dla lepszej wydajności**
-```java
-// ✅ DOBRZE - jedna operacja
-Map<String, String> allMessages = prepareAllMessages();
-config.setMessageBatch("Wtyczka", "pl", allMessages);
-
-// ❌ ŹLE - 100 operacji MongoDB
-for (Entry<String, String> entry : allMessages.entrySet()) {
-    config.setMessage("Wtyczka", "pl", entry.getKey(), entry.getValue());
-}
-```
-
-#### **4. Obsługuj błędy async operations**
-```java
-config.createCollection("NewCollection", Set.of("pl", "en"))
-      .thenRun(() -> {
-          getLogger().info("Kolekcja utworzona!");
-      })
-      .exceptionally(throwable -> {
-          getLogger().severe("Błąd tworzenia kolekcji: " + throwable.getMessage());
-          return null;
-      });
-```
-
-#### **5. Upewnij się że kolekcja istnieje przed reload**
-```java
-public class LevelConfigManager {
-    
-    public void ensureCollectionExists() {
-        if (!configManager.collectionExists(CONFIG_COLLECTION)) {
-            getLogger().info("Kolekcja nie istnieje, tworzenie...");
-            setupDefaultConfig(); // Tworzy kolekcję i ustawia domyślne dane
-        } else {
-            getLogger().info("Kolekcja już istnieje: " + CONFIG_COLLECTION);
-        }
-    }
-    
-    // Wywołaj to przy starcie wtyczki PRZED innymi operacjami
-    @Override
-    public void onEnable() {
-        levelConfigManager = new LevelConfigManager(this);
-        levelConfigManager.ensureCollectionExists(); // WAŻNE!
-        
-        // Dopiero potem rejestruj komendy, eventy itp.
-        registerCommands();
-        registerEvents();
-    }
-}
-```
-
-#### **6. Jeśli kolekcja nie przeładowuje się po reloadall**
-```java
-// Problem: kolekcja nie była "known" przez MongoDB Configs
-// Rozwiązanie: wymuś reload konkretnej kolekcji
-
-public void forceReloadConfig() {
-    if (configManager.collectionExists(CONFIG_COLLECTION)) {
-        configManager.reloadCollection(CONFIG_COLLECTION)
-            .thenRun(() -> {
-                getLogger().info("Kolekcja " + CONFIG_COLLECTION + " przeładowana!");
-            })
-            .exceptionally(throwable -> {
-                getLogger().severe("Błąd przeładowania: " + throwable.getMessage());
-                return null;
-            });
-    } else {
-        getLogger().warning("Kolekcja " + CONFIG_COLLECTION + " nie istnieje!");
-        setupDefaultConfig(); // Utwórz ją
-    }
-}
-```
-
-## 🗄️ **Struktura dokumentów MongoDB**
-
-### **Dokument konfiguracji (z metadanymi systemu)**
-```json
-{
-  "_id": "config",
-  "name": "config", 
-  "type": "config",
-  "data": {
-    "database": "skyPvP",
-    "maxPlayers": 100,
-    "maintenance": false,
-    "_system.supported_languages": ["en", "pl", "de"],
-    "spawn": {
-      "world": "world",
-      "x": 0,
-      "y": 64,
-      "z": 0
-    },
-    "economy": {
-      "enabled": true,
-      "startingMoney": 1000
-    }
-  },
-  "updatedAt": {"$date": "2025-08-31T10:00:00Z"}
-}
-```
-
-### **Dokument językowy (z kolorami!)**
-```json
-{
-  "_id": "ObjectId(...)",
-  "lang": "pl",
-  "type": "language", 
-  "data": {
-    "welcome": "<gradient:#54daf4:#545eb6>Witaj {player}</gradient> &ana serwerze!",
-    "goodbye": "&#FF0000Do widzenia {player}!",
-    "levelup": "&l&6AWANS! &r&#54DAF4Jesteś teraz na poziomie &{255,215,0}{level}",
-    "gui": {
-      "title": "<gradient:#FFD700:#FF8C00>Menu Główne</gradient>",
-      "buttons": {
-        "close": "&#FF0000&lZamknij",
-        "next": "&a&lNext Page",
-        "back": "&c&lWstecz"
-      }
-    },
-    "item": {
-      "sword": {
-        "name": "<gradient:#FFD700:#FF8C00>Magiczny Miecz</gradient>",
-        "lore": "&7Potężna broń,&#54DAF4+10 Obrażeń,<gradient:#FF0000:#8B0000>Fire Aspect III</gradient>,&eKliknij PPM aby użyć"
-      }
-    },
-    "pvp": {
-      "death": {
-        "killed_by": "&#FF0000☠ &7Zostałeś zabity przez &#54DAF4{killer} &7używając &e{weapon}"
-      },
-      "kill": {
-        "player": "&#54DAF4⚔ &7Zabiłeś gracza &#FFD700{victim} &7(Seria: &a{streak}&7)"
-      }
-    }
-  },
-  "updatedAt": {"$date": "2025-08-31T10:00:00Z"}
-}
-```
-
-### **Jak dane są przechowywane**
-- **Jedna kolekcja MongoDB** = jedno ustawienie wtyczki (np. "MojaWtyczka_Config")
-- **Dokument config** = wszystkie ustawienia konfiguracyjne + metadane systemowe
-- **`_system.supported_languages`** = lista języków do automatycznej regeneracji (["en", "pl", "de"])
-- **Dokumenty language** = po jednym dla każdego języka (pl, en, de, itp.)
-- **Zagnieżdżone obiekty** = klucze z kropkami (`gui.buttons.close`)
-- **Automatyczne timestampy** = `updatedAt` przy każdej zmianie
-- **Auto-regeneracja** = `reloadAll()` sprawdza metadane i odtwarza brakujące dokumenty
-
-## 📋 **Komendy**
-
-### Komendy dla graczy
-- `/language [język]` - Wybierz język lub otwórz GUI (aliasy: `/lang`, `/jezyk`)
-
-### Komendy administracyjne (mongoconfigs)
-- `/mongoconfigs reload [kolekcja]` - Przeładuj konfiguracje (automatycznie regeneruje brakujące dokumenty)
-- `/mongoconfigs reloadall` - Przeładuj wszystkie kolekcje (z auto-regeneracją brakujących języków)
-- `/mongoconfigs reloadbatch <kolekcje...>` - Przeładuj wiele kolekcji naraz
-- `/mongoconfigs stats` - Pokaż statystyki cache i wydajności
-- `/mongoconfigs collections` - Lista wszystkich kolekcji
-- `/mongoconfigs create <kolekcja> <języki...>` - Utwórz nową kolekcję
-- `/mongoconfigs help` - Pomoc
-- Aliasy: `/mconfig`, `/mc`
-
-### Komendy zarządzania (configsmanager)
-- `/configsmanager reload [kolekcja]` - Przeładuj kolekcje
-- `/configsmanager reloadbatch <kolekcje...>` - Batch reload z kontrolą współbieżności
-- `/configsmanager stats` - Szczegółowe statystyki cache
-- `/configsmanager collections` - Lista kolekcji z językami
-- `/configsmanager create <kolekcja> <języki...>` - Utwórz kolekcję
-- `/configsmanager info [kolekcja]` - Informacje o kolekcji
-- Aliasy: `/cfgmgr`, `/cm`
-
-## 🏗️ Example Plugin Integration
+### Komenda z konfiguracją
 
 ```java
-public class MyPlugin extends JavaPlugin {
-    
-    private ConfigManager configManager;
+public class ShopCommand implements CommandExecutor {
     
     @Override
+    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // Załaduj aktualną konfigurację sklepu
+        ShopConfig shop = cm.getObject(ShopConfig.class);
+        
+        if (!shop.isShopEnabled()) {
+            sender.sendMessage("Sklep jest wyłączony!");
+            return true;
+        }
+        
+        // Użyj konfiguracji...
+        double price = shop.getPrice("diamond");
+        sender.sendMessage("Cena diamentu: " + price);
+        
+        return true;
+    }
+}
+```
+
+## 🔧 Zarządzanie językami graczy
+
+```java
+LanguageManager lm = MongoConfigsAPI.getLanguageManager();
+
+// Ustaw język gracza
+lm.setPlayerLanguage(player.getUniqueId().toString(), "pl");
+
+// Pobierz język gracza  
+String playerLang = lm.getPlayerLanguage(player.getUniqueId().toString());
+
+// Sprawdź obsługiwane języki
+String[] supported = lm.getSupportedLanguages(); // ["en", "pl", "de", ...]
+```
+
+## ⚡ Performance i Cache
+
+### Strategia ładowania
+- **Startup**: Ładowanie metadanych (szybkie)
+- **Runtime**: Lazy loading dokumentów (na żądanie)
+- **Fresh DB**: Mass creation wszystkich struktur (jednorazowo)
+
+### Cache behavior  
+```java
+// Pierwsze wywołanie → MongoDB query
+ServerConfig config1 = cm.getObject(ServerConfig.class);
+
+// Drugie wywołanie → Cache hit ⚡
+ServerConfig config2 = cm.getObject(ServerConfig.class);
+
+// Change Streams automatycznie invalidują cache gdy ktoś zmieni w MongoDB
+```
+
+### Batch operations
+```java
+// Przeładuj kilka kolekcji naraz
+Set<String> collections = Set.of("server-settings", "gui-messages", "shop-config");
+cm.reloadCollectionsBatch(collections, 3); // max 3 równocześnie
+```
+
+## 🌐 Multi-server setup
+
+### Serwer A zmienia konfigurację:
+```java
+ServerConfig config = cm.getObject(ServerConfig.class);
+config.setMaxPlayers(300);
+cm.setObject(config); // Zapisuje w MongoDB
+```
+
+### Serwery B, C, D automatycznie się aktualizują:
+```
+MongoDB Change Stream wykrywa zmianę
+    ↓
+Cache invalidation na wszystkich serwerach  
+    ↓
+Następne wywołanie pobiera nowe dane
+```
+
+## 🛠️ API Reference
+
+### ConfigManager
+- `setObject(T pojo)` - Zapisz obiekt z @ConfigsFileProperties
+- `getObject(Class<T> type)` - Odczytaj obiekt
+- `getConfigOrGenerate(Class<T> type, Supplier<T> generator)` - Load-or-create
+- `set(String id, T value)` - Zapisz z explicit ID
+- `get(String id, Class<T> type)` - Odczytaj z explicit ID
+- `findById(String id)` - Dostęp do Messages
+- `messagesOf(Class<?> type)` - Messages z adnotacji
+
+### Messages
+- `get(String lang, String key)` - Pobierz wiadomość
+- `get(String lang, String key, Object... placeholders)` - Z placeholderami
+- `get(String lang, String key, Class<T> type)` - Typed message
+
+### LanguageManager
+- `setPlayerLanguage(String playerId, String language)` - Ustaw język gracza
+- `getPlayerLanguage(String playerId)` - Pobierz język gracza
+- `getSupportedLanguages()` - Lista obsługiwanych języków
+
+## 🎮 Praktyczne przykłady - Każda klasa = Jedna linia!
+
+### 🏰 MMO Serwer - Kompletny system
+```java
+// === KONFIGURACJE ===
+@ConfigsDatabase("mmo-main")
+@ConfigsFileProperties(name = "character-settings")
+public class CharacterConfig {
+    private int maxLevel = 100;
+    private double expMultiplier = 1.0;
+    private Map<String, Integer> classBonuses = Map.of("warrior", 10, "mage", 15);
+    private List<String> allowedClasses = Arrays.asList("warrior", "mage", "archer");
+    private Map<Integer, List<String>> levelRewards = new HashMap<>();
+}
+
+@ConfigsDatabase("mmo-guilds")  
+@ConfigsFileProperties(name = "guild-settings")
+public class GuildConfig {
+    private int maxMembers = 50;
+    private long creationCost = 10000;
+    private Map<String, GuildPerk> availablePerks = new HashMap<>();
+    private List<GuildWar> activeWars = new ArrayList<>();
+    
+    public static class GuildPerk {
+        private String name;
+        private int cost;
+        private List<String> benefits;
+    }
+}
+
+// === UŻYCIE - JEDNA LINIA NA KLASĘ! ===
+public class MMOPlugin extends JavaPlugin {
+    
+    @Override 
     public void onEnable() {
-        // Wait for MongoDB Configs to load
-        if (!MongoConfigsAPI.isInitialized()) {
-            getLogger().severe("MongoDB Configs not found! Install the plugin.");
-            getServer().getPluginManager().disablePlugin(this);
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 JEDNA LINIA = CAŁA KONFIGURACJA!
+        CharacterConfig chars = cm.loadObject(CharacterConfig.class);    // ⚡
+        GuildConfig guilds = cm.loadObject(GuildConfig.class);           // ⚡
+        Messages guildMsgs = cm.messagesOf(GuildMessages.class);         // ⚡
+        
+        getLogger().info("Max level: " + chars.getMaxLevel());
+        getLogger().info("Guild creation cost: " + guilds.getCreationCost());
+        
+        // Modyfikacja w locie
+        chars.setMaxLevel(120);                    // Zmień
+        cm.saveObject(chars);                      // Zapisz ⚡
+        // Wszystkie serwery dostaną update przez Change Streams!
+    }
+}
+```
+
+### 🏕️ Survival Serwer - Ekonomia i sklepy
+```java
+@ConfigsFileProperties(name = "economy")
+public class EconomyConfig {
+    private double startingMoney = 1000.0;
+    private Map<String, Double> itemPrices = new HashMap<>();
+    private Map<String, ShopNPC> shopNPCs = new HashMap<>();
+    private List<DailyDeal> dailyDeals = new ArrayList<>();
+    private boolean economyEnabled = true;
+    
+    public static class ShopNPC {
+        private String name;
+        private Location location;
+        private Map<String, Double> inventory;
+        private List<String> buyableItems;
+    }
+    
+    public static class DailyDeal {
+        private String item;
+        private double originalPrice;
+        private double discountedPrice;
+        private LocalDate validUntil;
+    }
+}
+
+@ConfigsFileProperties(name = "spawn-messages")
+public class SpawnMessages {
+    // Automatyczne wsparcie dla wszystkich języków z config.yml
+}
+
+// === ELEGANCKIE UŻYCIE ===
+public class EconomyManager {
+    
+    private final EconomyConfig economy;
+    private final Messages messages;
+    
+    public EconomyManager() {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 DWA OBIEKTY = DWA WYWOŁANIA!
+        this.economy = cm.loadObject(EconomyConfig.class);        // ⚡
+        this.messages = cm.messagesOf(SpawnMessages.class);       // ⚡
+    }
+    
+    public void buyItem(Player player, String item) {
+        Double price = economy.getItemPrices().get(item);
+        if (price == null) {
+            player.sendMessage("Item not found!");
             return;
         }
         
-        configManager = MongoConfigsAPI.getConfigManager();
+        // Użyj wielojęzycznych wiadomości
+        String lang = getPlayerLanguage(player);
+        String msg = messages.get(lang, "shop.purchase.success", 
+            item, price);
+        player.sendMessage(msg);
         
-        // 🚀 OPTIMIZED: Create collection with all data in batch operations
-        setupPluginDataOptimized();
+        // Aktualizuj ceny (dynamic pricing)
+        economy.getItemPrices().put(item, price * 1.01); // +1% po każdym zakupie
+        
+        // 🔥 JEDNA LINIA = ZAPISANE!
+        MongoConfigsAPI.getConfigManager().saveObject(economy);   // ⚡
+    }
+}
+```
+
+### 🎯 PvP Arena - Kompleksny system
+```java
+@ConfigsDatabase("pvp-server")
+@ConfigsFileProperties(name = "arena-config")
+public class ArenaConfig {
+    private Map<String, Arena> arenas = new HashMap<>();
+    private List<Tournament> activeTournaments = new ArrayList<>();
+    private Map<UUID, PlayerPvPStats> playerStats = new HashMap<>();
+    private ArenaSettings globalSettings = new ArenaSettings();
+    
+    public static class Arena {
+        private String name;
+        private Location spawnPoint1, spawnPoint2;
+        private List<UUID> currentPlayers = new ArrayList<>();
+        private Map<String, Object> gameSettings = new HashMap<>();
+        private ArenaStatus status = ArenaStatus.WAITING;
     }
     
-    private void setupPluginDataOptimized() {
-        // Prepare all config values
-        Map<String, Object> configValues = new HashMap<>();
-        configValues.put("enabled", true);
-        configValues.put("maxLevel", 100);
-        configValues.put("economy.enabled", true);
-        configValues.put("spawn.world", "world");
-        configValues.put("spawn.x", 0);
-        configValues.put("spawn.y", 64);
-        configValues.put("spawn.z", 0);
-        // ✅ WAŻNE: Ustaw obsługiwane języki dla auto-regeneracji
-        configValues.put("_system.supported_languages", List.of("en", "pl"));
-        
-        // Prepare messages for all languages
-        Map<String, Map<String, String>> allMessages = new HashMap<>();
-        
-        // English messages
-        Map<String, String> enMessages = new HashMap<>();
-        enMessages.put("levelUp", "<gradient:#54daf4:#545eb6>Level up!</gradient> &aYou are now level &#FFD700{level}!");
-        enMessages.put("welcome", "&l&6SERVER &r&8» <gradient:#54daf4:#545eb6>Welcome {player}</gradient> &ato our amazing server!");
-        enMessages.put("sword.lore", "&7A powerful weapon,&#54DAF4+15 Attack Damage,<gradient:#FF0000:#8B0000>Fire Aspect III</gradient>");
-        enMessages.put("gui.title", "<gradient:#FFD700:#FF8C00>Main Menu</gradient>");
-        enMessages.put("gui.close", "&#FF0000&lClose");
-        allMessages.put("en", enMessages);
-        
-        // Polish messages
-        Map<String, String> plMessages = new HashMap<>();
-        plMessages.put("levelUp", "<gradient:#54daf4:#545eb6>Awans!</gradient> &aJesteś teraz na poziomie &#FFD700{level}!");
-        plMessages.put("welcome", "&l&6SERWER &r&8» <gradient:#54daf4:#545eb6>Witaj {player}</gradient> &ana naszym niesamowitym serwerze!");
-        plMessages.put("sword.lore", "&7Potężna broń,&#54DAF4+15 Obrażeń,<gradient:#FF0000:#8B0000>Zaklęcie Ognia III</gradient>");
-        plMessages.put("gui.title", "<gradient:#FFD700:#FF8C00>Menu Główne</gradient>");
-        plMessages.put("gui.close", "&#FF0000&lZamknij");
-        allMessages.put("pl", plMessages);
-        
-        // Create collection with all data in batch operations
-        configManager.createCollection("MyPlugin_Config", Set.of("en", "pl"))
-                .thenCompose(v -> {
-                    getLogger().info("Collection created, setting up config values...");
-                    return configManager.setConfigBatch("MyPlugin_Config", configValues);
-                })
-                .thenCompose(v -> {
-                    getLogger().info("Config values set, setting up messages...");
-                    return configManager.setMessageBatchMultiLang("MyPlugin_Config", allMessages);
-                })
-                .thenRun(() -> {
-                    getLogger().info("Plugin data setup completed! All configs and messages ready.");
-                })
-                .exceptionally(throwable -> {
-                    getLogger().severe("Failed to setup plugin data: " + throwable.getMessage());
-                    return null;
-                });
+    public static class Tournament {
+        private String name;
+        private List<UUID> participants;
+        private Map<UUID, Integer> scores = new HashMap<>();
+        private LocalDateTime startTime;
+        private TournamentBracket bracket;
     }
     
-    // 🚀 ADVANCED: Setup multiple game systems at once
-    private void setupMultipleGameSystems() {
-        Map<String, CollectionSetupData> gameSystems = new HashMap<>();
+    public static class PlayerPvPStats {
+        private int kills = 0;
+        private int deaths = 0;
+        private double rating = 1000.0;
+        private List<Match> matchHistory = new ArrayList<>();
+        private Map<String, Integer> weaponPreferences = new HashMap<>();
+    }
+}
+
+@ConfigsFileProperties(name = "pvp-messages")
+public class PvPMessages {
+    // Auto-languages: kill notifications, tournament announcements, etc.
+}
+
+// === SUPER PROSTE UŻYCIE ===
+public class PvPManager {
+    
+    public void startArenaMatch(Player p1, Player p2, String arenaName) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
         
-        // Level system
-        gameSystems.put("levels_system", CollectionSetupData.builder()
-            .languages(Set.of("en", "pl"))
-            .configValues(Map.of("max_level", 100, "exp_per_level", 1000))
-            .languageMessages(Map.of(
-                "en", Map.of("level_up", "&6Level up to {level}!", "max_level", "&cMax level reached!"),
-                "pl", Map.of("level_up", "&6Awans na poziom {level}!", "max_level", "&cMaksymalny poziom osiągnięty!")
-            ))
-            .build());
+        // 🔥 JEDNA LINIA = CAŁY CONFIG!
+        ArenaConfig config = cm.loadObject(ArenaConfig.class);           // ⚡
+        Messages pvpMsgs = cm.messagesOf(PvPMessages.class);            // ⚡
         
-        // Bedwars stats
-        gameSystems.put("bedwars_stats", CollectionSetupData.builder()
-            .languages(Set.of("en", "pl"))
-            .configValues(Map.of("track_kills", true, "track_wins", true, "leaderboard_size", 10))
-            .languageMessages(Map.of(
-                "en", Map.of("kills", "Kills: {kills}", "wins", "Wins: {wins}"),
-                "pl", Map.of("kills", "Zabójstwa: {kills}", "wins", "Wygrane: {wins}")
-            ))
-            .build());
+        Arena arena = config.getArenas().get(arenaName);
+        if (arena == null) {
+            p1.sendMessage("Arena not found!");
+            return;
+        }
         
-        // Prison ranks
-        gameSystems.put("prison_ranks", CollectionSetupData.builder()
-            .languages(Set.of("en", "pl"))
-            .configValues(Map.of("max_rank", 50, "auto_rankup", false, "cost_multiplier", 1.5))
-            .languageMessages(Map.of(
-                "en", Map.of("rankup", "Ranked up to {rank}!", "insufficient_money", "Need ${cost} to rank up!"),
-                "pl", Map.of("rankup", "Awansowano na {rank}!", "insufficient_money", "Potrzebujesz ${cost} do awansu!")
-            ))
-            .build());
+        // Dodaj graczy do areny
+        arena.getCurrentPlayers().addAll(Arrays.asList(p1.getUniqueId(), p2.getUniqueId()));
+        arena.setStatus(ArenaStatus.IN_PROGRESS);
         
-        // Create all systems with controlled concurrency (max 2 at once)
-        configManager.createCollectionsBatch(gameSystems, 2)
-            .thenRun(() -> {
-                getLogger().info("All " + gameSystems.size() + " game systems created successfully!");
-            })
-            .exceptionally(throwable -> {
-                getLogger().severe("Failed to create game systems: " + throwable.getMessage());
-                return null;
-            });
+        // Aktualizuj statystyki
+        PlayerPvPStats stats1 = config.getPlayerStats().computeIfAbsent(p1.getUniqueId(), 
+            k -> new PlayerPvPStats());
+        PlayerPvPStats stats2 = config.getPlayerStats().computeIfAbsent(p2.getUniqueId(), 
+            k -> new PlayerPvPStats());
+        
+        // 🔥 JEDNA LINIA = WSZYSTKO ZAPISANE!
+        cm.saveObject(config);                                          // ⚡
+        
+        // Powiadom wszystkich graczy  
+        String announcement = pvpMsgs.get("en", "arena.match.started", 
+            p1.getName(), p2.getName(), arenaName);
+        Bukkit.broadcastMessage(announcement);
+        
+        // 💥 CHANGE STREAMS = WSZYSTKIE SERWERY WIEDZĄ O MECZU!
+    }
+}
+```
+
+### 🏪 Sklep z dynamicznymi cenami
+```java
+@ConfigsFileProperties(name = "dynamic-shop")
+public class DynamicShopConfig {
+    private Map<String, ItemData> items = new HashMap<>();
+    private Map<String, List<Sale>> salesHistory = new HashMap<>();
+    private ShopAnalytics analytics = new ShopAnalytics();
+    
+    public static class ItemData {
+        private double basePrice;
+        private double currentPrice;
+        private int stock;
+        private List<PriceChange> priceHistory = new ArrayList<>();
+        private Map<String, Double> playerDemand = new HashMap<>(); // UUID -> demand factor
     }
     
-    public void sendLevelUpMessage(Player player, int level) {
-        LanguageManager langManager = MongoConfigsAPI.getLanguageManager();
-        String playerLang = langManager.getPlayerLanguage(player.getUniqueId().toString());
+    public static class Sale {
+        private UUID buyer;
+        private double pricePaid;
+        private int quantity;
+        private LocalDateTime timestamp;
+    }
+    
+    public static class ShopAnalytics {
+        private Map<String, Integer> itemPopularity = new HashMap<>();
+        private double totalRevenue = 0.0;
+        private Map<String, Double> dailyStats = new HashMap<>();
+    }
+}
+
+// === BUSINESS LOGIC ===
+public class DynamicShopManager {
+    
+    public void buyItem(Player player, String itemName, int quantity) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
         
-        // Automatically colored message!
-        String message = configManager.getMessage("MyPlugin_Config", playerLang, "levelUp",
-                "player", player.getName(),
-                "level", level);
-                
-        player.sendMessage(message);
+        // 🔥 JEDNA LINIA = CAŁY SKLEP!
+        DynamicShopConfig shop = cm.loadObject(DynamicShopConfig.class);  // ⚡
         
-        // For console/logs - get plain text version
-        String plainMessage = configManager.getPlainMessage("MyPlugin_Config", playerLang, "levelUp",
-                "player", player.getName(),
-                "level", level);
-        getLogger().info(plainMessage);
+        ItemData item = shop.getItems().get(itemName);
+        if (item == null || item.getStock() < quantity) {
+            player.sendMessage("Not enough stock!");
+            return;
+        }
+        
+        // Logika biznesowa
+        double totalPrice = item.getCurrentPrice() * quantity;
+        item.setStock(item.getStock() - quantity);
+        
+        // Aktualizuj cenę na podstawie popytu (dynamic pricing!)
+        double demandFactor = calculateDemand(item, quantity);
+        item.setCurrentPrice(item.getBasePrice() * demandFactor);
+        
+        // Dodaj do historii
+        shop.getSalesHistory().computeIfAbsent(itemName, k -> new ArrayList<>())
+            .add(new Sale(player.getUniqueId(), totalPrice, quantity, LocalDateTime.now()));
+        
+        // Aktualizuj analytics
+        shop.getAnalytics().getItemPopularity().merge(itemName, quantity, Integer::sum);
+        shop.getAnalytics().setTotalRevenue(shop.getAnalytics().getTotalRevenue() + totalPrice);
+        
+        // 🔥 JEDNA LINIA = WSZYSTKO ZAPISANE + SYNC NA WSZYSTKICH SERWERACH!
+        cm.saveObject(shop);                                              // ⚡
+        
+        player.sendMessage("Bought " + quantity + "x " + itemName + " for $" + totalPrice);
     }
 }
 ```
 
-## ⚡ **Wydajność na dużą skalę**
-
-### **Rzeczywiste możliwości:**
+### 🎪 Event System z rankingami
 ```java
-// ✅ 100+ WIADOMOŚCI jednocześnie
-Map<String, String> bigMessages = new HashMap<>();
-for (int i = 1; i <= 100; i++) {
-    bigMessages.put("message_" + i, "&#54DAF4Wiadomość " + i + " z kolorami!");
+@ConfigsDatabase("events-db")
+@ConfigsFileProperties(name = "event-system")
+public class EventSystemConfig {
+    private Map<String, Event> activeEvents = new HashMap<>();
+    private Map<UUID, PlayerEventStats> playerStats = new HashMap<>();
+    private List<EventTemplate> eventTemplates = new ArrayList<>();
+    private EventScheduler scheduler = new EventScheduler();
+    private Map<String, List<Reward>> eventRewards = new HashMap<>();
+    
+    public static class Event {
+        private String id, name, type;
+        private LocalDateTime startTime, endTime;
+        private Map<UUID, Integer> participants = new HashMap<>(); // player -> score
+        private Map<String, Object> settings = new HashMap<>();
+        private List<EventPhase> phases = new ArrayList<>();
+        private EventStatus status = EventStatus.PLANNED;
+    }
+    
+    public static class PlayerEventStats {
+        private int eventsParticipated = 0;
+        private int eventsWon = 0;
+        private double totalScore = 0.0;
+        private Map<String, Integer> eventTypeStats = new HashMap<>();
+        private List<Achievement> achievements = new ArrayList<>();
+    }
 }
-config.setMessageBatch("MojaWtyczka", "pl", bigMessages); // 1 operacja MongoDB
 
-// ✅ 30+ DOKUMENTÓW w 10 KOLEKCJACH  
-Set<CollectionSetupData> collections = new HashSet<>();
-for (int gameId = 1; gameId <= 10; gameId++) {
-    // Każda kolekcja = config + 3 języki = 4 dokumenty
-    // 10 kolekcji × 4 dokumenty = 40 dokumentów total
-    CollectionSetupData gameData = new CollectionSetupData.Builder("game_" + gameId)
-            .addLanguage("pl").addLanguage("en").addLanguage("de")
-            .configValues(getGameConfigs(30)) // 30+ konfigów
-            .languageMessages(getGameMessages(50)) // 50+ wiadomości per język
-            .build();
-    collections.add(gameData);
+// === MEGA PROSTY EVENT MANAGER ===
+public class EventManager {
+    
+    public void joinEvent(Player player, String eventId) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 JEDNA LINIA = CAŁY SYSTEM EVENTÓW!
+        EventSystemConfig events = cm.loadObject(EventSystemConfig.class);  // ⚡
+        Messages eventMsgs = cm.messagesOf(EventMessages.class);            // ⚡
+        
+        Event event = events.getActiveEvents().get(eventId);
+        if (event == null) {
+            String msg = eventMsgs.get(getPlayerLang(player), "event.not.found", eventId);
+            player.sendMessage(msg);
+            return;
+        }
+        
+        // Dodaj gracza
+        event.getParticipants().put(player.getUniqueId(), 0);
+        
+        // Aktualizuj statystyki gracza
+        PlayerEventStats stats = events.getPlayerStats()
+            .computeIfAbsent(player.getUniqueId(), k -> new PlayerEventStats());
+        stats.setEventsParticipated(stats.getEventsParticipated() + 1);
+        
+        // 🔥 JEDNA LINIA = ZAPISANE + SYNC WSZĘDZIE!
+        cm.saveObject(events);                                              // ⚡
+        
+        // Powiadom gracza
+        String joinMsg = eventMsgs.get(getPlayerLang(player), "event.joined", 
+            event.getName(), event.getParticipants().size());
+        player.sendMessage(joinMsg);
+        
+        // 💥 INNE SERWERY NATYCHMIAST WIDZĄ NOWEGO UCZESTNIKA!
+    }
+    
+    public void endEvent(String eventId, UUID winnerId) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 JEDNA LINIA = LOAD!
+        EventSystemConfig events = cm.loadObject(EventSystemConfig.class);  // ⚡
+        
+        Event event = events.getActiveEvents().get(eventId);
+        event.setStatus(EventStatus.FINISHED);
+        
+        // Aktualizuj statystyki zwycięzcy
+        PlayerEventStats winnerStats = events.getPlayerStats().get(winnerId);
+        winnerStats.setEventsWon(winnerStats.getEventsWon() + 1);
+        
+        // Przenieś do historii
+        events.getActiveEvents().remove(eventId);
+        
+        // 🔥 JEDNA LINIA = SAVE!
+        cm.saveObject(events);                                              // ⚡
+        
+        // 💥 WSZYSTKIE SERWERY NATYCHMIAST WIEDZĄ O KOŃCU EVENTU!
+    }
 }
-config.createCollectionsBatch(collections, 3); // Max 3 kolekcje jednocześnie
-
-// ✅ MASOWE PRZEŁADOWANIE
-Set<String> manyCollections = Set.of("game_1", "game_2", "game_3", "game_4", "game_5", "game_6", "game_7", "game_8", "game_9", "game_10");
-config.reloadCollectionsBatch(manyCollections, 4); // Max 4 na raz
 ```
 
-### **Porównanie wydajności:**
-
-**❌ PRZED (wolno):**
+### 🛡️ Factions War System
 ```java
-// 100 osobnych operacji MongoDB
-for (String key : messageKeys) {
-    config.setMessage("Wtyczka", "pl", key, messages.get(key)); // 100× operacji
+@ConfigsDatabase("factions-war")
+@ConfigsFileProperties(name = "war-system")
+public class WarSystemConfig {
+    private Map<String, Faction> factions = new HashMap<>();
+    private List<War> activeWars = new ArrayList<>();
+    private Map<String, Territory> territories = new HashMap<>();
+    private WarSettings settings = new WarSettings();
+    private Map<UUID, PlayerWarStats> playerWarStats = new HashMap<>();
+    
+    public static class Faction {
+        private String name;
+        private UUID leader;
+        private List<UUID> members = new ArrayList<>();
+        private Map<String, Integer> resources = new HashMap<>();
+        private List<String> controlledTerritories = new ArrayList<>();
+        private double power = 100.0;
+        private FactionBank bank = new FactionBank();
+    }
+    
+    public static class War {
+        private String id;
+        private String attackerFaction, defenderFaction;
+        private LocalDateTime startTime;
+        private Map<String, Integer> battleResults = new HashMap<>();
+        private List<Battle> battles = new ArrayList<>();
+        private WarStatus status = WarStatus.ONGOING;
+    }
 }
-// Czas: 30-60 sekund, ryzyko timeout
+
+// === WOJNA W JEDNEJ LINII! ===
+public class WarManager {
+    
+    public void declareWar(String attackerName, String defenderName) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 JEDNA LINIA = CAŁY SYSTEM WOJEN!
+        WarSystemConfig wars = cm.loadObject(WarSystemConfig.class);         // ⚡
+        Messages warMsgs = cm.messagesOf(WarMessages.class);                // ⚡
+        
+        Faction attacker = wars.getFactions().get(attackerName);
+        Faction defender = wars.getFactions().get(defenderName);
+        
+        // Stwórz nową wojnę
+        War newWar = new War();
+        newWar.setId(UUID.randomUUID().toString());
+        newWar.setAttackerFaction(attackerName);
+        newWar.setDefenderFaction(defenderName);
+        newWar.setStartTime(LocalDateTime.now());
+        
+        wars.getActiveWars().add(newWar);
+        
+        // 🔥 JEDNA LINIA = WOJNA ZAPISANA!
+        cm.saveObject(wars);                                                // ⚡
+        
+        // 💥 WSZYSTKIE SERWERY NATYCHMIAST WIEDZĄ O WOJNIE!
+        
+        // Powiadom wszystkich
+        for (UUID memberId : attacker.getMembers()) {
+            Player member = Bukkit.getPlayer(memberId);
+            if (member != null) {
+                String msg = warMsgs.get(getPlayerLang(member), "war.declared.attacker", defenderName);
+                member.sendMessage(msg);
+            }
+        }
+    }
+}
 ```
 
-**✅ PO (szybko):**
+### 🏆 Minigames Hub
 ```java
-// 1 operacja MongoDB  
-config.setMessageBatch("Wtyczka", "pl", allMessages); // 100+ wiadomości
-// Czas: 1-2 sekundy, niezawodne
+@ConfigsFileProperties(name = "minigames")
+public class MinigameConfig {
+    private Map<String, Minigame> availableGames = new HashMap<>();
+    private Map<UUID, PlayerMinigameStats> playerStats = new HashMap<>();
+    private List<Tournament> tournaments = new ArrayList<>();
+    private MinigameQueue queue = new MinigameQueue();
+    
+    public static class Minigame {
+        private String name, type;
+        private int minPlayers, maxPlayers;
+        private Map<String, Object> gameSettings = new HashMap<>();
+        private List<GameMap> maps = new ArrayList<>();
+        private boolean enabled = true;
+    }
+    
+    public static class PlayerMinigameStats {
+        private Map<String, Integer> gamesPlayed = new HashMap<>();
+        private Map<String, Integer> gamesWon = new HashMap<>();
+        private double totalScore = 0.0;
+        private List<Achievement> unlockedAchievements = new ArrayList<>();
+    }
+}
+
+// === MINIGAME MANAGER ===
+public class MinigameManager {
+    
+    public void joinGame(Player player, String gameName) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+        
+        // 🔥 JEDNA LINIA = CAŁY SYSTEM MINIGIER!
+        MinigameConfig games = cm.loadObject(MinigameConfig.class);          // ⚡
+        
+        Minigame game = games.getAvailableGames().get(gameName);
+        if (!game.isEnabled()) {
+            player.sendMessage("Game disabled!");
+            return;
+        }
+        
+        // Dodaj do queue
+        games.getQueue().addPlayer(player.getUniqueId(), gameName);
+        
+        // Aktualizuj statystyki
+        PlayerMinigameStats stats = games.getPlayerStats()
+            .computeIfAbsent(player.getUniqueId(), k -> new PlayerMinigameStats());
+        stats.getGamesPlayed().merge(gameName, 1, Integer::sum);
+        
+        // 🔥 JEDNA LINIA = SAVE!
+        cm.saveObject(games);                                               // ⚡
+        
+        player.sendMessage("Joined " + gameName + " queue!");
+        
+        // 💥 CHANGE STREAMS = INNE SERWERY WIDZĄ GRACZA W QUEUE!
+    }
+}
 ```
 
-### **Kontrola współbieżności:**
+## 🎯 **DLACZEGO TO JEST ZAJEBISTE:**
+
+### ⚡ **Każda klasa = Jedna linia:**
 ```java
-// ✅ BEZPIECZNE dla MongoDB
-config.createCollectionsBatch(collections, 3); // Max 3 jednocześnie
-config.reloadCollectionsBatch(collections, 4);  // Max 4 jednocześnie
-// Nie przeciąża MongoDB, stabilne połączenie
-```
+// Zamiast 50 linii boilerplate:
+ServerConfig config = cm.loadObject(ServerConfig.class);     // ⚡ GOTOWE!
+EconomyConfig economy = cm.loadObject(EconomyConfig.class);  // ⚡ GOTOWE!
+Messages msgs = cm.messagesOf(GuiMessages.class);           // ⚡ GOTOWE!
 ```
 
-## �🆘 Support
+### 🔥 **Modyfikacja = Jedna linia:**
+```java
+// Zmień cokolwiek w obiekcie...
+config.setMaxPlayers(500);
+economy.getItemPrices().put("diamond", 999.0);
+config.getFactions().get("dragons").setPower(150.0);
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/WTJEE/mongo-configs/issues)
+// I zapisz jedną linią:
+cm.saveObject(config);   // 💥 CHANGE STREAMS = SYNC WSZĘDZIE!
+```
+
+### 💻 **Zero konfiguracji JSON/YAML:**
+```java
+// ❌ Nie ma tego:
+// - Ręczne parsowanie YAML
+// - Sprawdzanie null values  
+// - Konwersje typów
+// - File I/O operations
+// - Synchronizacja między serwerami
+
+// ✅ Jest to:
+ConfigClass data = cm.loadObject(ConfigClass.class);  // GOTOWE! 🎯
+```
+
+**NAJLEPSZA BIBLIOTEKA DO MINECRAFT!** 🏆
+
+## 🔄 Hot Reload Examples
+
+```bash
+# Reload ekonomii na wszystkich serwerach
+/mongoconfigs reload economy
+
+# Reload wszystkich wiadomości  
+/mongoconfigs reload spawn-messages
+
+# Reload wszystkiego (ostrożnie!)
+/mongoconfigs reloadall
+
+# Sprawdź dostępne kolekcje
+/mongoconfigs collections
+```
+
+## 🏆 Best Practices
+
+### 1. **Używaj Load-or-Generate**
+```java
+// ✅ Dobre - zawsze masz poprawny obiekt
+ServerConfig config = cm.getConfigOrGenerate(ServerConfig.class, 
+    () -> new ServerConfig());
+
+// ❌ Złe - może być null
+ServerConfig config = cm.getObject(ServerConfig.class);
+if (config == null) { /* boilerplate... */ }
+```
+
+### 2. **Sync convenience methods**
+```java
+// Dla prostych operacji
+cm.saveObject(config);          // sync setObject()
+ServerConfig c = cm.loadObject(ServerConfig.class); // sync getObject()
+
+// Dla performance-critical - używaj async
+cm.setObject(config).thenRun(() -> {
+    // callback after save
+});
+```
+
+### 3. **Struktura wiadomości**
+```yaml
+# W MongoDB dla języka "pl":
+welcome:
+  message: "Witaj {0}!"
+  subtitle: "Poziom: {1}"
+gui:
+  buttons:
+    confirm: "Potwierdź"
+    cancel: "Anuluj"
+shop:
+  prices:
+    diamond: "Diament: {price} monet"
+```
+
+### 4. **Error handling**
+```java
+try {
+    ServerConfig config = cm.getObject(ServerConfig.class);
+    // użyj config...
+} catch (Exception e) {
+    // fallback lub log error
+    getLogger().warning("Nie można załadować konfiguracji: " + e.getMessage());
+}
+```
+
+## 🚨 Troubleshooting
+
+### Problemy z połączeniem
+```bash
+# Sprawdź połączenie
+/mongoconfigs collections
+
+# Test reloadu
+/mongoconfigs reload server-settings
+
+# Debug informacje
+/mongoconfigs testcollections
+```
+
+### Cache issues
+```java
+// Wyczyść cache jeśli coś się zepsuło
+cm.invalidateCache();
+
+// Wymuś reload konkretnej kolekcji
+cm.reloadCollection("problematic-collection");
+```
+
+### Migration dokumentów
+```java
+// Aktualizacja wersji konfiguracji
+OldConfig old = cm.getObject(OldConfig.class);
+if (old != null) {
+    NewConfig migrated = migrateFromOld(old);
+    cm.setObject(migrated);
+}
+```
+
+## 📈 Performance Tips
+
+### 1. **Batch reload** przy starcie
+```java
+Set<String> collections = Set.of("server-settings", "gui-messages", "economy");
+cm.reloadCollectionsBatch(collections, 3); // max 3 równocześnie
+```
+
+### 2. **Cache warm-up**
+```java
+// Pre-load często używanych configów
+cm.getObject(ServerConfig.class);
+cm.getObject(EconomyConfig.class);
+messages.get("en", "common.messages"); // pre-cache messages
+```
+
+### 3. **Change Streams monitoring**
+- Włącz `change-streams-enabled: true` dla multi-server
+- System automatycznie synchronizuje zmiany
+- Zero manual work - wszystko dzieje się w tle
+
+## 🎯 Migration Guide
+
+### Z tradycyjnych YAML files:
+
+```java
+// Zamiast:
+FileConfiguration config = YamlConfiguration.loadConfiguration(file);
+int maxPlayers = config.getInt("max-players", 100);
+
+// Używaj:
+@ConfigsFileProperties(name = "server-config")
+public class ServerConfig {
+    private int maxPlayers = 100;
+}
+ServerConfig config = cm.getObject(ServerConfig.class);
+int maxPlayers = config.getMaxPlayers();
+```
+
+### Z locale files:
+
+```java
+// Zamiast wielu plików:
+// messages_en.yml, messages_pl.yml, messages_de.yml...
+
+// Używaj:
+Messages messages = cm.messagesOf(MyMessages.class);
+String msg = messages.get(playerLang, "welcome.message");
+```
+
+## 🏁 **PODSUMOWANIE - DLACZEGO TO NAJLEPSZE API NA ŚWIECIE**
+
+### 🎯 **JEDNA LINIA = MAGIC**
+```java
+// To wszystko to jedna linia:
+MyComplexConfig config = cm.loadObject(MyComplexConfig.class);  // 🔥
+// - Automatyczny load z MongoDB
+// - Full type safety
+// - Smart caching  
+// - Error handling
+// - Change streams sync
+// - Jackson serialization
+// - WSZYSTKO W JEDNEJ LINII! 🤯
+```
+
+### 🚀 **ROZWÓJ BŁYSKAWICZNY**
+```java
+// ❌ TRADYCYJNE BIBLIOTEKI: 50+ linii boilerplate na każdą klasę
+// ✅ MONGO CONFIGS: 1 linia na klasę
+
+// Ile czasu zaoszczędzisz:
+// 10 klas config = 500 linii boilerplate → 10 linii
+// 20 klas config = 1000 linii boilerplate → 20 linii  
+// 50 klas config = 2500 linii boilerplate → 50 linii
+
+// = TYSIĄCE GODZIN ZAOSZCZĘDZONE! ⏰💰
+```
+
+### 🏆 **MongoDB Configs API zapewnia:**
+
+- ✅ **🎯 Type Safety** - Kompiler pilnuje typów, zero runtime errors
+- ✅ **🚀 Zero Boilerplate** - Jedna linia zamiast 20-50 linii kodu  
+- ✅ **⚡ Multi-server Sync** - Change Streams = automatyczna synchronizacja wszędzie
+- ✅ **🔥 Hot Reload** - Zmiany bez restartu serwera
+- ✅ **🎪 Flexible** - Adnotacje do kontroli baz danych i kolekcji
+- ✅ **🏎️ Performance** - Smart caching + lazy loading + MongoDB
+- ✅ **🛡️ Reliable** - Fallbacks, error handling, connection pooling
+- ✅ **🌍 Multi-language** - Automatyczne wsparcie wielojęzyczności
+- ✅ **🔧 IDE Support** - Pełne wsparcie IntelliJ/Eclipse
+- ✅ **📊 Complex Objects** - Lists, Maps, nested objects, wszystko native
+
+### 🎮 **PERFECT DLA MINECRAFT:**
+
+```java
+// MMO Serwer:
+CharacterConfig chars = cm.loadObject(CharacterConfig.class);     // ⚡
+GuildConfig guilds = cm.loadObject(GuildConfig.class);           // ⚡
+EconomyConfig economy = cm.loadObject(EconomyConfig.class);      // ⚡
+Messages guildMsgs = cm.messagesOf(GuildMessages.class);         // ⚡
+
+// PvP Serwer:
+ArenaConfig arenas = cm.loadObject(ArenaConfig.class);           // ⚡
+TournamentConfig tournaments = cm.loadObject(TournamentConfig.class); // ⚡
+
+// Skyblock Serwer:
+IslandConfig islands = cm.loadObject(IslandConfig.class);        // ⚡
+ShopConfig shop = cm.loadObject(ShopConfig.class);              // ⚡
+
+// Network Serwerów:
+// Wszystkie serwery automatycznie zsynchronizowane! 🌐
+```
+
+### 🔥 **JAK TO DZIAŁA W PRAKTYCE:**
+
+1. **🎯 Piszesz klasę** - Zwykła Java class z getterami/setterami
+2. **⚡ Jedna linia load** - `MyConfig config = cm.loadObject(MyConfig.class);`
+3. **🚀 Używasz** - `config.getMaxPlayers()`, `config.setServerName("New name")`
+4. **💾 Jedna linia save** - `cm.saveObject(config);`
+5. **🌐 Auto-sync** - Wszystkie serwery natychmiast widzą zmiany!
+
+### 🏆 **NAJLEPSZA BIBLIOTEKA CONFIG NA MINECRAFT!**
+
+**Przyszłość zarządzania konfiguracją jest tutaj!** 🚀🔥
+
+**MONGO CONFIGS = GAME CHANGER!** 🎮⚡🏆
 
 ---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/WTJEE/mongo-configs/issues)
+- **Wiki**: [Dokumentacja](https://github.com/WTJEE/mongo-configs/wiki)
+- **Discord**: [Support Server](#)
+
+## 📄 License
+
+MIT License - Zobacz [LICENSE](LICENSE) dla szczegółów.

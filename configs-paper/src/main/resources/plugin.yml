@@ -12,11 +12,16 @@ permissions:
   mongoconfigs.admin:
     description: Access to admin commands
     default: op
+    children:
+      mongoconfigs.hotreload: true
   mongoconfigs.language:
     description: Access to language selection
     default: true
   mongoconfigs.reload:
     description: Access to reload commands
+    default: op
+  mongoconfigs.hotreload:
+    description: Access to hot-reload commands
     default: op
 
 commands:
@@ -35,3 +40,8 @@ commands:
     usage: /<command> <reload|stats|collections|create|info>
     permission: mongoconfigs.admin
     aliases: [cfgmgr, cm]
+  hotreload:
+    description: Hot-reload management commands
+    usage: /<command> [test|clear|status]
+    permission: mongoconfigs.hotreload
+    aliases: [hr]

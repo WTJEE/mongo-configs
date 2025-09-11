@@ -56,7 +56,6 @@ public final class ColorUtils {
         }
     }
 
-
     public static String stripColors(String message) {
         if (message == null || message.isEmpty()) return message;
         try {
@@ -84,28 +83,17 @@ public final class ColorUtils {
         return LEGACY_SERIALIZER.serialize(component);
     }
 
-    public static com.github.benmanes.caffeine.cache.stats.CacheStats getCacheStats() {
-        return COLOR_CACHE.stats();
-    }
-
     public static void clearCache() {
         COLOR_CACHE.invalidateAll();
     }
 
-    public static long getCacheSize() {
-        return COLOR_CACHE.estimatedSize();
-    }
-
     private static final Pattern RGB_FUNC = Pattern.compile("&\\{(\\d{1,3}),(\\d{1,3}),(\\d{1,3})}");
 
-
     private static final Pattern AMP_HEX = Pattern.compile("(?i)&#([0-9a-f]{6})");
-
 
     private static final Pattern BUKKIT_HEX = Pattern.compile(
         "(?i)&x(?:&([0-9a-f]))(?:&([0-9a-f]))(?:&([0-9a-f]))(?:&([0-9a-f]))(?:&([0-9a-f]))(?:&([0-9a-f]))"
     );
-
 
     private static final Pattern GRADIENT_ALIAS = Pattern.compile("(?i)gradient:?((?:#[0-9a-f]{6})(?::#[0-9a-f]{6})+)");
 
@@ -114,12 +102,9 @@ public final class ColorUtils {
 
     String out = input;
 
-
         out = out.replace('§', '&');
 
-
         out = expandGradientAliases(out);
-
 
         {
             Matcher m = BUKKIT_HEX.matcher(out);
@@ -143,9 +128,7 @@ public final class ColorUtils {
             out = sb.toString();
         }
 
-
         out = AMP_HEX.matcher(out).replaceAll("<#$1>");
-
 
         {
             Matcher m = RGB_FUNC.matcher(out);
@@ -161,7 +144,6 @@ public final class ColorUtils {
             out = sb.toString();
         }
 
-
         out = out.replace("&l", "<bold>")
                 .replace("&o", "<italic>")
                 .replace("&n", "<underlined>")
@@ -169,15 +151,12 @@ public final class ColorUtils {
                 .replace("&k", "<obfuscated>")
                 .replace("&r", "<reset>");
 
-
         out = replaceLegacyColorCodes(out);
-
 
         out = out.replace("<>", "").replace("< >", " ");
 
         return out;
     }
-
 
     private static String expandGradientAliases(String s) {
         if (s == null || s.isEmpty()) return s;
@@ -196,7 +175,6 @@ public final class ColorUtils {
                 i = close + 1;
                 continue;
             }
-
 
             if (regionMatchesIgnoreCase(s, i, "gradient")) {
                 int pos = i + 8;
@@ -316,3 +294,4 @@ public final class ColorUtils {
         return out.toString();
     }
 }
+

@@ -26,7 +26,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 public class LanguageSelectionGUI implements InventoryHolder {
 
     private final LanguageManagerImpl languageManager;
@@ -44,7 +43,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.config = config;
         this.inventory = Bukkit.createInventory(this, config.getGuiSize(),
             ColorHelper.parseComponent(config.getGuiTitle()));
-
 
     }    public void open() {
         buildInventoryAsync().thenAccept(builtInventory -> {
@@ -217,7 +215,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
                type == Material.GRAY_WOOL;
     }
 
-
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getInventory().getHolder() != this) {
             return;
@@ -381,7 +378,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
             default -> Material.GRAY_WOOL;
         };
     }
-
 
     public static void clearCache() {
         CACHED_HEADS.clear();

@@ -20,9 +20,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
-
 public class LanguageManagerImpl implements LanguageManager {
-    
+
     private static final Logger LOGGER = Logger.getLogger(LanguageManagerImpl.class.getName());
 
     private final ConfigManager configManager;
@@ -31,15 +30,15 @@ public class LanguageManagerImpl implements LanguageManager {
     private final MongoManager mongoManager;
     private final String collectionName;
     private final String databaseName;
-    
+
     public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager) {
         this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(), config.getPlayerLanguagesCollection());
     }
-    
+
     public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager, String collectionName) {
         this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(), collectionName);
     }
-    
+
     public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager, String databaseName, String collectionName) {
         this.configManager = configManager;
         this.config = config;
@@ -54,7 +53,7 @@ public class LanguageManagerImpl implements LanguageManager {
                 .recordStats()
                 .build();
     }
-    
+
     public void initialize() {
         if (!databaseName.equals(mongoManager.getDatabase().getName())) {
             MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
@@ -75,27 +74,26 @@ public class LanguageManagerImpl implements LanguageManager {
                 return null;
             });
         }
-        
+
         LOGGER.info("LanguageManager initialized");
     }
-    
+
     public void shutdown() {
         LOGGER.info("LanguageManager shutdown");
     }
-    
+
     public void reload() {
         playerLanguagesCache.invalidateAll();
         LanguageSelectionGUI.clearCache();
         LOGGER.info("LanguageManager reloaded - cache cleared");
     }
-    
+
     @Override
     public String getPlayerLanguage(String playerId) {
         String cached = playerLanguagesCache.getIfPresent(playerId);
         if (cached != null) {
             return cached;
         }
-        
 
         return playerLanguagesCache.get(playerId, key -> {
             try {
@@ -103,7 +101,7 @@ public class LanguageManagerImpl implements LanguageManager {
                 Document doc = PublisherAdapter.toCompletableFuture(
                     collection.find(Filters.eq("_id", playerId)).first()
                 ).join();
-                
+
                 String language = doc != null ? doc.getString("language") : config.getDefaultLanguage();
                 LOGGER.fine("Loaded language from MongoDB for " + playerId + ": " + language);
                 return language;
@@ -113,7 +111,7 @@ public class LanguageManagerImpl implements LanguageManager {
             }
         });
     }
-    
+
     @Override
     public void setPlayerLanguage(String playerId, String language) {
         if (!isLanguageSupported(language)) {
@@ -134,15 +132,15 @@ public class LanguageManagerImpl implements LanguageManager {
                 Document currentDoc = PublisherAdapter.toCompletableFuture(
                     collection.find(Filters.eq("_id", playerId)).first()
                 ).join();
-                
+
                 String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
                 if (language.equals(currentDbLanguage)) {
                     LOGGER.fine("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
                     return;
                 }
-                
+
                 PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
-                
+
                 PublisherAdapter.toCompletableFuture(
                     collection.replaceOne(
                         Filters.eq("_id", playerId),
@@ -150,20 +148,20 @@ public class LanguageManagerImpl implements LanguageManager {
                         new ReplaceOptions().upsert(true)
                     )
                 ).join();
-                
+
                 LOGGER.fine("Saved language preference for " + playerId + ": " + language);
             } catch (Exception e) {
                 LOGGER.warning("Error saving player language: " + e.getMessage());
             }
         });
-        
+
         LOGGER.fine("Updated language for player " + playerId + " to " + language);
     }
 
     public CompletableFuture<Void> setPlayerLanguage(java.util.UUID playerId, String language) {
         return setPlayerLanguageAsync(playerId.toString(), language);
     }
-    
+
     public CompletableFuture<Void> setPlayerLanguageAsync(String playerId, String language) {
         return CompletableFuture.runAsync(() -> {
             if (!isLanguageSupported(language)) {
@@ -177,7 +175,7 @@ public class LanguageManagerImpl implements LanguageManager {
             }
 
             playerLanguagesCache.put(playerId, language);
-            
+
             LOGGER.fine("Updated language for player " + playerId + " to " + language);
         }).thenCompose(v -> {
             return CompletableFuture.runAsync(() -> {
@@ -186,15 +184,15 @@ public class LanguageManagerImpl implements LanguageManager {
                     Document currentDoc = PublisherAdapter.toCompletableFuture(
                         collection.find(Filters.eq("_id", playerId)).first()
                     ).join();
-                    
+
                     String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
                     if (language.equals(currentDbLanguage)) {
                         LOGGER.fine("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
                         return;
                     }
-                    
+
                     PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
-                    
+
                     PublisherAdapter.toCompletableFuture(
                         collection.replaceOne(
                             Filters.eq("_id", playerId),
@@ -202,7 +200,7 @@ public class LanguageManagerImpl implements LanguageManager {
                             new ReplaceOptions().upsert(true)
                         )
                     ).join();
-                    
+
                     LOGGER.fine("Saved language preference for " + playerId + ": " + language);
                 } catch (Exception e) {
                     LOGGER.warning("Error saving player language: " + e.getMessage());
@@ -211,43 +209,32 @@ public class LanguageManagerImpl implements LanguageManager {
             });
         });
     }
-    
+
     @Override
     public String getDefaultLanguage() {
         return config.getDefaultLanguage();
     }
-    
+
     @Override
     public String[] getSupportedLanguages() {
         return config.getSupportedLanguages().toArray(new String[0]);
     }
-    
+
     @Override
     public boolean isLanguageSupported(String language) {
         return config.getSupportedLanguages().contains(language);
     }
-    
-
-    public com.github.benmanes.caffeine.cache.stats.CacheStats getCacheStats() {
-        return playerLanguagesCache.stats();
-    }
-    
-
-    public long getCacheSize() {
-        return playerLanguagesCache.estimatedSize();
-    }
-    
 
     public void clearCache() {
         playerLanguagesCache.invalidateAll();
         LOGGER.info("Cleared all cached player languages");
     }
-    
+
     @Override
     public String getLanguageDisplayName(String language) {
         Map<String, String> displayNames = config.getLanguageDisplayNames();
         String displayName = displayNames.get(language);
-        
+
         if (displayName == null) {
             return language;
         }
@@ -260,10 +247,10 @@ public class LanguageManagerImpl implements LanguageManager {
                 return displayName;
             }
         }
-        
+
         return displayName;
     }
-    
+
     private boolean isBase64Encoded(String str) {
         try {
             Base64.getDecoder().decode(str);

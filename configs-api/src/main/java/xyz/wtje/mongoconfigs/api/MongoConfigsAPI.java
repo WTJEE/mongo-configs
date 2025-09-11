@@ -1,10 +1,10 @@
 package xyz.wtje.mongoconfigs.api;
 
 public final class MongoConfigsAPI {
-    
+
     private static ConfigManager configManager;
     private static LanguageManager languageManager;
-    
+
     private MongoConfigsAPI() {
         throw new UnsupportedOperationException("Utility class");
     }
@@ -26,16 +26,15 @@ public final class MongoConfigsAPI {
     public static boolean isInitialized() {
         return configManager != null && languageManager != null;
     }
-    
-    
+
     public static void setConfigManager(ConfigManager manager) {
         configManager = manager;
     }
-    
+
     public static void setLanguageManager(LanguageManager manager) {
         languageManager = manager;
     }
-    
+
     public static void reset() {
         configManager = null;
         languageManager = null;

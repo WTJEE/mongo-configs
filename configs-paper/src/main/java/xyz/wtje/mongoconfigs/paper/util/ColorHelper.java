@@ -3,7 +3,7 @@ package xyz.wtje.mongoconfigs.paper.util;
 import net.kyori.adventure.text.Component;
 
 public final class ColorHelper {
-    
+
     private ColorHelper() {
         throw new UnsupportedOperationException("Utility class");
     }

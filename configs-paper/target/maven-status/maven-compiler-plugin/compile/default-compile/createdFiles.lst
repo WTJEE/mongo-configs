@@ -1,0 +1,14 @@
+xyz\wtje\mongoconfigs\paper\listeners\PlayerJoinListener.class
+xyz\wtje\mongoconfigs\paper\util\ColorUtils.class
+xyz\wtje\mongoconfigs\paper\MongoConfigsPlugin.class
+xyz\wtje\mongoconfigs\paper\commands\MongoConfigsCommand.class
+xyz\wtje\mongoconfigs\paper\config\PluginConfiguration.class
+xyz\wtje\mongoconfigs\paper\commands\LanguageCommand.class
+xyz\wtje\mongoconfigs\paper\listeners\GUIListener.class
+xyz\wtje\mongoconfigs\paper\commands\ConfigsManagerCommand.class
+xyz\wtje\mongoconfigs\paper\impl\LanguageManagerImpl.class
+xyz\wtje\mongoconfigs\paper\util\BukkitColorProcessor.class
+xyz\wtje\mongoconfigs\paper\util\ColorHelper.class
+xyz\wtje\mongoconfigs\paper\config\LanguageConfiguration.class
+xyz\wtje\mongoconfigs\paper\gui\LanguageSelectionGUI.class
+xyz\wtje\mongoconfigs\paper\commands\HotReloadCommand.class

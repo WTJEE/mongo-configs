@@ -1,89 +1,43 @@
 package xyz.wtje.mongoconfigs.api;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import xyz.wtje.mongoconfigs.api.core.Annotations;
+
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 public interface ConfigManager {
 
-    <T> T getConfig(String collection, String key, T defaultValue);
-
-    <T> CompletableFuture<Optional<T>> getConfigAsync(String collection, String key, Class<T> type);
-
-    <T> CompletableFuture<Void> setConfig(String collection, String key, T value);
-
-    String getMessage(String collection, String language, String key, Object... placeholders);
-
-    List<String> getMessageLore(String collection, String language, String key, Object... placeholders);
-
-    CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders);
-
-    CompletableFuture<Void> setMessage(String collection, String language, String key, String value);
-
-    /**
-     * Set multiple configuration values in a single batch operation
-     */
-    <T> CompletableFuture<Void> setConfigBatch(String collection, Map<String, T> configValues);
-
-    /**
-     * Set multiple messages for a specific language in a single batch operation
-     */
-    CompletableFuture<Void> setMessageBatch(String collection, String language, Map<String, String> messages);
-
-    /**
-     * Set multiple messages for multiple languages in a single batch operation
-     */
-    CompletableFuture<Void> setMessageBatchMultiLang(String collection, Map<String, Map<String, String>> languageMessages);
-
-    /**
-     * Create multiple collections with their configurations and messages in an optimized batch operation
-     * @param collectionsData Map of collection name to CollectionSetupData
-     * @param maxConcurrency Maximum number of collections to process concurrently (default: 3)
-     */
-    CompletableFuture<Void> createCollectionsBatch(Map<String, CollectionSetupData> collectionsData, int maxConcurrency);
-
-    /**
-     * Create multiple collections with their configurations and messages in an optimized batch operation
-     * Uses default concurrency limit of 3
-     */
-    CompletableFuture<Void> createCollectionsBatch(Map<String, CollectionSetupData> collectionsData);
-
-    CompletableFuture<Void> createCollection(String collection, Set<String> languages);
-
-    CompletableFuture<Void> copyLanguage(String collection, String sourceLanguage, String targetLanguage);
-
-    CompletableFuture<Set<String>> getCollections();
-
-    Set<String> getSupportedLanguages(String collection);
-
-    boolean collectionExists(String collection);
-
-    CompletableFuture<Void> reloadCollection(String collection);
-
     CompletableFuture<Void> reloadAll();
 
-    /**
-     * Reload multiple collections in batch with controlled concurrency
-     */
-    CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections, int maxConcurrency);
+    <T> CompletableFuture<Void> set(String id, T value);
 
-    /**
-     * Reload multiple collections in batch with default concurrency (3)
-     */
-    CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections);
+    <T> CompletableFuture<T> get(String id, Class<T> type);
 
-    void invalidateCache(String collection);
+    <T> CompletableFuture<Void> setObject(T pojo);
 
-    void invalidateCache();
+    <T> CompletableFuture<T> getObject(Class<T> type);
 
-    CacheStats getCacheStats();
+    <T> CompletableFuture<T> getConfigOrGenerate(Class<T> type, Supplier<T> generator);
 
-    PerformanceMetrics getMetrics();
+    Messages findById(String id);
 
-    String getPlainMessage(String collection, String language, String key, Object... placeholders);
-    
+    default Messages messagesOf(Class<?> type) {
+        return findById(Annotations.idFrom(type));
+    }
 
-    Object getColorCacheStats();
+    default <T> void saveObject(T pojo) {
+        setObject(pojo).join();
+    }
+
+    default <T> T loadObject(Class<T> type) {
+        return getObject(type).join();
+    }
+
+    default <T> void save(String id, T value) {
+        set(id, value).join();
+    }
+
+    default <T> T load(String id, Class<T> type) {
+        return get(id, type).join();
+    }
 }

@@ -10,30 +10,29 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-
 public class LanguageConfiguration {
-    
+
     private final Plugin plugin;
     private FileConfiguration config;
     private File configFile;
-    
+
     public LanguageConfiguration(Plugin plugin) {
         this.plugin = plugin;
         this.configFile = new File(plugin.getDataFolder(), "languages.yml");
         saveDefaultConfig();
         reloadConfig();
     }
-    
+
     private void saveDefaultConfig() {
         if (!configFile.exists()) {
             plugin.saveResource("languages.yml", false);
         }
     }
-    
+
     public void reloadConfig() {
         config = YamlConfiguration.loadConfiguration(configFile);
     }
-    
+
     public void saveConfig() {
         try {
             config.save(configFile);
@@ -45,11 +44,11 @@ public class LanguageConfiguration {
     public String getDefaultLanguage() {
         return config.getString("default", "en");
     }
-    
+
     public List<String> getSupportedLanguages() {
         return config.getStringList("supported");
     }
-    
+
     public Map<String, String> getLanguageDisplayNames() {
         Map<String, String> displayNames = new HashMap<>();
         var section = config.getConfigurationSection("display-names");
@@ -60,7 +59,7 @@ public class LanguageConfiguration {
         }
         return displayNames;
     }
-    
+
     public Map<String, String> getLanguageHeadTextures() {
         Map<String, String> textures = new HashMap<>();
         var section = config.getConfigurationSection("head-textures");
@@ -71,7 +70,7 @@ public class LanguageConfiguration {
         }
         return textures;
     }
-    
+
     public Map<String, org.bukkit.Material> getFallbackMaterials() {
         Map<String, org.bukkit.Material> materials = new HashMap<>();
         var section = config.getConfigurationSection("fallback-materials");
@@ -93,27 +92,27 @@ public class LanguageConfiguration {
     public String getGuiTitle() {
         return config.getString("gui.language-selection.title", "Language Selection");
     }
-    
+
     public int getGuiSize() {
         return config.getInt("gui.language-selection.size", 27);
     }
-    
+
     public int getGuiStartSlot() {
         return config.getInt("gui.language-selection.start-slot", 10);
     }
-    
+
     public String getCloseButtonMaterial() {
         return config.getString("gui.language-selection.close-button.material", "BARRIER");
     }
-    
+
     public int getCloseButtonSlot() {
         return config.getInt("gui.language-selection.close-button.slot", 22);
     }
-    
+
     public String getCloseButtonName() {
         return config.getString("gui.language-selection.close-button.name", "&cClose");
     }
-    
+
     public List<String> getCloseButtonLore() {
         return config.getStringList("gui.language-selection.close-button.lore");
     }
@@ -137,22 +136,22 @@ public class LanguageConfiguration {
         if (defaultMessage != null) {
             return defaultMessage;
         }
-        
+
         return "Missing message: " + path + " for language: " + language;
     }
-    
+
     public String getSelectedMessage() {
         return getMessage("selection-status.selected");
     }
-    
+
     public String getSelectedMessage(String language) {
         return getMessage("selection-status.selected", language);
     }
-    
+
     public String getNotSelectedMessage() {
         return getMessage("selection-status.not-selected");
     }
-    
+
     public String getNotSelectedMessage(String language) {
         return getMessage("selection-status.not-selected", language);
     }
@@ -160,7 +159,7 @@ public class LanguageConfiguration {
     public String getPlayerLanguagesCollection() {
         return config.getString("player-languages.collection", "player_languages");
     }
-    
+
     public String getPlayerLanguagesDatabase() {
         return config.getString("player-languages.database", "minecraft");
     }

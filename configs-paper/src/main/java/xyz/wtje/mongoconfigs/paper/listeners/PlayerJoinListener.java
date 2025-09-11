@@ -8,19 +8,17 @@ import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 
 import java.util.concurrent.CompletableFuture;
 
-
 public class PlayerJoinListener implements Listener {
-    
+
     private final LanguageManagerImpl languageManager;
-    
+
     public PlayerJoinListener(LanguageManagerImpl languageManager) {
         this.languageManager = languageManager;
     }
-    
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
         String playerId = event.getPlayer().getUniqueId().toString();
-        
 
         CompletableFuture.runAsync(() -> {
             try {

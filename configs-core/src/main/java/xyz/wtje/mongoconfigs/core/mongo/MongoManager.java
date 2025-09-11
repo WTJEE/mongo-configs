@@ -20,36 +20,35 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-
 public class MongoManager {
-    
+
     private static final Logger LOGGER = Logger.getLogger(MongoManager.class.getName());
-    
+
     private final MongoClient mongoClient;
     private final MongoDatabase database;
     private final MongoConfig config;
     private final ExecutorService executorService;
-    
+
     public MongoManager(MongoConfig config) {
         this.config = config;
-        
+
         System.setProperty("io.netty.eventLoopThreads", String.valueOf(config.getIoThreads()));
-        
+
         this.executorService = new ForkJoinPool(
             config.getWorkerThreads(),
             ForkJoinPool.defaultForkJoinWorkerThreadFactory,
             null,
             true
         );
-        
+
         String connectionStr = config.getConnectionString();
         LOGGER.info("MongoManager: Creating client with connection string: " + 
             (connectionStr.contains("@") ? 
                 connectionStr.replaceAll("://[^@]+@", "://***:***@") : 
                 connectionStr));
-        
+
         ConnectionString connectionString = new ConnectionString(connectionStr);
-        
+
         MongoClientSettings settings = MongoClientSettings.builder()
                 .applyConnectionString(connectionString)
                 .applyToConnectionPoolSettings(builder -> {
@@ -70,10 +69,10 @@ public class MongoManager {
                     builder.serverSelectionTimeout(config.getServerSelectionTimeoutMs(), TimeUnit.MILLISECONDS);
                 })
                 .build();
-        
+
         this.mongoClient = MongoClients.create(settings);
         this.database = mongoClient.getDatabase(config.getDatabase());
-        
+
         LOGGER.info("MongoDB connection initialized for database: " + config.getDatabase());
         LOGGER.info("Configured with " + config.getIoThreads() + " I/O threads and " + 
                    config.getWorkerThreads() + " worker threads");
@@ -81,12 +80,12 @@ public class MongoManager {
 
     public CompletableFuture<ConfigDocument> getConfig(String collection) {
         MongoCollection<Document> coll = database.getCollection(collection);
-        
+
         return PublisherAdapter.toCompletableFuture(
             coll.find(Filters.eq("_id", "config")).first()
         ).thenApply(doc -> doc != null ? ConfigDocument.fromDocument(doc) : null);
     }
-    
+
     public CompletableFuture<Void> saveConfig(String collection, ConfigDocument config) {
         MongoCollection<Document> coll = database.getCollection(collection);
         config.updateTimestamp();
@@ -94,7 +93,7 @@ public class MongoManager {
         Document docToSave = config.toDocument();
         docToSave.remove("_id");
         docToSave.put("_id", "config");
-        
+
         return PublisherAdapter.toCompletableFuture(
             coll.replaceOne(
                 Filters.eq("_id", "config"),
@@ -106,19 +105,19 @@ public class MongoManager {
 
     public CompletableFuture<LanguageDocument> getLanguage(String collection, String language) {
         MongoCollection<Document> coll = database.getCollection(collection);
-        
+
         return PublisherAdapter.toCompletableFuture(
             coll.find(Filters.eq("lang", language)).first()
         ).thenApply(doc -> doc != null ? LanguageDocument.fromDocument(doc) : null);
     }
-    
+
     public CompletableFuture<Void> saveLanguage(String collection, LanguageDocument languageDoc) {
         MongoCollection<Document> coll = database.getCollection(collection);
         languageDoc.updateTimestamp();
 
         Document docToSave = languageDoc.toDocument();
         docToSave.remove("_id");
-        
+
         return PublisherAdapter.toCompletableFuture(
             coll.replaceOne(
                 Filters.eq("lang", languageDoc.getLang()),
@@ -133,13 +132,13 @@ public class MongoManager {
             database.listCollectionNames()
         ).thenApply(names -> names.contains(collection));
     }
-    
+
     public CompletableFuture<Void> createCollection(String collection) {
         return PublisherAdapter.toCompletableFutureVoid(
             database.createCollection(collection)
         );
     }
-    
+
     public CompletableFuture<Void> dropCollection(String collection) {
         return PublisherAdapter.toCompletableFutureVoid(
             database.getCollection(collection).drop()
@@ -151,7 +150,7 @@ public class MongoManager {
             database.getCollection(collection).countDocuments()
         );
     }
-    
+
     public CompletableFuture<DeleteResult> deleteDocument(String collection, String id) {
         return PublisherAdapter.toCompletableFuture(
             database.getCollection(collection).deleteOne(Filters.eq("_id", id))
@@ -161,71 +160,87 @@ public class MongoManager {
     public MongoClient getClient() {
         return mongoClient;
     }
-    
+
     public MongoDatabase getDatabase() {
         return database;
     }
-    
+
     public MongoCollection<Document> getCollection(String collection) {
         return database.getCollection(collection);
     }
-    
+
+    public MongoCollection<Document> getReactiveCollection(String collection) {
+        return database.getCollection(collection);
+    }
+
     public MongoCollection<Document> getCollection(String databaseName, String collection) {
         return mongoClient.getDatabase(databaseName).getCollection(collection);
     }
-    
-    /**
-     * Pobiera wszystkie nazwy kolekcji z MongoDB (używa reactive streams)
-     */
+
+    public MongoDatabase getDatabase(String databaseName) {
+        return mongoClient.getDatabase(databaseName);
+    }
+
+    public MongoCollection<Document> getCollectionForType(Class<?> type) {
+        String dbName = xyz.wtje.mongoconfigs.api.core.Annotations.databaseFrom(type);
+        String collName = xyz.wtje.mongoconfigs.api.core.Annotations.collectionFrom(type);
+
+        if (dbName != null) {
+            return mongoClient.getDatabase(dbName).getCollection(collName);
+        } else {
+            return database.getCollection(collName);
+        }
+    }
+
     public java.util.Set<String> getMongoCollections() {
         try {
             if (config.isDebugLogging()) {
-                LOGGER.info("🔍 Starting getMongoCollections() - listing all collections from MongoDB...");
+                LOGGER.info("Starting getMongoCollections() - listing all collections from MongoDB...");
             }
-            
+
             java.util.Set<String> collections = new java.util.HashSet<>();
-            
+
             java.util.List<String> collectionList = PublisherAdapter.toCompletableFutureList(
                 database.listCollectionNames()
             ).join();
-            
+
             collections.addAll(collectionList);
-            
+
             if (config.isDebugLogging()) {
-                LOGGER.info("📋 Found " + collections.size() + " collections in MongoDB: " + collections);
-                
+                LOGGER.info("Found " + collections.size() + " collections in MongoDB: " + collections);
+
                 for (String collection : collections) {
-                    LOGGER.info("📋 Collection: " + collection);
+                    LOGGER.info("Collection: " + collection);
                 }
             }
-            
+
             if (collections.isEmpty() && config.isVerboseLogging()) {
-                LOGGER.warning("⚠️ No collections found in MongoDB! This might indicate:");
-                LOGGER.warning("⚠️ 1. Database is empty");
-                LOGGER.warning("⚠️ 2. Connection issues");
-                LOGGER.warning("⚠️ 3. Wrong database name");
-                LOGGER.warning("⚠️ 4. Collections were not created yet");
+                LOGGER.warning("No collections found in MongoDB! This might indicate:");
+                LOGGER.warning("1. Database is empty");
+                LOGGER.warning("2. Connection issues");
+                LOGGER.warning("3. Wrong database name");
+                LOGGER.warning("4. Collections were not created yet");
             }
-            
+
             return collections;
-            
+
         } catch (Exception e) {
-            LOGGER.warning("❌ Error listing MongoDB collections: " + e.getMessage());
+            LOGGER.warning("Error listing MongoDB collections: " + e.getMessage());
             if (config.isDebugLogging()) {
-                LOGGER.log(java.util.logging.Level.WARNING, "❌ Exception details: ", e);
+                LOGGER.log(java.util.logging.Level.WARNING, "Exception details: ", e);
             }
             return java.util.Set.of();
         }
     }
-    
+
     public ExecutorService getExecutorService() {
         return executorService;
     }
-    
+
     public int getConfiguredIoThreads() {
         return config.getIoThreads();
     }
-    
+
     public int getConfiguredWorkerThreads() {
         return config.getWorkerThreads();
     }
@@ -235,7 +250,7 @@ public class MongoManager {
             mongoClient.close();
             LOGGER.info("MongoDB connection closed");
         }
-        
+
         if (executorService != null && !executorService.isShutdown()) {
             executorService.shutdown();
             try {
