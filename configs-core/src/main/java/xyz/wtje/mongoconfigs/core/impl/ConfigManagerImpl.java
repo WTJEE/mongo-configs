@@ -847,7 +847,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
 
     public <T> CompletableFuture<T> getConfigAsync(String collection, String key, T defaultValue) {
-        return CompletableFuture.supplyAsync(() -> cacheManager.get(collection + ":" + key, defaultValue), asyncExecutor);
+        return cacheManager.getAsync(collection + ":" + key, defaultValue);
     }
 
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
