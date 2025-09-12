@@ -44,7 +44,6 @@
 ### Tutorials
 - [[Creating-GUI-Components|Creating GUI Components]]
 - [[Multilingual-Support|Multilingual Support]]
-- [[Performance-Optimization|Performance Optimization]]
 - [[Change-Streams-Tutorial|Change Streams Tutorial]]
 - [[Translation-Examples|Translation Examples]]
 
@@ -67,19 +66,4 @@
 ### Operations
 - [[Performance-Tips|Performance Tips]]
 - [[Monitoring]]
-- [[Troubleshooting]]
 - [[Security-Guidelines|Security Guidelines]]
-
-## 📋 Reference
-
-### Best Practices
-- [[Best-Practices|Best Practices]]
-- [[Performance-Optimization|Performance Guidelines]]
-- [[Migration-Guide|Migration Guide]]
-
-## ❓ Help & Support
-
-- [[Help-&-FAQ|Help & FAQ]]
-- [[Troubleshooting]]
-- [[Contributing]]
-- [[Changelog]]
