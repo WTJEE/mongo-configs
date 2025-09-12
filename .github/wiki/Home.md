@@ -25,22 +25,20 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 - **[[ConfigManager API]]** - Core configuration management methods
 - **[[LanguageManager API]]** - Multilingual support and player language management
 - **[[Messages API]]** - Working with multilingual messages
-- **[[MongoDB Integration]]** - Direct MongoDB operations and advanced features
+- **[[MongoDB-Setup|MongoDB Setup]]** - Direct MongoDB operations and advanced features
 
 ### 💡 **Practical Examples**
-- **[[Example Usage]]** - Real-world examples and use cases
-- **[[GUI Development]]** - Creating multilingual GUIs
+- **[[Shop-Plugin-Example|Shop Plugin Example]]** - Real-world examples and use cases
+- **[[Creating-GUI-Components|GUI Development]]** - Creating multilingual GUIs
 - **[[Translation Examples]]** - Complete multilingual implementation guide
 - **[[Plugin Integration]]** - How to integrate with your plugin
 - **[[Performance Tips]]** - Optimization and best practices
 
 ### 🔧 **Advanced Topics**
 - **[[Hot Reload System]]** - Dynamic configuration reloading
-- **[[Multi-Server Setup]]** - Change Streams and synchronization
-- **[[Change Streams Tutorial]]** - Complete real-time synchronization guide
+- **[[Multi-Server-Architecture|Multi-Server Setup]]** - Change Streams and synchronization
 - **[[Multi-Server Architecture]]** - Advanced multi-server setup and management
 - **[[Error Handling]]** - Robust error management
-- **[[Troubleshooting]]** - Common issues and solutions
 
 ## � **Featured Examples**
 

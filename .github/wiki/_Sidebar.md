@@ -30,7 +30,6 @@
 
 - [[MongoDB-Setup|MongoDB Setup]]
 - [[Connection-Configuration|Connection Configuration]]
-- [[Change-Streams-Tutorial|Change Streams]]
 - [[Multi-Server-Architecture|Multi-Server Architecture]]
 
 ## 💡 Examples & Tutorials
@@ -44,16 +43,7 @@
 ### Tutorials
 - [[Creating-GUI-Components|Creating GUI Components]]
 - [[Multilingual-Support|Multilingual Support]]
-- [[Change-Streams-Tutorial|Change Streams Tutorial]]
 - [[Translation-Examples|Translation Examples]]
-
-## 🌍 Language System
-
-### Language Management
-- [[Language-Selection-GUI|Language Selection GUI]]
-- [[Player-Language-Storage|Player Language Storage]]
-- [[Message-Translation|Message Translation]]
-- [[Language-Commands|Language Commands]]
 
 ## 🛠️ Advanced Topics
 
