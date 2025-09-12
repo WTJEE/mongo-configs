@@ -32,7 +32,6 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 - **[[Creating-GUI-Components|GUI Development]]** - Creating multilingual GUIs
 - **[[Translation Examples]]** - Complete multilingual implementation guide
 - **[[Plugin Integration]]** - How to integrate with your plugin
-- **[[Performance Tips]]** - Optimization and best practices
 
 ### 🔧 **Advanced Topics**
 - **[[Hot Reload System]]** - Dynamic configuration reloading
@@ -169,27 +168,6 @@ public class MyPlugin extends JavaPlugin {
 │   • Collections  • Documents  • Indexes  • Change Streams  │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-## 🌍 **Supported Languages**
-
-| Language | Code | Native Name | Status |
-|----------|------|-------------|--------|
-| 🇬🇧 English | `en` | English | ✅ Complete |
-| 🇵🇱 Polish | `pl` | Polski | ✅ Complete |
-| 🇩🇪 German | `de` | Deutsch | ✅ Complete |
-| 🇫🇷 French | `fr` | Français | ✅ Complete |
-| 🇪🇸 Spanish | `es` | Español | ✅ Complete |
-| 🇮🇹 Italian | `it` | Italiano | 🚧 Planned |
-| 🇷🇺 Russian | `ru` | Русский | 🚧 Planned |
-| 🇨🇳 Chinese | `zh` | 中文 | 🚧 Planned |
-
-## 📊 **Performance Metrics**
-
-- **Load Time**: < 5ms (cached), < 50ms (first load)
-- **Save Time**: < 3ms (async)
-- **Memory Usage**: 70% less than YAML configs
-- **Cache Hit Rate**: > 95% for active configurations
-- **Multi-Server Sync**: < 100ms global propagation
 
 ## 🔗 **Quick Links**
 

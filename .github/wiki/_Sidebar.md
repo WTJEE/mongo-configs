@@ -53,7 +53,3 @@
 - [[Error-Handling|Error Handling]]
 - [[Async-Operations|Async Operations]]
 
-### Operations
-- [[Performance-Tips|Performance Tips]]
-- [[Monitoring]]
-- [[Security-Guidelines|Security Guidelines]]
