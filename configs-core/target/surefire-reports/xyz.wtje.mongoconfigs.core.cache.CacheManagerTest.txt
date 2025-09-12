@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: xyz.wtje.mongoconfigs.core.cache.CacheManagerTest
+-------------------------------------------------------------------------------
+Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.062 s -- in xyz.wtje.mongoconfigs.core.cache.CacheManagerTest
