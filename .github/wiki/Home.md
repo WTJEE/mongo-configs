@@ -30,15 +30,6 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 ### 📝 **Annotations**
 - **[[Annotations Reference]]** - Complete guide to all annotations
 
-### 💡 **Practical Examples**
-- **[[Shop-Plugin-Example|Shop Plugin Example]]** - Real-world examples and use cases
-- **[[Economy-System-Example|Economy System Example]]** - Advanced economy system
-- **[[Parkour-Plugin-Example|Parkour Plugin Example]]** - Parkour system with leaderboards
-- **[[Home-System-Example|Home System Example]]** - Home management system
-- **[[Creating-GUI-Components|Creating GUI Components]]** - GUI tutorial
-- **[[Multilingual-Support|Multilingual Support]]** - Complete multilingual guide
-- **[[Translation Examples]]** - Complete multilingual implementation guide
-
 ## � **Featured Examples**
 
 ### 🎨 **Multilingual GUI Creation**

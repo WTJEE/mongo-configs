@@ -24,16 +24,3 @@
 ### Annotations
 - [[Annotations-Reference|Annotations Reference]]
 
-## 💡 Examples & Tutorials
-
-### Complete Examples
-- [[Shop-Plugin-Example|Shop Plugin Example]]
-- [[Economy-System-Example|Economy System Example]]
-- [[Parkour-Plugin-Example|Parkour Plugin Example]]
-- [[Home-System-Example|Home System Example]]
-
-### Tutorials
-- [[Creating-GUI-Components|Creating GUI Components]]
-- [[Multilingual-Support|Multilingual Support]]
-- [[Translation-Examples|Translation Examples]]
-

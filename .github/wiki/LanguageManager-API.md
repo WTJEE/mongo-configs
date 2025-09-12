@@ -16,7 +16,7 @@ LanguageManager lm = MongoConfigsAPI.getLanguageManager();
 ### Setting Player Language
 
 #### `setPlayerLanguage(String playerId, String language)`
-Sets the language preference for a specific player.
+Sets the language preference for a specific player (synchronous).
 
 ```java
 // Set player language
@@ -34,10 +34,27 @@ if (lm.isLanguageSupported("fr")) {
 }
 ```
 
-#### Async Language Setting
+#### `setPlayerLanguage(UUID playerId, String language)`
+Sets the language preference for a specific player using UUID (asynchronous).
 
 ```java
-// Async language setting
+// Async language setting with UUID
+CompletableFuture<Void> languageFuture = lm.setPlayerLanguage(player.getUniqueId(), "de");
+
+languageFuture.thenRun(() -> {
+    player.sendMessage("§a✅ Language updated successfully!");
+}).exceptionally(error -> {
+    player.sendMessage("§c❌ Failed to update language: " + error.getMessage());
+    return null;
+});
+```
+
+#### `setPlayerLanguageAsync(String playerId, String language)`
+Sets the language preference for a specific player asynchronously using String ID.
+
+```java
+// Async language setting with String ID
+String playerId = player.getUniqueId().toString();
 CompletableFuture<Void> languageFuture = lm.setPlayerLanguageAsync(playerId, "de");
 
 languageFuture.thenRun(() -> {
@@ -133,7 +150,7 @@ public class PlayerLanguageManager {
 
 ---
 
-## 🌍 Global Language Management
+## 🌍 Language Information
 
 ### Default Language
 
@@ -159,53 +176,8 @@ public void onPlayerJoin(PlayerJoinEvent event) {
         // Welcome message in default language
         Messages messages = MongoConfigsAPI.getConfigManager().messagesOf(GuiMessages.class);
         String welcomeMsg = messages.get(defaultLang, "welcome.first_join", player.getName());
-        player.sendMessage(ColorHelper.parseComponent(welcomeMsg));
+        player.sendMessage(welcomeMsg);
     }
-}
-```
-
-#### `setDefaultLanguage(String language)`
-Sets the server's default language.
-
-```java
-// Set new default language
-lm.setDefaultLanguage("en");
-getLogger().info("Default language changed to English");
-
-// Admin command for changing default language
-@Override
-public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-    if (!sender.hasPermission("mongoconfigs.admin.setdefaultlang")) {
-        sender.sendMessage("§c❌ No permission!");
-        return true;
-    }
-    
-    if (args.length != 1) {
-        sender.sendMessage("§c❌ Usage: /setdefaultlang <language>");
-        return true;
-    }
-    
-    String newDefaultLang = args[0].toLowerCase();
-    
-    if (!lm.isLanguageSupported(newDefaultLang)) {
-        sender.sendMessage("§c❌ Language '" + newDefaultLang + "' is not supported!");
-        return true;
-    }
-    
-    lm.setDefaultLanguage(newDefaultLang);
-    sender.sendMessage("§a✅ Default language set to: " + newDefaultLang);
-    
-    // Broadcast to all players
-    for (Player player : Bukkit.getOnlinePlayers()) {
-        String playerId = player.getUniqueId().toString();
-        String playerLang = lm.getPlayerLanguageOrDefault(playerId);
-        
-        Messages messages = MongoConfigsAPI.getConfigManager().messagesOf(GuiMessages.class);
-        String message = messages.get(playerLang, "admin.default_language_changed", newDefaultLang);
-        player.sendMessage(ColorHelper.parseComponent(message));
-    }
-    
-    return true;
 }
 ```
 
@@ -216,27 +188,27 @@ Gets all languages supported by the server.
 
 ```java
 // Get all supported languages
-Set<String> supportedLanguages = lm.getSupportedLanguages();
+String[] supportedLanguages = lm.getSupportedLanguages();  // Returns String[] not Set<String>
 
 getLogger().info("Supported languages: " + String.join(", ", supportedLanguages));
 
 // Display in GUI
 public void showLanguageSelection(Player player) {
-    Set<String> languages = lm.getSupportedLanguages();
+    String[] languages = lm.getSupportedLanguages();
     
-    if (languages.isEmpty()) {
+    if (languages.length == 0) {
         player.sendMessage("§c❌ No languages configured!");
         return;
     }
     
-    if (languages.size() == 1) {
-        player.sendMessage("§e⚠️ Only one language available: " + languages.iterator().next());
+    if (languages.length == 1) {
+        player.sendMessage("§e⚠️ Only one language available: " + languages[0]);
         return;
     }
     
     // Open language selection GUI
-    LanguageSelectionGUI gui = new LanguageSelectionGUI();
-    gui.open(player);
+    LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
+    gui.open();
 }
 ```
 
