@@ -1,0 +1,13 @@
+xyz\wtje\mongoconfigs\api\core\MongoConfig.class
+xyz\wtje\mongoconfigs\api\annotations\ConfigsDatabase.class
+xyz\wtje\mongoconfigs\api\ConfigCollectionsOps.class
+xyz\wtje\mongoconfigs\api\core\MongoConfigFile.class
+xyz\wtje\mongoconfigs\api\core\MongoMessages.class
+xyz\wtje\mongoconfigs\api\LanguageManager.class
+xyz\wtje\mongoconfigs\api\MongoConfigsAPI.class
+xyz\wtje\mongoconfigs\api\annotations\SupportedLanguages.class
+xyz\wtje\mongoconfigs\api\annotations\ConfigsCollection.class
+xyz\wtje\mongoconfigs\api\ConfigManager.class
+xyz\wtje\mongoconfigs\api\annotations\ConfigsFileProperties.class
+xyz\wtje\mongoconfigs\api\Messages.class
+xyz\wtje\mongoconfigs\api\core\Annotations.class

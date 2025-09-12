@@ -41,21 +41,36 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.player = player;
         this.languageManager = languageManager;
         this.config = config;
+        
         this.inventory = Bukkit.createInventory(this, config.getGuiSize(),
             ColorHelper.parseComponent(config.getGuiTitle()));
-
     }    public void open() {
-        buildInventoryAsync().thenAccept(builtInventory -> {
-            Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                for (int i = 0; i < builtInventory.getSize(); i++) {
-                    ItemStack item = builtInventory.getItem(i);
-                    if (item != null) {
-                        inventory.setItem(i, item);
+        try {
+            buildInventoryAsync().thenAccept(builtInventory -> {
+                Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    try {
+                        for (int i = 0; i < builtInventory.getSize(); i++) {
+                            ItemStack item = builtInventory.getItem(i);
+                            if (item != null) {
+                                inventory.setItem(i, item);
+                            }
+                        }
+                        player.openInventory(inventory);
+                    } catch (Exception e) {
+                        player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
+                        // Fallback to simple method
+                        openSimple();
                     }
-                }
-                player.openInventory(inventory);
+                });
+            }).exceptionally(throwable -> {
+                player.sendMessage("§6[INFO] Using simplified GUI mode");
+                Bukkit.getScheduler().runTask(getPlugin(), this::openSimple);
+                return null;
             });
-        });
+        } catch (Exception e) {
+            player.sendMessage("§6[INFO] Using simplified GUI mode");
+            openSimple();
+        }
     }
 
     private CompletableFuture<Inventory> buildInventoryAsync() {
@@ -377,6 +392,32 @@ public class LanguageSelectionGUI implements InventoryHolder {
             case "es" -> Material.ORANGE_WOOL;
             default -> Material.GRAY_WOOL;
         };
+    }
+
+    public void openSimple() {
+        try {
+            String[] supportedLanguages = languageManager.getSupportedLanguages();
+            String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+
+            int slot = config.getGuiStartSlot();
+
+            for (String language : supportedLanguages) {
+                ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
+                inventory.setItem(slot, item);
+                slot++;
+
+                if (slot % 9 == 8) {
+                    slot += 2;
+                }
+            }
+
+            ItemStack closeButton = createCloseButton();
+            inventory.setItem(config.getCloseButtonSlot(), closeButton);
+            
+            player.openInventory(inventory);
+        } catch (Exception e) {
+            player.sendMessage("§c[ERROR] Failed to open simple GUI: " + e.getMessage());
+        }
     }
 
     public static void clearCache() {

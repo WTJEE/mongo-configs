@@ -1,0 +1,34 @@
+name: Sync to GitHub Wiki
+on:
+  push:
+    branches: [ main ]
+    paths: [ "wiki/**" ]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Clone Wiki repo
+        run: |
+          git clone "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git" wiki-repo
+
+      - name: Sync wiki/ -> wiki repo
+        run: |
+          rsync -av --delete wiki/ wiki-repo/
+          cd wiki-repo
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Sync wiki from $GITHUB_SHA"
+            # Niektóre wiki używają 'master', inne 'main':
+            git push origin main || git push origin master
+          else
+            echo "No changes to sync."
+          fi

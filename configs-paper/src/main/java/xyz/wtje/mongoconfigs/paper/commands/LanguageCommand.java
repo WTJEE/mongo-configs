@@ -33,10 +33,28 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String playerLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+        // Check if languageManager is null
+        if (languageManager == null) {
+            player.sendMessage("§c[ERROR] LanguageManager is not initialized!");
+            return true;
+        }
+
+        String playerLanguage;
+        try {
+            playerLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+        } catch (Exception e) {
+            player.sendMessage("§c[ERROR] Failed to get player language: " + e.getMessage());
+            playerLanguage = "en"; // fallback
+        }
 
         if (args.length == 0) {
-            openLanguageGUI(player);
+            try {
+                openLanguageGUI(player);
+            } catch (Exception e) {
+                player.sendMessage("§c[ERROR] Failed to open GUI: " + e.getMessage());
+                // Fallback: show available languages in chat
+                showLanguageInfo(player, player.getUniqueId().toString());
+            }
             return true;
         }
 
@@ -124,7 +142,20 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     }
 
     private void openLanguageGUI(Player player) {
-        LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
-        gui.open();
+        try {
+            LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
+            
+            // Try async first, with simple fallback
+            try {
+                gui.open();
+            } catch (Exception asyncError) {
+                player.sendMessage("§6[INFO] Using simplified GUI mode");
+                gui.openSimple();
+            }
+        } catch (Exception e) {
+            player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
+            // Fallback: show available languages in chat
+            showLanguageInfo(player, player.getUniqueId().toString());
+        }
     }
 }
