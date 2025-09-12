@@ -1,36 +1,49 @@
-name: Sync to GitHub Wiki
+name: Sync wiki from .github/wiki
+
 on:
   push:
-    branches: [ main ]
-    paths: [ ".github/wiki/**" ]
+    paths:
+      - ".github/wiki/**"
   workflow_dispatch:
 
+# kluczowe: zezwól na zapis, inaczej będzie 403
+permissions:
+  contents: write
+
 jobs:
-  sync:
+  sync-wiki:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source repo
+        uses: actions/checkout@v4
 
-      - name: Configure Git identity
-        run: |
-          git config --global user.name "${{ github.actor }}"
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+      # Klonujemy *wiki* jako osobne repo do folderu wiki-repo
+      # to od razu da Ci właściwy branch `master` dla wiki
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki-repo
+          # domyślny GITHUB_TOKEN wystarczy dla tego samego repo;
+          # gdybyś pchał do innego repo/wiki, podmień na PAT:
+          # token: ${{ secrets.WIKI_TOKEN }}
 
-      - name: Clone Wiki repo
+      - name: Sync files into wiki working tree
         run: |
-          git clone "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git" wiki-repo
+          rsync -av --delete --exclude '.git/' .github/wiki/ wiki-repo/
 
-      - name: Sync .github/wiki/ -> wiki repo
+      - name: Commit & push (to wiki/master)
+        working-directory: wiki-repo
+        shell: bash
         run: |
-          rsync -av --delete .github/wiki/ wiki-repo/
-          cd wiki-repo
-          if [ -n "$(git status --porcelain)" ]; then
-            git add .
+          git config user.name  "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git add -A
             git commit -m "Sync wiki from $GITHUB_SHA"
-            # Set the correct remote for wiki repo
-            git remote set-url origin "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
-            # Niektóre wiki używają 'master', inne 'main':
-            git push origin main || git push origin master
+            # wiki używa 'master' — pchamy aktualną HEAD na master
+            git push origin HEAD:master
           else
-            echo "No changes to sync."
+            echo "No changes to commit."
           fi
