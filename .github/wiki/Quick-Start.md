@@ -32,11 +32,10 @@ public class MyPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Initialize MongoDB Configs API
-        MongoConfigsAPI.initialize(this);
-
-        // That's it! API is ready to use
-        getLogger().info("MongoDB Configs API initialized!");
+        // MongoDB Configs API is automatically initialized by the plugin
+        // No manual initialization needed!
+        
+        getLogger().info("Plugin ready - MongoDB Configs API available!");
     }
 }
 ```
@@ -129,12 +128,15 @@ config.save(); // Instantly available on all servers!
 ### Multilingual Support
 
 ```java
-// Automatic language detection and translation
+// Manual language detection and translation
 LanguageManager lm = MongoConfigsAPI.getLanguageManager();
-String playerLang = lm.getPlayerLanguage(player);
+String playerLang = lm.getPlayerLanguage(player.getUniqueId().toString());
+if (playerLang == null) {
+    playerLang = lm.getDefaultLanguage();
+}
 
 Messages messages = cm.loadObject(Messages.class);
-String welcomeMsg = messages.getWelcome(); // Automatically translated
+String welcomeMsg = messages.get(playerLang, "welcome"); // Get message in player's language
 ```
 
 ## Next Steps
@@ -148,11 +150,13 @@ String welcomeMsg = messages.getWelcome(); // Automatically translated
 
 ### Common Issues
 
-**API not initializing:**
+**API not available:**
 ```java
-// Make sure MongoDB is running
-// Check your connection string in config.yml
-MongoConfigsAPI.initialize(this);
+// Make sure the MongoDB Configs plugin is installed and loaded
+// The API is automatically initialized by the plugin
+if (!MongoConfigsAPI.isInitialized()) {
+    getLogger().warning("MongoDB Configs API not available!");
+}
 ```
 
 **Configuration not loading:**
@@ -167,9 +171,9 @@ public class YourConfig extends MongoConfig<YourConfig> {
 
 **Messages not translating:**
 ```java
-// Ensure LanguageManager is properly initialized
+// Ensure LanguageManager is properly available
 LanguageManager lm = MongoConfigsAPI.getLanguageManager();
-lm.setPlayerLanguage(player, "pl"); // Set player language
+lm.setPlayerLanguage(player.getUniqueId().toString(), "pl"); // Set player language
 ```
 
 ---

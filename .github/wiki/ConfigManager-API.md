@@ -472,7 +472,6 @@ public class ConfigurationFactory {
     
     public <T> T getFreshConfig(Class<T> configClass) {
         configCache.remove(configClass);
-        cm.evictFromCache(configClass);
         T config = cm.loadObject(configClass);
         configCache.put(configClass, config);
         return config;
@@ -480,7 +479,6 @@ public class ConfigurationFactory {
     
     public void refreshAll() {
         configCache.clear();
-        cm.invalidateCache();
     }
 }
 ```
@@ -682,7 +680,6 @@ public class OptimizedConfigAccess {
     
     public void refreshCache() {
         localCache.clear();
-        cm.invalidateCache();
     }
 }
 ```

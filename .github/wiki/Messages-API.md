@@ -73,7 +73,10 @@ public class MessageExamples {
     
     public void sendPlayerWelcome(Player player) {
         String playerId = player.getUniqueId().toString();
-        String language = languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        if (language == null) {
+            language = languageManager.getDefaultLanguage();
+        }
         
         // Get player stats for placeholders
         int level = getPlayerLevel(player);
@@ -94,7 +97,10 @@ public class MessageExamples {
     
     public void sendShopTransaction(Player player, String itemName, int amount, int price, String currency) {
         String playerId = player.getUniqueId().toString();
-        String language = languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        if (language == null) {
+            language = languageManager.getDefaultLanguage();
+        }
         
         // Shop purchase confirmation
         String message = shopMessages.get(language, "shop.purchase.detailed",
@@ -110,7 +116,10 @@ public class MessageExamples {
     
     public void sendTimeBasedGreeting(Player player) {
         String playerId = player.getUniqueId().toString();
-        String language = languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        if (language == null) {
+            language = languageManager.getDefaultLanguage();
+        }
         
         // Get current time
         LocalTime currentTime = LocalTime.now();
@@ -236,7 +245,8 @@ public class PlayerMessageHelper {
     
     private String getPlayerLanguage(Player player) {
         String playerId = player.getUniqueId().toString();
-        return languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        return language != null ? language : languageManager.getDefaultLanguage();
     }
 }
 ```
@@ -336,7 +346,8 @@ public class MultilingualShopGUI {
     
     private String getPlayerLanguage(Player player) {
         String playerId = player.getUniqueId().toString();
-        return languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        return language != null ? language : languageManager.getDefaultLanguage();
     }
 }
 ```
@@ -402,7 +413,8 @@ public class RichMessageFormatter {
     
     private String getPlayerLanguage(Player player) {
         String playerId = player.getUniqueId().toString();
-        return languageManager.getPlayerLanguageOrDefault(playerId);
+        String language = languageManager.getPlayerLanguage(playerId);
+        return language != null ? language : languageManager.getDefaultLanguage();
     }
 }
 
@@ -662,7 +674,10 @@ public class SafeMessageRetrieval {
     
     public String getSafeMessage(Player player, String key, Object... args) {
         try {
-            String language = languageManager.getPlayerLanguageOrDefault(player.getUniqueId().toString());
+            String language = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+            if (language == null) {
+                language = languageManager.getDefaultLanguage();
+            }
             return messages.get(language, key, args);
         } catch (Exception e) {
             getLogger().warning("Failed to get message for key: " + key + " - " + e.getMessage());
@@ -672,7 +687,10 @@ public class SafeMessageRetrieval {
     
     public String getSafeMessageWithFallback(Player player, String key, String fallback, Object... args) {
         try {
-            String language = languageManager.getPlayerLanguageOrDefault(player.getUniqueId().toString());
+            String language = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+            if (language == null) {
+                language = languageManager.getDefaultLanguage();
+            }
             String message = messages.get(language, key, args);
             
             // Check if message retrieval failed
@@ -699,7 +717,10 @@ public class CachedMessageProvider {
     private final Map<String, String> messageCache = new ConcurrentHashMap<>();
     
     public String getCachedMessage(Player player, String key, Object... args) {
-        String language = languageManager.getPlayerLanguageOrDefault(player.getUniqueId().toString());
+        String language = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+        if (language == null) {
+            language = languageManager.getDefaultLanguage();
+        }
         
         // Create cache key (without args for non-parameterized messages)
         String cacheKey = language + ":" + key;

@@ -1,4 +1,12 @@
-# MongoDB Configs API - Developer Wiki
+# MongoDB Configs API - Devel### 📝 **Annotations**
+- **[[Annotations Reference]]** - Complete guide to all annotations
+
+## 📚 **Examples**
+
+### 🎮 **Complete Working Examples**
+- **[[Help-System-Example|Help System Example]]** - Multilingual `/pomoc` command with GUI
+
+## ⚡ **Featured Examples** Wiki
 
 > **Advanced MongoDB configuration and translation management library for Minecraft servers**
 

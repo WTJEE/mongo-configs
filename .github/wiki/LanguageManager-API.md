@@ -84,15 +84,18 @@ if (playerLang != null) {
 }
 ```
 
-#### `getPlayerLanguageOrDefault(String playerId)`
-Gets player language or returns the default if not set.
+#### Helper Method for Default Fallback
+Since there's no built-in `getPlayerLanguageOrDefault()` method, you need to handle null values manually:
 
 ```java
-// Get with automatic fallback to default
+// Manual fallback to default
 String playerId = player.getUniqueId().toString();
-String language = lm.getPlayerLanguageOrDefault(playerId);
+String language = lm.getPlayerLanguage(playerId);
+if (language == null) {
+    language = lm.getDefaultLanguage();
+}
 
-// This will never return null - always returns a valid language
+// Always returns a valid language
 getLogger().info("Player language: " + language);
 ```
 
@@ -127,7 +130,10 @@ public class PlayerLanguageManager {
         // Get all online players and their languages
         for (Player player : Bukkit.getOnlinePlayers()) {
             String playerId = player.getUniqueId().toString();
-            String language = lm.getPlayerLanguageOrDefault(playerId);
+            String language = lm.getPlayerLanguage(playerId);
+            if (language == null) {
+                language = lm.getDefaultLanguage();
+            }
             stats.merge(language, 1, Integer::sum);
         }
         
@@ -188,7 +194,7 @@ Gets all languages supported by the server.
 
 ```java
 // Get all supported languages
-String[] supportedLanguages = lm.getSupportedLanguages();  // Returns String[] not Set<String>
+String[] supportedLanguages = lm.getSupportedLanguages();  // Returns String[]
 
 getLogger().info("Supported languages: " + String.join(", ", supportedLanguages));
 
@@ -206,9 +212,8 @@ public void showLanguageSelection(Player player) {
         return;
     }
     
-    // Open language selection GUI
-    LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
-    gui.open();
+    // You would need to create your own language selection GUI
+    // The LanguageSelectionGUI class is implementation-specific
 }
 ```
 
@@ -222,7 +227,7 @@ public boolean setPlayerLanguageSafely(Player player, String language) {
         player.sendMessage("§c❌ Language '" + language + "' is not supported!");
         
         // Show available languages
-        Set<String> supported = lm.getSupportedLanguages();
+        String[] supported = lm.getSupportedLanguages();
         player.sendMessage("§e📋 Available languages: " + String.join(", ", supported));
         return false;
     }
@@ -245,7 +250,7 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
         sender.sendMessage("§c❌ Usage: /setlang <language>");
         
         // Show supported languages
-        Set<String> supported = lm.getSupportedLanguages();
+        String[] supported = lm.getSupportedLanguages();
         sender.sendMessage("§e📋 Available: " + String.join(", ", supported));
         return true;
     }
@@ -255,285 +260,21 @@ public boolean onCommand(CommandSender sender, Command command, String label, St
 }
 ```
 
-#### `addSupportedLanguage(String language)`
-Adds a new supported language.
+### Language Support Information
 
-```java
-// Add new language support
-lm.addSupportedLanguage("fr");  // French
-lm.addSupportedLanguage("de");  // German
-lm.addSupportedLanguage("jp");  // Japanese
+**Note:** The current API only provides read-only access to supported languages. Language configuration is managed server-side through configuration files.
 
-getLogger().info("Added support for new languages");
 
-// Dynamic language addition
-public void addLanguageWithValidation(String language, CommandSender sender) {
-    if (lm.isLanguageSupported(language)) {
-        sender.sendMessage("§e⚠️ Language '" + language + "' is already supported!");
-        return;
-    }
-    
-    // Validate language code format
-    if (!language.matches("^[a-z]{2}$")) {
-        sender.sendMessage("§c❌ Invalid language code! Use 2-letter codes like 'en', 'pl', 'fr'");
-        return;
-    }
-    
-    lm.addSupportedLanguage(language);
-    sender.sendMessage("§a✅ Added support for language: " + language);
-    
-    // Broadcast to admins
-    for (Player player : Bukkit.getOnlinePlayers()) {
-        if (player.hasPermission("mongoconfigs.admin.notify")) {
-            player.sendMessage("§a📢 New language added: " + language);
-        }
-    }
-}
-```
-
-#### `removeSupportedLanguage(String language)`
-Removes a supported language.
-
-```java
-// Remove language support
-boolean removed = lm.removeSupportedLanguage("de");
-
-if (removed) {
-    getLogger().info("Removed support for German");
-    
-    // Handle players using this language
-    String defaultLang = lm.getDefaultLanguage();
-    for (Player player : Bukkit.getOnlinePlayers()) {
-        String playerId = player.getUniqueId().toString();
-        String playerLang = lm.getPlayerLanguage(playerId);
-        
-        if ("de".equals(playerLang)) {
-            lm.setPlayerLanguage(playerId, defaultLang);
-            player.sendMessage("§e⚠️ Your language was changed to " + defaultLang + " (German support removed)");
-        }
-    }
-} else {
-    getLogger().warning("Failed to remove language support for German");
-}
-```
 
 ---
 
-## 📊 Language Configuration Management
 
-### `getLanguageConfiguration()`
-Gets the current language configuration object.
 
-```java
-// Get language configuration
-LanguageConfiguration config = lm.getLanguageConfiguration();
 
-if (config != null) {
-    getLogger().info("Default language: " + config.getDefaultLanguage());
-    getLogger().info("Supported languages: " + config.getSupportedLanguages());
-    getLogger().info("Auto-detect enabled: " + config.isAutoDetectEnabled());
-} else {
-    getLogger().warning("Language configuration not loaded!");
-}
-```
-
-### `setLanguageConfiguration(LanguageConfiguration config)`
-Updates the language configuration.
-
-```java
-// Update language configuration
-LanguageConfiguration config = lm.getLanguageConfiguration();
-
-if (config != null) {
-    // Modify configuration
-    config.setDefaultLanguage("en");
-    config.getSupportedLanguages().add("fr");
-    config.getSupportedLanguages().add("de");
-    config.setAutoDetectEnabled(true);
-    
-    // Save changes
-    lm.setLanguageConfiguration(config);
-    getLogger().info("Language configuration updated");
-}
-
-// Create new configuration
-LanguageConfiguration newConfig = new LanguageConfiguration();
-newConfig.setDefaultLanguage("en");
-newConfig.setSupportedLanguages(Set.of("en", "pl", "fr", "de", "es"));
-newConfig.setAutoDetectEnabled(false);
-
-lm.setLanguageConfiguration(newConfig);
-```
-
-### Advanced Configuration Management
-
-```java
-public class LanguageConfigManager {
-    
-    private final LanguageManager lm;
-    
-    public LanguageConfigManager() {
-        this.lm = MongoConfigsAPI.getLanguageManager();
-    }
-    
-    public void initializeDefaultConfiguration() {
-        LanguageConfiguration config = new LanguageConfiguration();
-        
-        // Set default language
-        config.setDefaultLanguage("en");
-        
-        // Add commonly supported languages
-        Set<String> languages = new HashSet<>();
-        languages.add("en");  // English
-        languages.add("pl");  // Polish
-        languages.add("es");  // Spanish
-        languages.add("fr");  // French
-        languages.add("de");  // German
-        config.setSupportedLanguages(languages);
-        
-        // Enable auto-detection based on client locale
-        config.setAutoDetectEnabled(true);
-        
-        lm.setLanguageConfiguration(config);
-        getLogger().info("Initialized default language configuration");
-    }
-    
-    public void addLanguagePackage(String language, String displayName, boolean setAsDefault) {
-        LanguageConfiguration config = lm.getLanguageConfiguration();
-        
-        if (config == null) {
-            initializeDefaultConfiguration();
-            config = lm.getLanguageConfiguration();
-        }
-        
-        // Add to supported languages
-        config.getSupportedLanguages().add(language);
-        
-        // Set as default if requested
-        if (setAsDefault) {
-            config.setDefaultLanguage(language);
-        }
-        
-        lm.setLanguageConfiguration(config);
-        
-        getLogger().info("Added language package: " + displayName + " (" + language + ")");
-        
-        // Broadcast to online admins
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.hasPermission("mongoconfigs.admin.notify")) {
-                player.sendMessage("§a📦 New language package: " + displayName);
-            }
-        }
-    }
-    
-    public void removeLanguagePackage(String language) {
-        if (lm.getDefaultLanguage().equals(language)) {
-            getLogger().warning("Cannot remove default language: " + language);
-            return;
-        }
-        
-        LanguageConfiguration config = lm.getLanguageConfiguration();
-        if (config != null && config.getSupportedLanguages().remove(language)) {
-            lm.setLanguageConfiguration(config);
-            
-            // Migrate affected players
-            migratePlayersFromLanguage(language);
-            
-            getLogger().info("Removed language package: " + language);
-        }
-    }
-    
-    private void migratePlayersFromLanguage(String removedLanguage) {
-        String defaultLang = lm.getDefaultLanguage();
-        
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            String playerId = player.getUniqueId().toString();
-            String playerLang = lm.getPlayerLanguage(playerId);
-            
-            if (removedLanguage.equals(playerLang)) {
-                lm.setPlayerLanguageAsync(playerId, defaultLang)
-                    .thenRun(() -> {
-                        player.sendMessage("§e⚠️ Your language was changed to " + defaultLang + 
-                            " (support for " + removedLanguage + " was removed)");
-                    });
-            }
-        }
-    }
-    
-    public void performConfigurationHealthCheck() {
-        LanguageConfiguration config = lm.getLanguageConfiguration();
-        
-        if (config == null) {
-            getLogger().warning("❌ Language configuration is null!");
-            return;
-        }
-        
-        // Check default language
-        String defaultLang = config.getDefaultLanguage();
-        if (defaultLang == null || defaultLang.trim().isEmpty()) {
-            getLogger().warning("❌ Default language is not set!");
-        } else if (!config.getSupportedLanguages().contains(defaultLang)) {
-            getLogger().warning("❌ Default language '" + defaultLang + "' is not in supported languages!");
-        }
-        
-        // Check supported languages
-        Set<String> supported = config.getSupportedLanguages();
-        if (supported == null || supported.isEmpty()) {
-            getLogger().warning("❌ No supported languages configured!");
-        } else {
-            getLogger().info("✅ Languages configured: " + String.join(", ", supported));
-        }
-        
-        // Check for orphaned player languages
-        checkOrphanedPlayerLanguages(supported);
-    }
-    
-    private void checkOrphanedPlayerLanguages(Set<String> supportedLanguages) {
-        List<String> orphanedPlayers = new ArrayList<>();
-        
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            String playerId = player.getUniqueId().toString();
-            String playerLang = lm.getPlayerLanguage(playerId);
-            
-            if (playerLang != null && !supportedLanguages.contains(playerLang)) {
-                orphanedPlayers.add(player.getName() + " (" + playerLang + ")");
-            }
-        }
-        
-        if (!orphanedPlayers.isEmpty()) {
-            getLogger().warning("⚠️ Players with unsupported languages: " + String.join(", ", orphanedPlayers));
-        }
-    }
-}
-```
 
 ---
 
-## 🔄 Cache Management
 
-### `invalidateLanguageCache()`
-Clears the language configuration cache.
-
-```java
-// Clear language cache
-lm.invalidateLanguageCache();
-getLogger().info("Language cache cleared");
-
-// Reload fresh configuration
-LanguageConfiguration config = lm.getLanguageConfiguration();
-```
-
-### `refreshPlayerLanguageCache(String playerId)`
-Refreshes language cache for a specific player.
-
-```java
-// Refresh specific player's language cache
-String playerId = player.getUniqueId().toString();
-lm.refreshPlayerLanguageCache(playerId);
-
-// Get fresh language data
-String language = lm.getPlayerLanguage(playerId);
-```
 
 ---
 
@@ -605,7 +346,10 @@ public class LanguageStatistics {
         
         for (Player player : Bukkit.getOnlinePlayers()) {
             String playerId = player.getUniqueId().toString();
-            String language = lm.getPlayerLanguageOrDefault(playerId);
+            String language = lm.getPlayerLanguage(playerId);
+            if (language == null) {
+                language = lm.getDefaultLanguage();
+            }
             stats.merge(language, 1, Integer::sum);
         }
         
@@ -655,17 +399,18 @@ public class LanguageStatistics {
 
 ## 🎯 Best Practices
 
-### 1. Always Use Safe Methods
+### 1. Always Handle Null Values
 
 ```java
-// ✅ Good - Safe language retrieval
-String language = lm.getPlayerLanguageOrDefault(playerId);
-
-// ❌ Avoid - Can return null
+// ✅ Good - Manual null handling
 String language = lm.getPlayerLanguage(playerId);
 if (language == null) {
     language = lm.getDefaultLanguage();
 }
+
+// ❌ Avoid - Assuming non-null return
+String language = lm.getPlayerLanguage(playerId);
+// This could be null!
 ```
 
 ### 2. Validate Languages Before Setting
@@ -710,7 +455,10 @@ public class CachedLanguageManager {
     
     public String getPlayerLanguageCached(String playerId) {
         return playerLanguageCache.computeIfAbsent(playerId, 
-            id -> lm.getPlayerLanguageOrDefault(id));
+            id -> {
+                String lang = lm.getPlayerLanguage(id);
+                return lang != null ? lang : lm.getDefaultLanguage();
+            });
     }
     
     public void clearPlayerCache(String playerId) {
