@@ -6,79 +6,56 @@
 
 ### @ConfigsFileProperties
 
-Marks a class as a configuration class that maps to a MongoDB collection.
+Marks a class as a configuration class that maps to a MongoDB document.
 
 ```java
-@ConfigsFileProperties(
-    name = "server-settings",           // Collection name in MongoDB
-    cache = true,                       // Enable caching (default: true)
-    cacheTime = 300,                    // Cache TTL in seconds (default: 300)
-    async = true                        // Async operations (default: true)
-)
+@ConfigsFileProperties(name = "server-settings")
 public class ServerConfig extends MongoConfig<ServerConfig> {
     // Configuration fields...
 }
 ```
 
 **Parameters:**
-- `name`: MongoDB collection name (required)
-- `cache`: Enable caching for this config (default: true)
-- `cacheTime`: Cache time-to-live in seconds (default: 300)
-- `async`: Use async operations for save/load (default: true)
+- `name`: Document ID in MongoDB collection (required)
 
 ### @ConfigsDatabase
 
 Specifies the MongoDB database for the configuration class.
 
 ```java
-@ConfigsDatabase("minecraft")  // Use 'minecraft' database
+@ConfigsDatabase("minecraft")
 public class ServerConfig extends MongoConfig<ServerConfig> {
     // This config will be stored in 'minecraft' database
 }
 ```
 
 **Parameters:**
-- `value`: Database name (required)
+- `value`: Database name (required, default: "configs")
 
-### @ConfigsField
+### @ConfigsCollection
 
-Customizes how individual fields are stored and loaded.
+Specifies the MongoDB collection for the configuration class.
 
 ```java
+@ConfigsCollection("servers")
 public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @ConfigsField(
-        name = "max_players",            // Custom field name in MongoDB
-        defaultValue = "100",            // Default value as string
-        required = true,                 // Field must be present
-        encrypted = false                // Encrypt field value
-    )
-    private int maxPlayers = 100;
-
-    @ConfigsField(
-        name = "server_motd",
-        defaultValue = "[\"Welcome!\", \"Have fun!\"]"
-    )
-    private List<String> motd;
+    // This config will be stored in 'servers' collection
 }
 ```
 
 **Parameters:**
-- `name`: Custom field name in MongoDB (default: field name)
-- `defaultValue`: Default value as JSON string
-- `required`: Field must be present in document (default: false)
-- `encrypted`: Encrypt field value (default: false)
+- `value`: Collection name (optional, defaults to document ID from @ConfigsFileProperties)
 
 ## Message Annotations
 
 ### @SupportedLanguages
 
-Defines which languages are supported for message translation.
+Defines which languages are supported for message translation in MongoMessages classes.
 
 ```java
 @SupportedLanguages({"en", "pl", "de", "fr", "es"})
 @ConfigsFileProperties(name = "messages")
-public class Messages extends MongoConfig<Messages> {
+public class GameMessages extends MongoMessages<GameMessages> {
 
     private String welcome = "Welcome!";
     private String goodbye = "Goodbye!";
@@ -89,237 +66,19 @@ public class Messages extends MongoConfig<Messages> {
 **Parameters:**
 - `value`: Array of language codes (required)
 
-### @MessageKey
-
-Customizes message keys for translation.
-
-```java
-public class Messages extends MongoConfig<Messages> {
-
-    @MessageKey("player.join")
-    private String playerJoined = "Player {player} joined!";
-
-    @MessageKey("player.quit")
-    private String playerLeft = "Player {player} left!";
-}
-```
-
-**Parameters:**
-- `value`: Custom message key (default: field name)
-
-### @Translation
-
-Provides translations for specific languages inline.
-
-```java
-public class Messages extends MongoConfig<Messages> {
-
-    @Translation({
-        @TranslationEntry(language = "en", value = "Welcome!"),
-        @TranslationEntry(language = "pl", value = "Witaj!"),
-        @TranslationEntry(language = "de", value = "Willkommen!"),
-        @TranslationEntry(language = "fr", value = "Bienvenue!")
-    })
-    private String welcome;
-}
-```
-
-## Validation Annotations
-
-### @NotNull
-
-Ensures a field cannot be null.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @NotNull
-    private String serverName;
-
-    @NotNull(message = "Max players cannot be null")
-    private Integer maxPlayers;
-}
-```
-
-**Parameters:**
-- `message`: Custom error message (optional)
-
-### @Min / @Max
-
-Validates numeric field ranges.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @Min(value = 1, message = "Max players must be at least 1")
-    @Max(value = 1000, message = "Max players cannot exceed 1000")
-    private int maxPlayers = 100;
-
-    @Min(value = 0.0)
-    @Max(value = 1.0)
-    private double tpsThreshold = 0.5;
-}
-```
-
-**Parameters:**
-- `value`: Minimum/maximum value (required)
-- `message`: Custom error message (optional)
-
-### @Size
-
-Validates collection sizes.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @Size(min = 1, max = 10, message = "MOTD must have 1-10 lines")
-    private List<String> motd;
-
-    @Size(min = 3, message = "Server name must be at least 3 characters")
-    private String serverName;
-}
-```
-
-**Parameters:**
-- `min`: Minimum size (default: 0)
-- `max`: Maximum size (default: Integer.MAX_VALUE)
-- `message`: Custom error message (optional)
-
-### @Pattern
-
-Validates string patterns using regex.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @Pattern(
-        regexp = "^[a-zA-Z0-9_-]+$",
-        message = "Server name can only contain letters, numbers, underscores, and hyphens"
-    )
-    private String serverName;
-
-    @Pattern(
-        regexp = "^#[0-9A-Fa-f]{6}$",
-        message = "Chat color must be a valid hex color (e.g., #FF0000)"
-    )
-    private String chatColor = "#FFFFFF";
-}
-```
-
-**Parameters:**
-- `regexp`: Regular expression pattern (required)
-- `message`: Custom error message (optional)
-
-## Advanced Annotations
-
-### @Encrypted
-
-Marks fields that should be encrypted in the database.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    @Encrypted
-    private String databasePassword;
-
-    @Encrypted(algorithm = "AES256")
-    private String apiKey;
-}
-```
-
-**Parameters:**
-- `algorithm`: Encryption algorithm (default: AES256)
-
-### @Transient
-
-Excludes fields from database storage.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    private String serverName;
-
-    @Transient
-    private long lastModified; // Won't be saved to database
-
-    @Transient
-    private transient Object cache; // Runtime-only field
-}
-```
-
-### @Indexed
-
-Creates database indexes for better query performance.
-
-```java
-public class PlayerData extends MongoConfig<PlayerData> {
-
-    @Indexed(unique = true)
-    private String playerId;
-
-    @Indexed
-    private String playerName;
-
-    @Indexed(expireAfterSeconds = 86400) // 24 hours
-    private long lastSeen;
-}
-```
-
-**Parameters:**
-- `unique`: Create unique index (default: false)
-- `expireAfterSeconds`: TTL index in seconds (default: -1, no expiry)
-
-### @Version
-
-Enables optimistic locking for concurrent updates.
-
-```java
-public class ServerConfig extends MongoConfig<ServerConfig> {
-
-    private String serverName;
-
-    @Version
-    private long version; // Automatically managed by MongoDB
-}
-```
-
 ## Usage Examples
 
-### Complete Configuration Class
+### Basic Configuration Class
 
 ```java
-@ConfigsFileProperties(
-    name = "server-settings",
-    cache = true,
-    cacheTime = 600,
-    async = true
-)
+@ConfigsFileProperties(name = "server-settings")
 @ConfigsDatabase("minecraft")
 public class ServerConfig extends MongoConfig<ServerConfig> {
 
-    @NotNull(message = "Server name is required")
-    @Size(min = 3, max = 50)
-    @Pattern(regexp = "^[a-zA-Z0-9 _-]+$", message = "Invalid server name format")
-    private String serverName;
-
-    @Min(value = 1)
-    @Max(value = 1000)
+    private String serverName = "My Server";
     private int maxPlayers = 100;
-
-    @Size(min = 1, max = 10)
     private List<String> motd = Arrays.asList("Welcome!");
-
-    @Pattern(regexp = "^#[0-9A-Fa-f]{6}$")
-    private String primaryColor = "#FFFFFF";
-
-    @Encrypted
-    private String databasePassword;
-
-    @Indexed(unique = true)
-    private String serverId;
-
-    @Version
-    private long version;
+    private boolean pvpEnabled = true;
 
     // Getters and setters...
 }
@@ -328,26 +87,56 @@ public class ServerConfig extends MongoConfig<ServerConfig> {
 ### Multilingual Messages Class
 
 ```java
-@SupportedLanguages({"en", "pl", "de", "fr", "es"})
-@ConfigsFileProperties(name = "messages")
+@SupportedLanguages({"en", "pl", "de"})
+@ConfigsFileProperties(name = "game-messages")
 @ConfigsDatabase("minecraft")
-public class Messages extends MongoConfig<Messages> {
+public class GameMessages extends MongoMessages<GameMessages> {
 
-    @MessageKey("player.join")
-    @Translation({
-        @TranslationEntry(language = "en", value = "Player {player} joined the game!"),
-        @TranslationEntry(language = "pl", value = "Gracz {player} dołączył do gry!"),
-        @TranslationEntry(language = "de", value = "Spieler {player} ist dem Spiel beigetreten!"),
-        @TranslationEntry(language = "fr", value = "Le joueur {player} a rejoint la partie!"),
-        @TranslationEntry(language = "es", value = "¡El jugador {player} se unió al juego!")
-    })
-    private String playerJoined;
+    // Messages will be stored and retrieved based on language
+    private String playerJoined = "Player joined!";
+    private String playerLeft = "Player left!";
+    private String noPermission = "No permission!";
 
-    @MessageKey("command.no-permission")
-    private String noPermission = "You don't have permission to use this command.";
+    @Override
+    public String getMessage(String lang, String key, Map<String, Object> params) {
+        // Implementation for retrieving messages with placeholders
+        String message = getMessage(lang, key);
+        if (message == null) return key;
 
-    @MessageKey("teleport.success")
-    private String teleportSuccess = "Teleported to {location}.";
+        // Simple placeholder replacement
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            message = message.replace("{" + entry.getKey() + "}", entry.getValue().toString());
+        }
+        return message;
+    }
+
+    @Override
+    public void putMessage(String lang, String key, String value) {
+        // Implementation for storing messages
+    }
+
+    @Override
+    public Map<String, String> allKeys(String lang) {
+        // Implementation for getting all message keys for a language
+        return Map.of();
+    }
+
+    // Getters and setters...
+}
+```
+
+### Advanced Configuration with Collection Override
+
+```java
+@ConfigsFileProperties(name = "world-settings")
+@ConfigsDatabase("minecraft")
+@ConfigsCollection("worlds")
+public class WorldConfig extends MongoConfig<WorldConfig> {
+
+    private String worldName;
+    private Difficulty difficulty = Difficulty.NORMAL;
+    private boolean allowMonsters = true;
+    private long seed;
 
     // Getters and setters...
 }
@@ -355,112 +144,157 @@ public class Messages extends MongoConfig<Messages> {
 
 ## Annotation Processing
 
-### Custom Annotation Processor
+The `Annotations` utility class provides helper methods to extract annotation values:
 
 ```java
-public class ConfigAnnotationProcessor {
+public class ConfigProcessor {
 
-    public static void processAnnotations(Class<?> configClass) {
-        // Get all annotations
-        ConfigsFileProperties fileProps = configClass.getAnnotation(ConfigsFileProperties.class);
-        ConfigsDatabase database = configClass.getAnnotation(ConfigsDatabase.class);
-        SupportedLanguages languages = configClass.getAnnotation(SupportedLanguages.class);
+    public static void processConfigClass(Class<?> configClass) {
+        // Extract document ID
+        String documentId = Annotations.idFrom(configClass);
 
-        // Process configuration
-        String collectionName = fileProps.name();
-        String databaseName = database.value();
-        String[] supportedLangs = languages != null ? languages.value() : new String[]{"en"};
+        // Extract database (null means use default)
+        String database = Annotations.databaseFrom(configClass);
 
-        // Validate annotations
-        validateAnnotations(configClass);
+        // Extract collection (falls back to document ID if not specified)
+        String collection = Annotations.collectionFrom(configClass);
 
-        // Generate metadata
-        ConfigMetadata metadata = generateMetadata(configClass, collectionName, databaseName, supportedLangs);
-    }
+        // Extract supported languages (empty set if not specified)
+        Set<String> languages = Annotations.langsFrom(configClass);
 
-    private static void validateAnnotations(Class<?> configClass) {
-        // Check for required annotations
-        if (!configClass.isAnnotationPresent(ConfigsFileProperties.class)) {
-            throw new IllegalArgumentException("Class must be annotated with @ConfigsFileProperties");
-        }
-
-        // Validate field annotations
-        for (Field field : configClass.getDeclaredFields()) {
-            validateFieldAnnotations(field);
-        }
-    }
-
-    private static void validateFieldAnnotations(Field field) {
-        // Check for conflicting annotations
-        boolean hasNotNull = field.isAnnotationPresent(NotNull.class);
-        boolean hasEncrypted = field.isAnnotationPresent(Encrypted.class);
-        boolean hasTransient = field.isAnnotationPresent(Transient.class);
-
-        if (hasEncrypted && hasTransient) {
-            throw new IllegalArgumentException("Field cannot be both @Encrypted and @Transient: " + field.getName());
-        }
-
-        // Validate annotation combinations
-        if (hasNotNull && field.getType().isPrimitive()) {
-            // Primitive types are never null, @NotNull is redundant but allowed
-        }
+        // Use the extracted values...
+        System.out.println("Processing config: " + documentId +
+                          " in database: " + database +
+                          " collection: " + collection +
+                          " languages: " + languages);
     }
 }
 ```
 
 ## Best Practices
 
-### 1. Use Descriptive Names
+### 1. Use Descriptive Document IDs
 
 ```java
 // ✅ Good
 @ConfigsFileProperties(name = "server-configuration")
-private String serverName;
+public class ServerConfig { }
+
+// ✅ Good
+@ConfigsFileProperties(name = "player-messages")
+public class PlayerMessages { }
 
 // ❌ Avoid
 @ConfigsFileProperties(name = "config")
-private String sn;
+public class ServerConfig { }
 ```
 
-### 2. Group Related Annotations
+### 2. Consistent Database Organization
 
 ```java
-// ✅ Good - all validation together
-@NotNull
-@Size(min = 3, max = 50)
-@Pattern(regexp = "^[a-zA-Z0-9_-]+$")
-private String serverName;
+// ✅ Good - group related configs in same database
+@ConfigsDatabase("minecraft")
+@ConfigsFileProperties(name = "server-settings")
+public class ServerConfig { }
 
-// ❌ Avoid - scattered annotations
-@NotNull
-private String serverName;
+@ConfigsDatabase("minecraft")
+@ConfigsFileProperties(name = "world-settings")
+public class WorldConfig { }
 
-@Size(min = 3, max = 50)
-private String serverName;
+// ❌ Avoid - scattered databases
+@ConfigsDatabase("server")
+@ConfigsFileProperties(name = "settings")
+public class ServerConfig { }
 
-@Pattern(regexp = "^[a-zA-Z0-9_-]+$")
-private String serverName;
+@ConfigsDatabase("worlds")
+@ConfigsFileProperties(name = "config")
+public class WorldConfig { }
 ```
 
-### 3. Use Consistent Patterns
+### 3. Use SupportedLanguages for I18n
 
 ```java
-// ✅ Consistent regex patterns
-@Pattern(regexp = "^#[0-9A-Fa-f]{6}$")  // Hex colors
-@Pattern(regexp = "^[a-zA-Z0-9_-]+$")   // Server names
-@Pattern(regexp = "^\\d+\\.\\d+\\.\\d+\\.\\d+$")  // IP addresses
+// ✅ Good - explicit language support
+@SupportedLanguages({"en", "es", "fr", "de", "pl"})
+@ConfigsFileProperties(name = "ui-messages")
+public class UIMessages extends MongoMessages<UIMessages> { }
+
+// ✅ Good - single language
+@SupportedLanguages({"en"})
+@ConfigsFileProperties(name = "system-messages")
+public class SystemMessages extends MongoMessages<SystemMessages> { }
 ```
 
-### 4. Document Custom Annotations
+### 4. Collection Naming
 
 ```java
-/**
- * Custom annotation for server configuration fields.
- * This field will be automatically encrypted and cached.
- */
-@ConfigsField(name = "api_key", encrypted = true)
-@Indexed(unique = true)
-private String apiKey;
+// ✅ Good - use @ConfigsCollection for custom collections
+@ConfigsCollection("player-data")
+@ConfigsFileProperties(name = "player-stats")
+public class PlayerStats { }
+
+// ✅ Good - let it default to document ID
+@ConfigsFileProperties(name = "server-config")
+public class ServerConfig { } // Will use "server-config" collection
+```
+
+## Common Patterns
+
+### Configuration Hierarchy
+
+```java
+// Global configuration
+@ConfigsFileProperties(name = "global-config")
+@ConfigsDatabase("minecraft")
+public class GlobalConfig extends MongoConfig<GlobalConfig> {
+    private boolean maintenanceMode = false;
+    private int globalMaxPlayers = 1000;
+}
+
+// Server-specific configuration
+@ConfigsFileProperties(name = "server-config")
+@ConfigsDatabase("minecraft")
+public class ServerConfig extends MongoConfig<ServerConfig> {
+    private String serverName;
+    private int maxPlayers = 100;
+    private List<String> motd;
+}
+
+// World-specific configuration
+@ConfigsFileProperties(name = "world-config")
+@ConfigsDatabase("minecraft")
+@ConfigsCollection("worlds")
+public class WorldConfig extends MongoConfig<WorldConfig> {
+    private String worldName;
+    private Difficulty difficulty = Difficulty.NORMAL;
+    private boolean pvpEnabled = true;
+}
+```
+
+### Message Organization
+
+```java
+@SupportedLanguages({"en", "pl", "de"})
+@ConfigsFileProperties(name = "chat-messages")
+@ConfigsDatabase("minecraft")
+public class ChatMessages extends MongoMessages<ChatMessages> {
+
+    // Chat-related messages
+    private String playerJoined = "Player {player} joined!";
+    private String playerLeft = "Player {player} left!";
+    private String privateMessage = "[PM] {sender}: {message}";
+}
+
+@SupportedLanguages({"en", "pl", "de"})
+@ConfigsFileProperties(name = "command-messages")
+@ConfigsDatabase("minecraft")
+public class CommandMessages extends MongoMessages<CommandMessages> {
+
+    // Command-related messages
+    private String noPermission = "You don't have permission!";
+    private String playerNotFound = "Player not found!";
+    private String teleportSuccess = "Teleported to {location}!";
+}
 ```
 
 ---

@@ -3,95 +3,83 @@
 ## 🚀 Getting Started
 
 - [[Home|Overview]]
-- [[Quick Start]]
+- [[Quick-Start|Quick Start]]
 - [[Installation]]
 
 ## 📚 Core Concepts
 
 ### Configuration Approaches
-- [[Class-Based Configuration]]
-- [[Key-Object Storage]]
+- [[Class-Based-Configuration|Class-Based Configuration]]
+- [[Key-Object-Storage|Key-Object Storage]]
 
 ### Annotations
-- [[Annotations Reference]]
+- [[Annotations-Reference|Annotations Reference]]
 
 ## 🔧 API Reference
 
 ### Core APIs
-- [[ConfigManager API]]
-- [[LanguageManager API]]
-- [[Messages API]]
+- [[ConfigManager-API|ConfigManager API]]
+- [[LanguageManager-API|LanguageManager API]]
+- [[Messages-API|Messages API]]
 
 ### Configuration Types
-- [[Configuration Classes]]
-- [[Message Classes]]
+- [[Configuration-Classes|Configuration Classes]]
+- [[Message-Classes|Message Classes]]
 
 ## 🗄️ Database Integration
 
-- [[MongoDB Setup]]
-- [[Connection Configuration]]
-- [[Change Streams]]
-- [[Multi-Server Architecture]]
+- [[MongoDB-Setup|MongoDB Setup]]
+- [[Connection-Configuration|Connection Configuration]]
+- [[Change-Streams-Tutorial|Change Streams]]
+- [[Multi-Server-Architecture|Multi-Server Architecture]]
 
 ## 💡 Examples & Tutorials
 
 ### Complete Examples
-- [[Shop Plugin Example]]
-- [[Economy System Example]]
-- [[Parkour Plugin Example]]
-- [[Home System Example]]
+- [[Shop-Plugin-Example|Shop Plugin Example]]
+- [[Economy-System-Example|Economy System Example]]
+- [[Parkour-Plugin-Example|Parkour Plugin Example]]
+- [[Home-System-Example|Home System Example]]
 
 ### Tutorials
-- [[Creating GUI Components]]
-- [[Multilingual Support]]
-- [[Performance Optimization]]
-- [[Change Streams Tutorial|Change-Streams-Tutorial]]
-- [[Translation Examples|Translation-Examples]]
+- [[Creating-GUI-Components|Creating GUI Components]]
+- [[Multilingual-Support|Multilingual Support]]
+- [[Performance-Optimization|Performance Optimization]]
+- [[Change-Streams-Tutorial|Change Streams Tutorial]]
+- [[Translation-Examples|Translation Examples]]
 
 ## 🌍 Language System
 
 ### Language Management
-- [[Language Selection GUI]]
-- [[Player Language Storage]]
-- [[Message Translation]]
-- [[Language Commands]]
-
-### Supported Languages
-- [[English (en)]]
-- [[Polish (pl)]]
-- [[German (de)]]
-- [[French (fr)]]
-- [[Spanish (es)]]
+- [[Language-Selection-GUI|Language Selection GUI]]
+- [[Player-Language-Storage|Player Language Storage]]
+- [[Message-Translation|Message Translation]]
+- [[Language-Commands|Language Commands]]
 
 ## 🛠️ Advanced Topics
 
 ### Development
-- [[Plugin Integration]]
-- [[Hot Reload System]]
-- [[Error Handling]]
-- [[Async Operations]]
+- [[Plugin-Integration|Plugin Integration]]
+- [[Hot-Reload-System|Hot Reload System]]
+- [[Error-Handling|Error Handling]]
+- [[Async-Operations|Async Operations]]
 
 ### Operations
-- [[Performance Tips]]
+- [[Performance-Tips|Performance Tips]]
 - [[Monitoring]]
 - [[Troubleshooting]]
-- [[Security Guidelines]]
+- [[Security-Guidelines|Security Guidelines]]
 
 ## 📋 Reference
 
 ### Best Practices
-- [[Configuration Best Practices]]
-- [[Performance Guidelines]]
-- [[Code Standards]]
-- [[Migration Guide]]
-
-### Migration
-- [[Migrating from YAML]]
-- [[Upgrading Versions]]
+- [[Best-Practices|Best Practices]]
+- [[Performance-Optimization|Performance Guidelines]]
+- [[Migration-Guide|Migration Guide]]
 
 ## ❓ Help & Support
 
-- [[FAQ]]
+- [[Help-&-FAQ|Help & FAQ]]
 - [[Troubleshooting]]
 - [[Contributing]]
 - [[Changelog]]

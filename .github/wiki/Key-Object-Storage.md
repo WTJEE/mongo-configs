@@ -1,85 +1,66 @@
 # Key-Object Storage
 
-Complete guide to using key-object storage approach in MongoDB Configs API.
+> **Simple and flexible key-value configuration storage**
 
-## 🎯 Overview
+## Overview
 
-Key-object storage provides a simple key-value approach for storing configuration data. This approach is ideal for:
+Key-Object Storage provides a simple, flexible way to store and retrieve configuration data using string keys. Unlike class-based configuration which requires predefined structures, key-object storage allows for dynamic configuration management and is perfect for:
 
-- **Simple Data** - Basic configuration values
-- **Dynamic Keys** - Keys determined at runtime
-- **Migration** - Easy migration from existing systems
-- **Performance** - Fast access for frequently changing data
+- **Dynamic data** that changes frequently
+- **User-specific settings** and preferences
+- **Runtime configuration** that doesn't need structure
+- **Simple key-value pairs** without complex objects
+- **Temporary or session data**
 
-## 📝 Basic Key-Object Operations
+## Basic Key-Object Operations
 
 ### Storing Values
 
 ```java
-// Get ConfigManager instance
 ConfigManager cm = MongoConfigsAPI.getConfigManager();
 
 // Store primitive values
-cm.set("server.name", "My Server");
 cm.set("server.max_players", 100);
+cm.set("server.name", "My Server");
 cm.set("server.pvp_enabled", true);
-cm.set("server.difficulty", "NORMAL");
 
 // Store complex objects
+PlayerStats stats = new PlayerStats();
+stats.setLevel(25);
+stats.setExperience(1250.0);
+cm.set("player:" + playerId, stats);
+
+// Store collections
 List<String> bannedItems = Arrays.asList("bedrock", "barrier", "tnt");
 cm.set("server.banned_items", bannedItems);
 
+// Store maps
 Map<String, Double> prices = Map.of(
-    "diamond_sword", 100.0,
-    "diamond_pickaxe", 150.0,
-    "diamond_armor", 500.0
+    "diamond", 100.0,
+    "iron", 10.0,
+    "gold", 50.0
 );
-cm.set("shop.prices", prices);
-
-// Store custom objects
-PlayerStats stats = new PlayerStats("Steve", 1000, 50);
-cm.set("player." + playerId + ".stats", stats);
+cm.set("economy.prices", prices);
 ```
 
 ### Retrieving Values
 
 ```java
-// Retrieve primitive values
-String serverName = cm.get("server.name", String.class);
+// Retrieve primitive values with type safety
 Integer maxPlayers = cm.get("server.max_players", Integer.class);
+String serverName = cm.get("server.name", String.class);
 Boolean pvpEnabled = cm.get("server.pvp_enabled", Boolean.class);
 
-// Retrieve with default values
-String serverName = cm.getOrDefault("server.name", String.class, "Default Server");
-Integer maxPlayers = cm.getOrDefault("server.max_players", Integer.class, 100);
-
 // Retrieve complex objects
+PlayerStats playerStats = cm.get("player:" + playerId, PlayerStats.class);
+
+// Retrieve collections
 @SuppressWarnings("unchecked")
-List<String> bannedItems = cm.get("server.banned_items", List.class);
+List<String> bannedItems = (List<String>) cm.get("server.banned_items", List.class);
 
+// Retrieve maps
 @SuppressWarnings("unchecked")
-Map<String, Double> prices = cm.get("shop.prices", Map.class);
-
-// Retrieve custom objects
-PlayerStats stats = cm.get("player." + playerId + ".stats", PlayerStats.class);
-```
-
-### Async Operations
-
-```java
-// Async storage
-CompletableFuture<Void> storeFuture = cm.setAsync("player." + playerId + ".last_login", System.currentTimeMillis());
-storeFuture.thenRun(() -> {
-    getLogger().info("Player login time saved!");
-});
-
-// Async retrieval
-CompletableFuture<PlayerStats> statsFuture = cm.getAsync("player." + playerId + ".stats", PlayerStats.class);
-statsFuture.thenAccept(stats -> {
-    if (stats != null) {
-        getLogger().info("Player level: " + stats.getLevel());
-    }
-});
+Map<String, Double> prices = (Map<String, Double>) cm.get("economy.prices", Map.class);
 ```
 
 ## 🔧 Advanced Key-Object Patterns
