@@ -27,6 +27,8 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Sync wiki from $GITHUB_SHA"
+            # Set the correct remote for wiki repo
+            git remote set-url origin "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
             # Niektóre wiki używają 'master', inne 'main':
             git push origin main || git push origin master
           else
