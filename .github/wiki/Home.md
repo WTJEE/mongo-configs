@@ -16,26 +16,28 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 
 ## 📚 Documentation Overview
 
-### 🎯 **Core Concepts**
-- **[[Class-Based Configuration]]** - Type-safe configuration with Java classes
-- **[[Key-Object Storage]]** - Simple key-value storage for dynamic data
-- **[[Annotations Reference]]** - Complete guide to all annotations
-
 ### 🛠️ **Developer API**
 - **[[ConfigManager API]]** - Core configuration management methods
 - **[[LanguageManager API]]** - Multilingual support and player language management
 - **[[Messages API]]** - Working with multilingual messages
-- **[[MongoDB-Setup|MongoDB Setup]]** - Direct MongoDB operations and advanced features
+- **[[Configuration-Classes|Configuration Classes]]** - Configuration types and classes
+- **[[Message-Classes|Message Classes]]** - Message configuration classes
+
+### 🔧 **Configuration Approaches**
+- **[[Class-Based Configuration]]** - Type-safe configuration with Java classes
+- **[[Key-Object Storage]]** - Simple key-value storage for dynamic data
+
+### 📝 **Annotations**
+- **[[Annotations Reference]]** - Complete guide to all annotations
 
 ### 💡 **Practical Examples**
 - **[[Shop-Plugin-Example|Shop Plugin Example]]** - Real-world examples and use cases
+- **[[Economy-System-Example|Economy System Example]]** - Advanced economy system
+- **[[Parkour-Plugin-Example|Parkour Plugin Example]]** - Parkour system with leaderboards
+- **[[Home-System-Example|Home System Example]]** - Home management system
+- **[[Creating-GUI-Components|Creating GUI Components]]** - GUI tutorial
+- **[[Multilingual-Support|Multilingual Support]]** - Complete multilingual guide
 - **[[Translation Examples]]** - Complete multilingual implementation guide
-- **[[Plugin Integration]]** - How to integrate with your plugin
-
-### 🔧 **Advanced Topics**
-- **[[Hot Reload System]]** - Dynamic configuration reloading
-- **[[Multi-Server Architecture]]** - Advanced multi-server setup and management
-- **[[Error Handling]]** - Robust error management
 
 ## � **Featured Examples**
 
