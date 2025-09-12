@@ -10,24 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false  # avoid GITHUB_TOKEN overriding our PAT for pushes
 
       - name: Configure Git identity
         run: |
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-          # ensure no leftover auth headers from checkout
-          git config --global --unset-all http.https://github.com/.extraheader || true
-
-      - name: Validate WIKI_TOKEN is set
-        env:
-          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
-        run: |
-          if [ -z "${WIKI_TOKEN}" ]; then
-            echo "Error: secrets.WIKI_TOKEN is not configured. Create a classic Personal Access Token with 'repo' scope and add it as WIKI_TOKEN." >&2
-            exit 1
-          fi
 
       - name: Clone Wiki repo
         run: |
@@ -35,15 +22,15 @@ jobs:
 
       - name: Sync .github/wiki/ -> wiki repo
         run: |
-          rsync -av --delete --exclude '.git' --exclude '.git/**' .github/wiki/ wiki-repo/
+          rsync -av --delete .github/wiki/ wiki-repo/
           cd wiki-repo
           if [ -n "$(git status --porcelain)" ]; then
-            git add -A
+            git add .
             git commit -m "Sync wiki from $GITHUB_SHA"
             # Set the correct remote for wiki repo
             git remote set-url origin "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
-            # Some wikis use 'master', others 'main'. Push current HEAD to both fallbacks.
-            git push origin HEAD:main || git push origin HEAD:master
+            # Niektóre wiki używają 'master', inne 'main':
+            git push origin main || git push origin master
           else
             echo "No changes to sync."
           fi
