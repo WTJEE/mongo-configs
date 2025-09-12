@@ -29,13 +29,11 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 
 ### 💡 **Practical Examples**
 - **[[Shop-Plugin-Example|Shop Plugin Example]]** - Real-world examples and use cases
-- **[[Creating-GUI-Components|GUI Development]]** - Creating multilingual GUIs
 - **[[Translation Examples]]** - Complete multilingual implementation guide
 - **[[Plugin Integration]]** - How to integrate with your plugin
 
 ### 🔧 **Advanced Topics**
 - **[[Hot Reload System]]** - Dynamic configuration reloading
-- **[[Multi-Server-Architecture|Multi-Server Setup]]** - Change Streams and synchronization
 - **[[Multi-Server Architecture]]** - Advanced multi-server setup and management
 - **[[Error Handling]]** - Robust error management
 

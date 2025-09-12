@@ -2,7 +2,7 @@
 
 ## 🚀 Getting Started
 
-- [[Home|Overview]]
+- [[Home|]]
 - [[Quick-Start|Quick Start]]
 - [[Installation]]
 
