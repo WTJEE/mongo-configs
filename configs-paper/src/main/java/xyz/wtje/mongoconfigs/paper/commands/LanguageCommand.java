@@ -68,16 +68,21 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // Store values in effectively final variables for lambda
+        final String finalRequestedLanguage = requestedLanguage;
+        final String finalPlayerLanguage = playerLanguage;
+        final Player finalPlayer = player;
+
         languageManager.setPlayerLanguage(player.getUniqueId(), requestedLanguage)
             .whenComplete((result, error) -> {
                 if (error != null) {
-                    String errorMessage = config.getMessage("commands.language.error", playerLanguage);
-                    player.sendMessage(ColorHelper.parseComponent(errorMessage));
+                    String errorMessage = config.getMessage("commands.language.error", finalPlayerLanguage);
+                    finalPlayer.sendMessage(ColorHelper.parseComponent(errorMessage));
                 } else {
-                    String displayName = languageManager.getLanguageDisplayName(requestedLanguage);
-                    String successMessage = config.getMessage("commands.language.success", requestedLanguage)
+                    String displayName = languageManager.getLanguageDisplayName(finalRequestedLanguage);
+                    String successMessage = config.getMessage("commands.language.success", finalPlayerLanguage)
                         .replace("{language}", displayName);
-                    player.sendMessage(ColorHelper.parseComponent(successMessage));
+                    finalPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
                 }
             });
 

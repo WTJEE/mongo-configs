@@ -2,7 +2,7 @@ name: Sync to GitHub Wiki
 on:
   push:
     branches: [ main ]
-    paths: [ "wiki/**" ]
+    paths: [ ".github/wiki/**" ]
   workflow_dispatch:
 
 jobs:
@@ -20,9 +20,9 @@ jobs:
         run: |
           git clone "https://x-access-token:${{ secrets.WIKI_TOKEN }}@github.com/${{ github.repository }}.wiki.git" wiki-repo
 
-      - name: Sync wiki/ -> wiki repo
+      - name: Sync .github/wiki/ -> wiki repo
         run: |
-          rsync -av --delete wiki/ wiki-repo/
+          rsync -av --delete .github/wiki/ wiki-repo/
           cd wiki-repo
           if [ -n "$(git status --porcelain)" ]; then
             git add .
