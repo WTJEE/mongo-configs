@@ -45,6 +45,23 @@
 - [[Creating GUI Components]]
 - [[Multilingual Support]]
 - [[Performance Optimization]]
+- [[Change Streams Tutorial|Change-Streams-Tutorial]]
+- [[Translation Examples|Translation-Examples]]
+
+## 🌍 Language System
+
+### Language Management
+- [[Language Selection GUI]]
+- [[Player Language Storage]]
+- [[Message Translation]]
+- [[Language Commands]]
+
+### Supported Languages
+- [[English (en)]]
+- [[Polish (pl)]]
+- [[German (de)]]
+- [[French (fr)]]
+- [[Spanish (es)]]
 
 ## 🛠️ Advanced Topics
 
@@ -52,18 +69,21 @@
 - [[Plugin Integration]]
 - [[Hot Reload System]]
 - [[Error Handling]]
+- [[Async Operations]]
 
 ### Operations
 - [[Performance Tips]]
 - [[Monitoring]]
 - [[Troubleshooting]]
+- [[Security Guidelines]]
 
 ## 📋 Reference
 
 ### Best Practices
-- [[Security Guidelines]]
+- [[Configuration Best Practices]]
 - [[Performance Guidelines]]
 - [[Code Standards]]
+- [[Migration Guide]]
 
 ### Migration
 - [[Migrating from YAML]]
