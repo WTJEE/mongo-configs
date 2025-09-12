@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.785" tests="7" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="1.012" tests="7" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="22"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -15,7 +15,7 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="US"/>
     <property name="sun.boot.library.path" value="C:\Users\aiikk\.jdks\corretto-22.0.2\bin"/>
-    <property name="sun.java.command" value="org.apache.maven.surefire.booter.ForkedBooter C:\Users\aiikk\AppData\Local\Temp\surefire14257225206660626075 2025-09-12T17-38-46_135-jvmRun1 surefire-20250912173846214_1tmp surefire_0-20250912173846214_2tmp"/>
+    <property name="sun.java.command" value="org.apache.maven.surefire.booter.ForkedBooter C:\Users\aiikk\AppData\Local\Temp\surefire17790346261507616191 2025-09-12T20-43-57_805-jvmRun1 surefire-20250912204357917_1tmp surefire_0-20250912204357917_2tmp"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="C:\Users\aiikk\IdeaProjects\mongo-configs\configs-api\target\test-classes;C:\Users\aiikk\IdeaProjects\mongo-configs\configs-api\target\classes;C:\Users\aiikk\.m2\repository\net\kyori\adventure-api\4.17.0\adventure-api-4.17.0.jar;C:\Users\aiikk\.m2\repository\net\kyori\adventure-key\4.17.0\adventure-key-4.17.0.jar;C:\Users\aiikk\.m2\repository\net\kyori\examination-api\1.3.0\examination-api-1.3.0.jar;C:\Users\aiikk\.m2\repository\net\kyori\examination-string\1.3.0\examination-string-1.3.0.jar;C:\Users\aiikk\.m2\repository\org\jetbrains\annotations\24.1.0\annotations-24.1.0.jar;C:\Users\aiikk\.m2\repository\io\micrometer\micrometer-core\1.12.5\micrometer-core-1.12.5.jar;C:\Users\aiikk\.m2\repository\io\micrometer\micrometer-commons\1.12.5\micrometer-commons-1.12.5.jar;C:\Users\aiikk\.m2\repository\io\micrometer\micrometer-observation\1.12.5\micrometer-observation-1.12.5.jar;C:\Users\aiikk\.m2\repository\org\hdrhistogram\HdrHistogram\2.1.12\HdrHistogram-2.1.12.jar;C:\Users\aiikk\.m2\repository\org\latencyutils\LatencyUtils\2.0.3\LatencyUtils-2.0.3.jar;C:\Users\aiikk\.m2\repository\org\junit\jupiter\junit-jupiter\5.10.1\junit-jupiter-5.10.1.jar;C:\Users\aiikk\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.10.1\junit-jupiter-api-5.10.1.jar;C:\Users\aiikk\.m2\repository\org\opentest4j\opentest4j\1.3.0\opentest4j-1.3.0.jar;C:\Users\aiikk\.m2\repository\org\junit\platform\junit-platform-commons\1.10.1\junit-platform-commons-1.10.1.jar;C:\Users\aiikk\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\aiikk\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.10.1\junit-jupiter-params-5.10.1.jar;C:\Users\aiikk\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.10.1\junit-jupiter-engine-5.10.1.jar;C:\Users\aiikk\.m2\repository\org\junit\platform\junit-platform-engine\1.10.1\junit-platform-engine-1.10.1.jar;C:\Users\aiikk\.m2\repository\org\mockito\mockito-core\5.8.0\mockito-core-5.8.0.jar;C:\Users\aiikk\.m2\repository\net\bytebuddy\byte-buddy\1.14.10\byte-buddy-1.14.10.jar;C:\Users\aiikk\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.10\byte-buddy-agent-1.14.10.jar;C:\Users\aiikk\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\aiikk\.m2\repository\org\mockito\mockito-junit-jupiter\5.8.0\mockito-junit-jupiter-5.8.0.jar;C:\Users\aiikk\.m2\repository\org\awaitility\awaitility\4.2.0\awaitility-4.2.0.jar;C:\Users\aiikk\.m2\repository\org\hamcrest\hamcrest\2.1\hamcrest-2.1.jar;"/>
     <property name="sun.cpu.endian" value="little"/>
@@ -59,17 +59,17 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="66.0"/>
   </properties>
-  <testcase name="testSynchronousWrappers" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.706">
+  <testcase name="testSynchronousWrappers" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.925">
     <system-err><![CDATA[WARNING: A Java agent has been loaded dynamically (C:\Users\aiikk\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.10\byte-buddy-agent-1.14.10.jar)
 WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
 WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
 WARNING: Dynamic loading of agents will be disallowed by default in a future release
 ]]></system-err>
   </testcase>
-  <testcase name="testFindById" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.04"/>
+  <testcase name="testFindById" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.044"/>
   <testcase name="testSetObjectAndGetObject" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.003"/>
-  <testcase name="testSetAndGet" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.002"/>
+  <testcase name="testSetAndGet" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.003"/>
   <testcase name="testReloadAll" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.001"/>
-  <testcase name="testMessagesOf" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.006"/>
+  <testcase name="testMessagesOf" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.008"/>
   <testcase name="testGetConfigOrGenerate" classname="xyz.wtje.mongoconfigs.api.ConfigManagerTest" time="0.002"/>
 </testsuite>
