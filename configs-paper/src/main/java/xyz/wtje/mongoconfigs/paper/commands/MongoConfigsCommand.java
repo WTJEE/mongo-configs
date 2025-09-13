@@ -164,39 +164,22 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ColorHelper.parseComponent("&e🔍 Loading collections from MongoDB..."));
 
         configManager.getCollections()
-            .thenAccept(collections -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(Component.text("§6=== Available Collections ===")
-                            .color(NamedTextColor.GOLD));
-                    // Fetch collections asynchronously to avoid blocking the server thread
-                    configManager.getCollections()
-                        .thenAccept(collections -> plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            sender.sendMessage(ColorHelper.parseComponent("&7\ud83d\udccb Reloaded collections: &f" + collections.size()));
-                            for (String collection : collections) {
-                                sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
-                            }
-                        }))
-                        .exceptionally(ex -> {
-                            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: " + ex.getMessage()));
-                            });
-                            return null;
-                        });
-                        for (String collection : collections) {
-                            try {
-                                Set<String> languages = configManager.getSupportedLanguages(collection);
-                                boolean exists = configManager.collectionExists(collection);
-                                String status = exists ? "§a✅" : "§c❌";
-                                sender.sendMessage(Component.text(String.format("%s §f%s §7- Languages: §e%s", 
-                                        status, collection, String.join(", ", languages))));
-                            } catch (Exception e) {
-                                sender.sendMessage(Component.text(String.format("§c❌ §f%s §7- Error: %s", 
-                                        collection, e.getMessage())));
-                            }
-                        }
+            .thenAccept(collections -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                sender.sendMessage(Component.text("§6=== Available Collections ===").color(NamedTextColor.GOLD));
+                sender.sendMessage(ColorHelper.parseComponent("&7📋 Collections: &f" + collections.size()));
+                for (String collection : collections) {
+                    try {
+                        Set<String> languages = configManager.getSupportedLanguages(collection);
+                        boolean exists = configManager.collectionExists(collection);
+                        String status = exists ? "§a✅" : "§c❌";
+                        sender.sendMessage(Component.text(String.format("%s §f%s §7- Languages: §e%s",
+                                status, collection, String.join(", ", languages))));
+                    } catch (Exception e) {
+                        sender.sendMessage(Component.text(String.format("§c❌ §f%s §7- Error: %s",
+                                collection, e.getMessage())));
                     }
-                });
-            })
+                }
+            }))
             .exceptionally(throwable -> {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(Component.text("§c❌ Error getting collections: " + throwable.getMessage())
