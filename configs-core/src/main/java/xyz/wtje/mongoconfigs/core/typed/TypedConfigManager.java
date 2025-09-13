@@ -55,4 +55,3 @@ public class TypedConfigManager {
 		return CompletableFuture.completedFuture(generator.get());
 	}
 }
-

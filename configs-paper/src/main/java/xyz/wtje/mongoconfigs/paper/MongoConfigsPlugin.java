@@ -77,7 +77,6 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
             registerListeners();
 
-            // statistics task removed
 
             getLogger().info("MongoDB Configs plugin enabled successfully");
 
@@ -181,7 +180,6 @@ public class MongoConfigsPlugin extends JavaPlugin {
         getLogger().info("Event listeners registered successfully");
     }
 
-    // statistics task removed
 
     public void reloadPlugin() {
         getLogger().info("Reloading MongoDB Configs plugin...");

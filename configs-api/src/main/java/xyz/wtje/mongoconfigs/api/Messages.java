@@ -8,4 +8,3 @@ public interface Messages {
     String get(String lang, String key, Object... placeholders);
     String get(String lang, String key, Map<String, Object> placeholders);
 }
-

@@ -43,7 +43,6 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         switch (args[0].toLowerCase()) {
             case "reload" -> handleReload(sender, args);
             case "reloadall" -> handleReloadAll(sender);
-                // stats command removed
             case "collections" -> handleCollections(sender);
             case "info" -> handleInfo(sender, args);
             default -> sendHelp(sender);
@@ -132,7 +131,6 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("=== ConfigsManager Commands ===", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("/configsmanager reload [collection] - Reload specific collection", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/configsmanager reloadall - Reload ALL collections from MongoDB", NamedTextColor.AQUA));
-            // stats help line removed
         sender.sendMessage(Component.text("/configsmanager collections - List collections", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("/configsmanager info <collection> - Show collection info", NamedTextColor.AQUA));
     }

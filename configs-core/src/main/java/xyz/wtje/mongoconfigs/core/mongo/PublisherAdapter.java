@@ -144,7 +144,6 @@ public final class PublisherAdapter {
 
             @Override
             public void onNext(Void item) {
-                // Void publisher doesn't emit values
             }
 
             @Override

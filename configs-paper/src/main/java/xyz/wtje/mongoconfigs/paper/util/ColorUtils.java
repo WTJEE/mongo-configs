@@ -294,4 +294,3 @@ public final class ColorUtils {
         return out.toString();
     }
 }
-

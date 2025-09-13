@@ -383,7 +383,6 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                     }
 
                     if (endIndex < collections.size()) {
-                        // Add delay between batches for system stability using CompletableFuture.delayedExecutor
                         return CompletableFuture.runAsync(() -> {}, 
                                 CompletableFuture.delayedExecutor(300, java.util.concurrent.TimeUnit.MILLISECONDS))
                                 .thenCompose(v -> processBatchesSequentially(collections, maxConcurrency, endIndex));
@@ -949,5 +948,112 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             }
         };
     }
-}
 
+    @Override
+    public <T> void createFromObject(T messageObject) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
+        Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
+
+        if (supportedLanguages.isEmpty()) {
+            supportedLanguages = Set.of("en");
+        }
+
+        Map<String, Object> flatMessages = extractFlatMessages(messageObject);
+
+        for (String language : supportedLanguages) {
+            xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
+                new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, flatMessages);
+
+            try {
+                mongoManager.saveLanguage(collectionName, langDoc).join();
+
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Created flat messages for language: " + language + " in collection: " + collectionName);
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Failed to save messages for language: " + language, e);
+            }
+        }
+
+        cacheManager.clearCache(collectionName);
+    }
+
+    @Override
+    public <T> Messages getOrCreateFromObject(T messageObject) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
+
+        Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
+
+        if (supportedLanguages.isEmpty()) {
+            supportedLanguages = Set.of("en");
+        }
+
+        boolean hasMessages = false;
+        for (String language : supportedLanguages) {
+            try {
+                xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
+                    mongoManager.getLanguage(collectionName, language).join();
+                if (langDoc != null && langDoc.getData() != null && !langDoc.getData().isEmpty()) {
+                    hasMessages = true;
+                    break;
+                }
+            } catch (Exception e) {
+            }
+        }
+
+        if (!hasMessages) {
+            if (config.isDebugLogging()) {
+                LOGGER.info("No messages found for " + collectionName + ", creating from object...");
+            }
+            createFromObject(messageObject);
+        }
+
+        return findById(collectionName);
+    }
+
+    private Map<String, Object> extractFlatMessages(Object messageObject) {
+        Map<String, Object> result = new HashMap<>();
+        Class<?> clazz = messageObject.getClass();
+
+        for (java.lang.reflect.Field field : clazz.getDeclaredFields()) {
+            try {
+                field.setAccessible(true);
+                Object value = field.get(messageObject);
+
+                if (value != null) {
+                    result.put(field.getName(), value.toString());
+                }
+            } catch (Exception e) {
+                if (config.isDebugLogging()) {
+                    LOGGER.log(Level.WARNING, "Failed to extract field: " + field.getName(), e);
+                }
+            }
+        }
+
+        for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
+            if (method.getName().startsWith("get") && method.getParameterCount() == 0 && 
+                !method.getName().equals("getClass")) {
+                try {
+                    method.setAccessible(true);
+                    Object value = method.invoke(messageObject);
+
+                    if (value != null) {
+                        String fieldName = method.getName().substring(3); // Remove "get"
+                        String key = camelCaseToSnakeCase(fieldName);
+                        result.put(key, value.toString());
+                    }
+                } catch (Exception e) {
+                    if (config.isDebugLogging()) {
+                        LOGGER.log(Level.WARNING, "Failed to extract method: " + method.getName(), e);
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private String camelCaseToSnakeCase(String camelCase) {
+        return camelCase.replaceAll("([a-z])([A-Z])", "$1.$2").toLowerCase();
+    }
+}

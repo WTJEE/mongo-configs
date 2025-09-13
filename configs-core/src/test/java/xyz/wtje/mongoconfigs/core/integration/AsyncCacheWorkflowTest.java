@@ -27,7 +27,6 @@ class AsyncCacheWorkflowTest {
 
         CacheManager cache = manager.getCacheManager();
 
-        // Simulate pre-populated config + messages
         cache.putConfigData("collectionA", Map.of("key1", "value1", "_system.supported_languages", java.util.List.of("en")));
         cache.putMessageData("collectionA", "en", Map.of("msg1", "Hello"));
 
@@ -56,4 +55,3 @@ class AsyncCacheWorkflowTest {
         manager.shutdown();
     }
 }
-

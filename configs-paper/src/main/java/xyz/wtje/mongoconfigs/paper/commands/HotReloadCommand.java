@@ -30,14 +30,6 @@ public class HotReloadCommand implements CommandExecutor {
         }
 
         switch (args[0].toLowerCase()) {
-            case "test":
-                sender.sendMessage("§eHot-reload test feature was removed in this build.");
-                break;
-
-            case "clear":
-                sender.sendMessage("§eTypedConfigManager has no local cache to clear in this build.");
-                break;
-
             case "status":
                 sender.sendMessage("§7Hot-reload system is active");
                 sender.sendMessage("§7Use Change Streams for real-time updates");

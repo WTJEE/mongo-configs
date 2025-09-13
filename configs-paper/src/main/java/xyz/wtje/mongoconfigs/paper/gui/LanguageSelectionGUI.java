@@ -41,7 +41,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.player = player;
         this.languageManager = languageManager;
         this.config = config;
-        
+
         this.inventory = Bukkit.createInventory(this, config.getGuiSize(),
             ColorHelper.parseComponent(config.getGuiTitle()));
     }    public void open() {
@@ -58,7 +58,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
                         player.openInventory(inventory);
                     } catch (Exception e) {
                         player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
-                        // Fallback to simple method
                         openSimple();
                     }
                 });
@@ -413,7 +412,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
             ItemStack closeButton = createCloseButton();
             inventory.setItem(config.getCloseButtonSlot(), closeButton);
-            
+
             player.openInventory(inventory);
         } catch (Exception e) {
             player.sendMessage("§c[ERROR] Failed to open simple GUI: " + e.getMessage());

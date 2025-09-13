@@ -53,7 +53,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         switch (subcommand) {
             case "reload" -> handleReload(sender, args);
             case "reloadall" -> handleReloadAll(sender);
-            // stats removed
             case "collections" -> handleCollections(sender);
             case "testcollections" -> handleTestCollections(sender);
             case "help" -> showHelp(sender);
@@ -90,7 +89,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
             configManager.reloadCollection(collection)
                 .thenRun(() -> {
-                    // Wykonaj w głównym wątku
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         String reloadedCollectionMessage = languageConfig.getMessage("commands.admin.reloaded-collection", senderLanguage)
                             .replace("{collection}", collection);
@@ -136,11 +134,9 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
         configManager.reloadAll()
             .thenRun(() -> {
-                // Wykonaj w głównym wątku serwera
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
 
-                    // Pokaż dodatkowe informacje
                     try {
                         var collections = configManager.getCollections().join();
                         sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));
@@ -163,7 +159,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             });
     }
 
-    // stats handler removed
 
     private void handleCollections(CommandSender sender) {
         sender.sendMessage(ColorHelper.parseComponent("&e🔍 Loading collections from MongoDB..."));
@@ -210,7 +205,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     private void handleTestCollections(CommandSender sender) {
         sender.sendMessage(ColorHelper.parseComponent("&e🔬 Testing MongoDB collections detection..."));
 
-        // Test bezpośredniego dostępu do MongoDB
         try {
             var mongoManager = configManager.getMongoManager();
             var mongoCollections = mongoManager.getMongoCollections();
@@ -224,7 +218,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ColorHelper.parseComponent("&c❌ Error accessing MongoDB directly: " + e.getMessage()));
         }
 
-        // Test przez ConfigManager
         configManager.getCollections()
             .thenAccept(collections -> {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -233,7 +226,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                         sender.sendMessage(ColorHelper.parseComponent("&7  - &b" + collection));
                     }
 
-                    // Test reload dla każdej kolekcji
                     sender.sendMessage(ColorHelper.parseComponent("&e🔄 Testing reload for each collection..."));
                     for (String collection : collections) {
                         try {
@@ -268,9 +260,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 .color(NamedTextColor.GOLD));
         sender.sendMessage(Component.text("§f/mongoconfigs reload [collection] §7- Reload specific collection"));
         sender.sendMessage(Component.text("§f/mongoconfigs reloadall §7- Reload ALL collections from MongoDB"));
-    // stats line removed
         sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
-        // Creation/copy commands removed; collections are provisioned on demand
         sender.sendMessage(Component.text("§f/mongoconfigs testcollections §7- Test MongoDB collections detection"));
         sender.sendMessage(Component.text("§f/mongoconfigs help §7- Show this help"));
     }
@@ -297,7 +287,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        // no additional tab completions for removed commands
 
         return List.of();
     }

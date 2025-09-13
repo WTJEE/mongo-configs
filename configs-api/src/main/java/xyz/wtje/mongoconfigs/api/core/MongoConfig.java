@@ -61,4 +61,3 @@ public abstract class MongoConfig<T extends MongoConfig<T>> {
         return cm.getConfigOrGenerate(type, generator).join();
     }
 }
-

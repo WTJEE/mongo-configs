@@ -24,7 +24,6 @@ public class LanguageDocument {
         LanguageDocument out = new LanguageDocument();
         out.lang = doc.getString("lang");
         out.updatedAt = doc.getDate("updatedAt");
-        // Zbierz wszystkie top-level pola (bez _id, lang, updatedAt) jako data
         java.util.Map<String, Object> map = new java.util.HashMap<>();
         for (java.util.Map.Entry<String, Object> e : doc.entrySet()) {
             String k = e.getKey();

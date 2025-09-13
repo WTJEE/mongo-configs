@@ -21,9 +21,25 @@ public interface ConfigManager {
 
     Messages findById(String id);
 
+    Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator);
+
     default Messages messagesOf(Class<?> type) {
         return findById(Annotations.idFrom(type));
     }
+
+    default Messages getMessagesOrGenerate(Class<?> messageClass) {
+        return getMessagesOrGenerate(messageClass, () -> {
+            generateDefaultMessageDocuments(messageClass);
+        });
+    }
+
+    default void generateDefaultMessageDocuments(Class<?> messageClass) {
+        throw new UnsupportedOperationException("This method should be overridden in implementation");
+    }
+
+    <T> void createFromObject(T messageObject);
+
+    <T> Messages getOrCreateFromObject(T messageObject);
 
     default <T> void saveObject(T pojo) {
         setObject(pojo).join();

@@ -33,7 +33,6 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        // Check if languageManager is null
         if (languageManager == null) {
             player.sendMessage("§c[ERROR] LanguageManager is not initialized!");
             return true;
@@ -52,7 +51,6 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
                 openLanguageGUI(player);
             } catch (Exception e) {
                 player.sendMessage("§c[ERROR] Failed to open GUI: " + e.getMessage());
-                // Fallback: show available languages in chat
                 showLanguageInfo(player, player.getUniqueId().toString());
             }
             return true;
@@ -68,7 +66,6 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        // Store values in effectively final variables for lambda
         final String finalRequestedLanguage = requestedLanguage;
         final String finalPlayerLanguage = playerLanguage;
         final Player finalPlayer = player;
@@ -149,8 +146,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     private void openLanguageGUI(Player player) {
         try {
             LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
-            
-            // Try async first, with simple fallback
+
             try {
                 gui.open();
             } catch (Exception asyncError) {
@@ -159,7 +155,6 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             }
         } catch (Exception e) {
             player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
-            // Fallback: show available languages in chat
             showLanguageInfo(player, player.getUniqueId().toString());
         }
     }

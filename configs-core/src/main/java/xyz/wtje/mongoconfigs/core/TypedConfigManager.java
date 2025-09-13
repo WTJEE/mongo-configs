@@ -85,7 +85,6 @@ public final class TypedConfigManager {
         });
     }
 
-    // Explicit id-based object storage (no annotations) ---------------------------------
     public <T> CompletableFuture<Void> setObject(String id, T pojo) {
         var document = codec.toDocument(pojo, id, pojo.getClass().getName(), 1);
         return Asyncs.one(defaultCollection.replaceOne(
@@ -100,7 +99,6 @@ public final class TypedConfigManager {
                 .thenApply(doc -> doc == null ? null : codec.toPojo(doc, type));
     }
 
-    // Simple whole-object set/get using id as key without type metadata -----------------
     public <T> CompletableFuture<Void> set(String id, T value) {
         var doc = codec.toDocument(value, id, value.getClass().getName(), 1);
         return Asyncs.one(defaultCollection.replaceOne(new Document("_id", id), doc, new ReplaceOptions().upsert(true)))
