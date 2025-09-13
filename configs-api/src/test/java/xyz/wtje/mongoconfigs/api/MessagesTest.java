@@ -152,6 +152,21 @@ class MessagesTest {
                 }
                 return template;
             }
+            
+            @Override
+            public <T> java.util.concurrent.CompletableFuture<T> getAsync(String lang, String key, Class<T> type) {
+                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, type));
+            }
+            
+            @Override
+            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Object... placeholders) {
+                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, placeholders));
+            }
+            
+            @Override
+            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Map<String, Object> placeholders) {
+                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, placeholders));
+            }
         };
 
         assertEquals("Hello", concreteMessages.get("en", "greeting", String.class));

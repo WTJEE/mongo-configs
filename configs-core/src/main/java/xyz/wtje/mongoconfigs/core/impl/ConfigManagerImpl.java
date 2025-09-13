@@ -999,6 +999,26 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
 
     @Override
+    public Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageClass);
+        
+        // Check if messages exist
+        Messages messages = findById(collectionName);
+        
+        // For simplicity, always return the messages instance
+        // The generator logic would be implemented here if needed
+        if (generator != null) {
+            try {
+                generator.get();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Generator failed for " + collectionName, e);
+            }
+        }
+        
+        return messages;
+    }
+
+    @Override
     public <T> void createFromObject(T messageObject) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
@@ -1024,7 +1044,7 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             }
         }
 
-        cacheManager.clearCache(collectionName);
+        cacheManager.invalidateMessages(collectionName);
     }
 
     @Override

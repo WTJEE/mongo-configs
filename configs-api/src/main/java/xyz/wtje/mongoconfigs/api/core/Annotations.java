@@ -5,45 +5,30 @@ import xyz.wtje.mongoconfigs.api.annotations.ConfigsDatabase;
 import xyz.wtje.mongoconfigs.api.annotations.ConfigsCollection;
 import xyz.wtje.mongoconfigs.api.annotations.SupportedLanguages;
 
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class Annotations {
 
-    private static final Map<Class<?>, String> ID_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Class<?>, String> DATABASE_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Class<?>, String> COLLECTION_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Class<?>, Set<String>> LANGS_CACHE = new ConcurrentHashMap<>();
-
     public static String idFrom(Class<?> type) {
-        return ID_CACHE.computeIfAbsent(type, t -> {
-            var a = t.getAnnotation(ConfigsFileProperties.class);
-            if (a == null || a.name().isBlank())
-                throw new IllegalStateException("Missing @ConfigsFileProperties on " + t.getName());
-            return a.name();
-        });
+        var a = type.getAnnotation(ConfigsFileProperties.class);
+        if (a == null || a.name().isBlank())
+            throw new IllegalStateException("Missing @ConfigsFileProperties on " + type.getName());
+        return a.name();
     }
 
     public static String databaseFrom(Class<?> type) {
-        return DATABASE_CACHE.computeIfAbsent(type, t -> {
-            var a = t.getAnnotation(ConfigsDatabase.class);
-            return a != null ? a.value() : null;
-        });
+        var a = type.getAnnotation(ConfigsDatabase.class);
+        return a != null ? a.value() : null;  // null = use default from config
     }
 
     public static String collectionFrom(Class<?> type) {
-        return COLLECTION_CACHE.computeIfAbsent(type, t -> {
-            var a = t.getAnnotation(ConfigsCollection.class);
-            return a != null ? a.value() : idFrom(t);
-        });
+        var a = type.getAnnotation(ConfigsCollection.class);
+        return a != null ? a.value() : idFrom(type);  // fallback to ID
     }
 
     public static Set<String> langsFrom(Class<?> type) {
-        return LANGS_CACHE.computeIfAbsent(type, t -> {
-            var a = t.getAnnotation(SupportedLanguages.class);
-            return a == null ? Set.of() : Set.of(a.value());
-        });
+        var a = type.getAnnotation(SupportedLanguages.class);
+        return a == null ? Set.of() : Set.of(a.value());
     }
 
     private Annotations() {}

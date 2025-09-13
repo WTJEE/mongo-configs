@@ -156,6 +156,21 @@ class ConfigManagerTest {
             public <T> CompletableFuture<T> getConfigOrGenerate(Class<T> type, Supplier<T> generator) {
                 return CompletableFuture.completedFuture(generator.get());
             }
+            
+            @Override
+            public Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator) {
+                return findById("test-messages");
+            }
+            
+            @Override
+            public <T> void createFromObject(T messageObject) {
+                // Test implementation
+            }
+            
+            @Override
+            public <T> Messages getOrCreateFromObject(T messageObject) {
+                return findById("test-messages");
+            }
 
             @Override
             public Messages findById(String id) {
