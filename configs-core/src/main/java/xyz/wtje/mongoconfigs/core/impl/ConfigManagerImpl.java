@@ -946,6 +946,55 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                 }
                 return get(lang, key, flat);
             }
+            
+            // 🚀 ASYNC METHODS - NO MAIN THREAD BLOCKING!
+            @Override
+            public <T> java.util.concurrent.CompletableFuture<T> getAsync(String lang, String key, Class<T> type) {
+                return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                    try {
+                        Object raw = cacheManager.getMessage(id, lang, key, (Object) null);
+                        if (raw == null) {
+                            raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, (Object) null);
+                        }
+                        if (raw == null) return null;
+                        if (type.isInstance(raw)) return type.cast(raw);
+                        return mapper.convertValue(raw, type);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error getting async typed message: " + id + ":" + lang + ":" + key, e);
+                        return null;
+                    }
+                }, asyncExecutor);
+            }
+            
+            @Override
+            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Object... placeholders) {
+                return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                    try {
+                        String message = cacheManager.getMessage(id, lang, key, (String) null);
+                        if (message == null) {
+                            message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
+                        }
+                        return messageFormatter.format(message, placeholders);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error getting async message: " + id + ":" + lang + ":" + key, e);
+                        return key;
+                    }
+                }, asyncExecutor);
+            }
+            
+            @Override
+            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, java.util.Map<String, Object> placeholders) {
+                if (placeholders == null || placeholders.isEmpty()) {
+                    return getAsync(lang, key);
+                }
+                Object[] flat = new Object[placeholders.size() * 2];
+                int i = 0;
+                for (java.util.Map.Entry<String, Object> e : placeholders.entrySet()) {
+                    flat[i++] = e.getKey();
+                    flat[i++] = e.getValue();
+                }
+                return getAsync(lang, key, flat);
+            }
         };
     }
 

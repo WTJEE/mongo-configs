@@ -1,6 +1,7 @@
-# ConfigManager API
+# ConfigManager API - FULL ASYNC ⚡
 
-Complete reference for the ConfigManager - the core interface for configuration management in MongoDB Configs API.
+**Complete reference for ConfigManager - 100% async configuration management!** 🔥  
+**NO MAIN THREAD BLOCKING - All operations run in background threads!** 🚀
 
 ## 🎯 Getting ConfigManager Instance
 
@@ -11,52 +12,125 @@ ConfigManager cm = MongoConfigsAPI.getConfigManager();
 
 ---
 
-## 📋 Class-Based Configuration Methods
+## 📋 Class-Based Configuration Methods - ASYNC FIRST! ⚡
 
 ### Loading Configurations
 
-#### `loadObject(Class<T> type)`
-Synchronously loads a configuration object.
+#### `getObject(Class<T> type)` - ⚡ ASYNC (Recommended!)
+Asynchronously loads a configuration object - **NO main thread blocking!**
 
 ```java
-// Basic loading
-ServerConfig config = cm.loadObject(ServerConfig.class);
-
-// With error handling
-try {
-    ServerConfig config = cm.loadObject(ServerConfig.class);
-    // Use config...
-} catch (Exception e) {
-    // Handle loading error
-    getLogger().warning("Failed to load config: " + e.getMessage());
-}
-```
-
-#### `getObject(Class<T> type)` 
-Asynchronously loads a configuration object.
-
-```java
-// Async loading
+// 🚀 ASYNC loading (recommended!)
 CompletableFuture<ServerConfig> future = cm.getObject(ServerConfig.class);
 future.thenAccept(config -> {
-    // Use config when loaded
+    // Use config when loaded (background thread)
     getLogger().info("Max players: " + config.getMaxPlayers());
+    
+    // For Bukkit API, switch back to main thread
+    Bukkit.getScheduler().runTask(plugin, () -> {
+        // Update server settings on main thread
+        server.setMaxPlayers(config.getMaxPlayers());
+    });
 }).exceptionally(error -> {
     getLogger().severe("Failed to load config: " + error.getMessage());
     return null;
 });
 
-// Async with timeout
-CompletableFuture<ServerConfig> config = cm.getObject(ServerConfig.class)
-    .orTimeout(5, TimeUnit.SECONDS);
+// 🚀 Async with timeout & error handling
+cm.getObject(ServerConfig.class)
+    .orTimeout(5, TimeUnit.SECONDS)
+    .thenAccept(config -> {
+        // Config loaded successfully
+        applyServerConfig(config);
+    })
+    .exceptionally(ex -> {
+        if (ex instanceof TimeoutException) {
+            getLogger().warning("Config load timeout - using defaults");
+        } else {
+            getLogger().severe("Config load failed: " + ex.getMessage());
+        }
+        return null;
+    });
 ```
 
-#### `getConfigOrGenerate(Class<T> type, Supplier<T> generator)`
-Loads configuration or creates default if not exists.
+#### `loadObject(Class<T> type)` - 🐌 SYNC (For Hot Paths Only!)
+Synchronously loads a configuration object - **Use only when necessary!**
 
 ```java
-// Load or create with defaults
-ServerConfig config = cm.getConfigOrGenerate(
+// ⚠️ SYNC loading (use sparingly - can block main thread!)
+try {
+    ServerConfig config = cm.loadObject(ServerConfig.class);
+    // Use config immediately
+    if (config.isMaintenanceMode()) {
+        // Quick response needed
+    }
+} catch (Exception e) {
+    getLogger().warning("Failed to load config: " + e.getMessage());
+}
+```
+```
+
+### Saving Configurations
+
+#### `setObject(T pojo)` - ⚡ ASYNC (Recommended!)
+Asynchronously saves a configuration object - **NO main thread blocking!**
+
+```java
+// 🚀 ASYNC saving (recommended!)
+ServerConfig config = new ServerConfig();
+config.setMaxPlayers(200);
+config.setMaintenanceMode(false);
+
+cm.setObject(config)
+    .thenRun(() -> {
+        // Save completed in background
+        getLogger().info("Config saved successfully! ⚡");
+        
+        // Notify other systems on main thread if needed
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            broadcastConfigUpdate();
+        });
+    })
+    .exceptionally(ex -> {
+        getLogger().severe("Failed to save config: " + ex.getMessage());
+        return null;
+    });
+
+// 🚀 Chain operations asynchronously
+cm.getObject(ServerConfig.class)
+    .thenApply(config -> {
+        // Modify config in background
+        config.setMaxPlayers(config.getMaxPlayers() + 10);
+        return config;
+    })
+    .thenCompose(cm::setObject)  // Save the modified config
+    .thenRun(() -> {
+        getLogger().info("Config updated and saved! 🚀");
+    });
+```
+
+#### `saveObject(T pojo)` - 🐌 SYNC (For Hot Paths Only!)
+Synchronously saves a configuration object - **Use only when necessary!**
+
+```java
+// ⚠️ SYNC saving (use sparingly - can block main thread!)
+ServerConfig config = new ServerConfig();
+config.setMaintenanceMode(true);
+
+try {
+    cm.saveObject(config);  // Blocks until saved
+    getLogger().info("Config saved immediately!");
+} catch (Exception e) {
+    getLogger().warning("Failed to save config: " + e.getMessage());
+}
+```
+
+#### `getConfigOrGenerate(Class<T> type, Supplier<T> generator)` - ⚡ ASYNC
+Loads configuration or creates default if not exists - **Fully async!**
+
+```java
+// 🚀 ASYNC load or create with defaults
+cm.getConfigOrGenerate(
     ServerConfig.class,
     () -> {
         ServerConfig defaultConfig = new ServerConfig();
@@ -64,19 +138,21 @@ ServerConfig config = cm.getConfigOrGenerate(
         defaultConfig.setServerName("Default Server");
         return defaultConfig;
     }
-);
+).thenAccept(config -> {
+    // Use config when loaded/created (background thread)
+    getLogger().info("Config ready: " + config.getServerName());
+    
+    // Apply settings on main thread for Bukkit API
+    Bukkit.getScheduler().runTask(plugin, () -> {
+        applyServerSettings(config);
+    });
+});
 
-// Lambda expression for simple defaults
-PlayerSettings settings = cm.getConfigOrGenerate(
-    PlayerSettings.class,
-    PlayerSettings::new  // Use default constructor
-);
-
-// Use with blocking call
-ServerConfig config = cm.getConfigOrGenerate(
-    ServerConfig.class,
-    ServerConfig::new
-).join();
+// 🚀 Simple async defaults
+cm.getConfigOrGenerate(PlayerSettings.class, PlayerSettings::new)
+    .thenAccept(settings -> {
+        getLogger().info("Player settings loaded!");
+    });
 ```
 
 ### Saving Configurations

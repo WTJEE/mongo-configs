@@ -1,6 +1,6 @@
-# Quick Start
+# Quick Start - FULL ASYNC ⚡
 
-> **Get up and running with MongoDB Configs API in 5 minutes**
+> **Get up and running with MongoDB Configs API in 5 minutes - ASYNC EDITION!** 🚀
 
 ## Prerequisites
 
@@ -35,12 +35,12 @@ public class MyPlugin extends JavaPlugin {
         // MongoDB Configs API is automatically initialized by the plugin
         // No manual initialization needed!
         
-        getLogger().info("Plugin ready - MongoDB Configs API available!");
+        getLogger().info("Plugin ready - MongoDB Configs API available! ⚡");
     }
 }
 ```
 
-## Basic Usage
+## Basic Usage - ASYNC FIRST! 🚀
 
 ### Create Your First Configuration
 
@@ -58,7 +58,7 @@ public class ServerConfig extends MongoConfig<ServerConfig> {
 }
 ```
 
-### Load and Use Configuration
+### Load and Use Configuration - ASYNC ⚡
 
 ```java
 public class ConfigCommand implements CommandExecutor {
@@ -67,14 +67,50 @@ public class ConfigCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         ConfigManager cm = MongoConfigsAPI.getConfigManager();
 
-        // Load configuration (from cache if available)
+        // 🚀 ASYNC configuration loading (recommended!)
+        cm.getObject(ServerConfig.class)
+            .thenAccept(config -> {
+                // Config loaded in background thread
+                String serverInfo = "Server: " + config.getServerName() + "\n" +
+                                  "Max Players: " + config.getMaxPlayers() + "\n" +
+                                  "PvP: " + (config.isPvpEnabled() ? "Enabled" : "Disabled");
+                
+                // Send message on main thread for Bukkit API safety
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(serverInfo);
+                });
+            })
+            .exceptionally(ex -> {
+                getLogger().severe("Failed to load config: " + ex.getMessage());
+                sender.sendMessage("§cFailed to load server configuration!");
+                return null;
+            });
+
+        sender.sendMessage("§eLoading configuration...");
+        return true;
+    }
+}
+```
+
+### Quick SYNC Access (For Hot Paths) ⚡
+
+```java
+public class QuickConfigCheck implements CommandExecutor {
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        ConfigManager cm = MongoConfigsAPI.getConfigManager();
+
+        // ⚡ SYNC for immediate response (cache hit = ~0.1ms)
         ServerConfig config = cm.loadObject(ServerConfig.class);
-
-        // Use configuration
-        sender.sendMessage("Server: " + config.getServerName());
-        sender.sendMessage("Max Players: " + config.getMaxPlayers());
-        sender.sendMessage("PvP: " + (config.isPvpEnabled() ? "Enabled" : "Disabled"));
-
+        
+        // Quick maintenance check
+        if (config.isMaintenanceMode()) {
+            sender.sendMessage("§cServer is in maintenance mode!");
+            return true;
+        }
+        
+        // Continue with normal logic...
         return true;
     }
 }

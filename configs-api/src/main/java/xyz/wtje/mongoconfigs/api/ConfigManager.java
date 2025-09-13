@@ -3,9 +3,13 @@ package xyz.wtje.mongoconfigs.api;
 import xyz.wtje.mongoconfigs.api.core.Annotations;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 public interface ConfigManager {
+
+    // Cache for messagesOf() calls to avoid repeated annotation processing
+    ConcurrentHashMap<Class<?>, Messages> CLASS_MESSAGES_CACHE = new ConcurrentHashMap<>();
 
     CompletableFuture<Void> reloadAll();
 
@@ -24,7 +28,7 @@ public interface ConfigManager {
     Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator);
 
     default Messages messagesOf(Class<?> type) {
-        return findById(Annotations.idFrom(type));
+        return CLASS_MESSAGES_CACHE.computeIfAbsent(type, t -> findById(Annotations.idFrom(t)));
     }
 
     default Messages getMessagesOrGenerate(Class<?> messageClass) {
