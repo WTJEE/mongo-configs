@@ -41,6 +41,34 @@ public interface ConfigManager {
     <T> void createFromObject(T messageObject);
 
     <T> Messages getOrCreateFromObject(T messageObject);
+    
+    // === NEW ASYNC METHODS ===
+    
+    /**
+     * Create message structure from an annotated object (asynchronous)
+     * @param messageObject the object containing message definitions
+     * @return CompletableFuture that completes when creation is done
+     */
+    default <T> CompletableFuture<Void> createFromObjectAsync(T messageObject) {
+        return CompletableFuture.runAsync(() -> createFromObject(messageObject));
+    }
+    
+    /**
+     * Get messages or create from object if they don't exist (asynchronous)
+     * @param messageObject the object containing message definitions
+     * @return CompletableFuture containing Messages instance
+     */
+    default <T> CompletableFuture<Messages> getOrCreateFromObjectAsync(T messageObject) {
+        return CompletableFuture.supplyAsync(() -> getOrCreateFromObject(messageObject));
+    }
+    
+    /**
+     * Invalidate all cached data asynchronously
+     * @return CompletableFuture that completes when invalidation is done
+     */
+    default CompletableFuture<Void> invalidateAllAsync() {
+        return CompletableFuture.completedFuture(null); // Default empty implementation
+    }
 
     default <T> void saveObject(T pojo) {
         setObject(pojo).join();

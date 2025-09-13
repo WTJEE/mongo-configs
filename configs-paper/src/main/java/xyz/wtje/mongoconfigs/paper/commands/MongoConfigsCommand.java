@@ -168,16 +168,20 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(Component.text("§6=== Available Collections ===")
                             .color(NamedTextColor.GOLD));
-
-                    if (collections.isEmpty()) {
-                        sender.sendMessage(Component.text("§c❌ No collections found in MongoDB!")
-                                .color(NamedTextColor.RED));
-                        sender.sendMessage(Component.text("§7Create collections using: /mongoconfigs create <name> <languages...>")
-                                .color(NamedTextColor.GRAY));
-                    } else {
-                        sender.sendMessage(Component.text("§7Found " + collections.size() + " collections:")
-                                .color(NamedTextColor.GRAY));
-
+                    // Fetch collections asynchronously to avoid blocking the server thread
+                    configManager.getCollections()
+                        .thenAccept(collections -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            sender.sendMessage(ColorHelper.parseComponent("&7\ud83d\udccb Reloaded collections: &f" + collections.size()));
+                            for (String collection : collections) {
+                                sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                            }
+                        }))
+                        .exceptionally(ex -> {
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: " + ex.getMessage()));
+                            });
+                            return null;
+                        });
                         for (String collection : collections) {
                             try {
                                 Set<String> languages = configManager.getSupportedLanguages(collection);
@@ -280,11 +284,8 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 2 && "reload".equals(args[0])) {
-            try {
-                return configManager.getCollections().join().stream().toList();
-            } catch (Exception e) {
-                return List.of();
-            }
+            // Avoid blocking for tab completion; return empty list or consider caching a snapshot in future
+            return List.of();
         }
 
 

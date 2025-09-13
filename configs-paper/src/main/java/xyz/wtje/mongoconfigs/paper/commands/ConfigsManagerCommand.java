@@ -54,36 +54,36 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
     private void handleReload(CommandSender sender, String[] args) {
         sender.sendMessage(Component.text("Reloading from MongoDB...", NamedTextColor.YELLOW));
 
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (args.length == 1) {
-                    configManager.reloadAll().join();
-                    sender.sendMessage(Component.text("✓ All collections reloaded from MongoDB!", NamedTextColor.GREEN));
-                } else {
-                    String collection = args[1];
-                    if (collectionsOps.collectionExists(collection)) {
-                        collectionsOps.reloadCollection(collection).join();
-                        sender.sendMessage(Component.text("✓ Collection '" + collection + "' reloaded from MongoDB!", NamedTextColor.GREEN));
-                    } else {
-                        sender.sendMessage(Component.text("✗ Collection '" + collection + "' not found!", NamedTextColor.RED));
-                    }
-                }
-            } catch (Exception e) {
-                sender.sendMessage(Component.text("✗ Error reloading: " + e.getMessage(), NamedTextColor.RED));
+        if (args.length == 1) {
+            configManager.reloadAll().thenRun(() -> {
+                sender.sendMessage(Component.text("✓ All collections reloaded from MongoDB!", NamedTextColor.GREEN));
+            }).exceptionally(ex -> {
+                sender.sendMessage(Component.text("✗ Error reloading: " + ex.getMessage(), NamedTextColor.RED));
+                return null;
+            });
+        } else {
+            String collection = args[1];
+            if (collectionsOps.collectionExists(collection)) {
+                collectionsOps.reloadCollection(collection).thenRun(() -> {
+                    sender.sendMessage(Component.text("✓ Collection '" + collection + "' reloaded from MongoDB!", NamedTextColor.GREEN));
+                }).exceptionally(ex -> {
+                    sender.sendMessage(Component.text("✗ Error reloading: " + ex.getMessage(), NamedTextColor.RED));
+                    return null;
+                });
+            } else {
+                sender.sendMessage(Component.text("✗ Collection '" + collection + "' not found!", NamedTextColor.RED));
             }
-        });
+        }
     }
 
     private void handleReloadAll(CommandSender sender) {
         sender.sendMessage(Component.text("Reloading all collections from MongoDB...", NamedTextColor.YELLOW));
 
-        CompletableFuture.runAsync(() -> {
-            try {
-                configManager.reloadAll().join();
-                sender.sendMessage(Component.text("✓ All collections reloaded successfully from MongoDB!", NamedTextColor.GREEN));
-            } catch (Exception e) {
-                sender.sendMessage(Component.text("✗ Error reloading all collections: " + e.getMessage(), NamedTextColor.RED));
-            }
+        configManager.reloadAll().thenRun(() -> {
+            sender.sendMessage(Component.text("✓ All collections reloaded successfully from MongoDB!", NamedTextColor.GREEN));
+        }).exceptionally(ex -> {
+            sender.sendMessage(Component.text("✗ Error reloading all collections: " + ex.getMessage(), NamedTextColor.RED));
+            return null;
         });
     }
 
@@ -148,11 +148,8 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2) {
             String subcommand = args[0].toLowerCase();
             if ("reload".equals(subcommand) || "info".equals(subcommand)) {
-                try {
-                    return new ArrayList<String>(collectionsOps.getCollections().join());
-                } catch (Exception e) {
+                    // Avoid blocking for tab completion; return empty or consider a cached snapshot
                     return new ArrayList<String>();
-                }
             }
         }
 

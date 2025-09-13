@@ -107,98 +107,113 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
     public CompletableFuture<Void> reloadCollection(String collection) {
         return CompletableFuture.runAsync(() -> {
-            try {
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Reloading collection: " + collection);
-                }
-                cacheManager.invalidateCollection(collection);
-
-                CompletableFuture<ConfigDocument> configFuture = mongoManager.getConfig(collection);
-                ConfigDocument configDoc = null;
-                try {
-                    configDoc = configFuture.join();
+            if (config.isDebugLogging()) {
+                LOGGER.info("Reloading collection: " + collection);
+            }
+            cacheManager.invalidateCollection(collection);
+        }, asyncExecutor)
+        .thenCompose(v -> {
+            return mongoManager.getConfig(collection)
+                .thenCompose(configDoc -> {
                     if (configDoc == null) {
                         if (config.isDebugLogging()) {
                             LOGGER.info("Config document missing for collection: " + collection + ", creating new one");
                         }
                         ConfigDocument newConfigDoc = new ConfigDocument("config", new HashMap<>());
-                        mongoManager.saveConfig(collection, newConfigDoc).join();
-                        configDoc = newConfigDoc;
-                    }
-                } catch (Exception e) {
-                    if (config.isVerboseLogging()) {
-                        LOGGER.log(Level.WARNING, "Failed to load config for collection: " + collection, e);
-                    }
-                }
-
-                Set<String> expectedLanguages = Set.of();
-                if (configDoc != null && configDoc.getData() != null) {
-                    Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
-                    if (supportedLanguagesObj instanceof List) {
-                        expectedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
-                        collectionLanguages.put(collection, expectedLanguages);
-                        if (config.isDebugLogging()) {
-                            LOGGER.info("Found supported languages in config for " + collection + ": " + expectedLanguages);
-                        }
+                        return mongoManager.saveConfig(collection, newConfigDoc)
+                            .thenApply(v2 -> newConfigDoc);
                     } else {
-                        expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
-                        if (config.isDebugLogging()) {
-                            LOGGER.info("No supported languages in config, using known languages for " + collection + ": " + expectedLanguages);
-                        }
+                        return CompletableFuture.completedFuture(configDoc);
                     }
-                }
-
-                if (!expectedLanguages.isEmpty()) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
-                    }
-                    ensureLanguageDocumentsExist(collection, expectedLanguages).join();
-                } else {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("No expected languages found for collection: " + collection + ", skipping document check");
-                    }
-                }
-
-                List<CompletableFuture<LanguageDocument>> languageFutures = expectedLanguages.stream()
-                        .map(lang -> mongoManager.getLanguage(collection, lang))
-                        .collect(Collectors.toList());
-
-                if (configDoc != null && configDoc.getData() != null) {
-                    cacheManager.putConfigData(collection, configDoc.getData());
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Successfully cached config for collection: " + collection);
-                    }
-                } else {
+                })
+                .exceptionally(throwable -> {
                     if (config.isVerboseLogging()) {
-                        LOGGER.warning("No config data found for collection: " + collection);
+                        LOGGER.log(Level.WARNING, "Failed to load config for collection: " + collection, throwable);
                     }
-                }
-
-                int loadedLanguages = 0;
-                for (CompletableFuture<LanguageDocument> future : languageFutures) {
-                    try {
-                        LanguageDocument langDoc = future.join();
-                        if (langDoc != null && langDoc.getData() != null) {
-                            cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
-                            loadedLanguages++;
-                        }
-                    } catch (Exception e) {
-                        if (config.isVerboseLogging()) {
-                            LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, e);
+                    return null;
+                })
+                .thenCompose(configDoc -> {
+                    Set<String> expectedLanguages = Set.of();
+                    if (configDoc != null && configDoc.getData() != null) {
+                        Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
+                        if (supportedLanguagesObj instanceof List) {
+                            expectedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
+                            collectionLanguages.put(collection, expectedLanguages);
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("Found supported languages in config for " + collection + ": " + expectedLanguages);
+                            }
+                        } else {
+                            expectedLanguages = collectionLanguages.getOrDefault(collection, Set.of());
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("No supported languages in config, using known languages for " + collection + ": " + expectedLanguages);
+                            }
                         }
                     }
-                }
 
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Successfully reloaded collection " + collection + " - Config: " + 
-                               (configDoc != null ? "loaded" : "missing") + ", Languages: " + 
-                               loadedLanguages + "/" + expectedLanguages.size());
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Error reloading collection: " + collection, e);
-                throw new RuntimeException(e);
-            }
-        }, asyncExecutor);
+                    final Set<String> finalExpectedLanguages = expectedLanguages;
+                    CompletableFuture<Void> ensureLanguagesFuture;
+                    
+                    if (!expectedLanguages.isEmpty()) {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
+                        }
+                        ensureLanguagesFuture = ensureLanguageDocumentsExist(collection, expectedLanguages);
+                    } else {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("No expected languages found for collection: " + collection + ", skipping document check");
+                        }
+                        ensureLanguagesFuture = CompletableFuture.completedFuture(null);
+                    }
+
+                    return ensureLanguagesFuture.thenCompose(v2 -> {
+                        // Load language documents in parallel
+                        List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
+                                .map(lang -> mongoManager.getLanguage(collection, lang))
+                                .collect(Collectors.toList());
+
+                        // Cache config data if available
+                        if (configDoc != null && configDoc.getData() != null) {
+                            cacheManager.putConfigData(collection, configDoc.getData());
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("Successfully cached config for collection: " + collection);
+                            }
+                        } else {
+                            if (config.isVerboseLogging()) {
+                                LOGGER.warning("No config data found for collection: " + collection);
+                            }
+                        }
+
+                        // Process language futures in parallel
+                        return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
+                            .thenRun(() -> {
+                                int loadedLanguages = 0;
+                                for (CompletableFuture<LanguageDocument> future : languageFutures) {
+                                    try {
+                                        LanguageDocument langDoc = future.join(); // Safe since allOf already completed
+                                        if (langDoc != null && langDoc.getData() != null) {
+                                            cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
+                                            loadedLanguages++;
+                                        }
+                                    } catch (Exception e) {
+                                        if (config.isVerboseLogging()) {
+                                            LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, e);
+                                        }
+                                    }
+                                }
+
+                                if (config.isDebugLogging()) {
+                                    LOGGER.info("Successfully reloaded collection " + collection + " - Config: " + 
+                                               (configDoc != null ? "loaded" : "missing") + ", Languages: " + 
+                                               loadedLanguages + "/" + finalExpectedLanguages.size());
+                                }
+                            });
+                    });
+                });
+        })
+        .exceptionally(throwable -> {
+            LOGGER.log(Level.SEVERE, "Error reloading collection: " + collection, throwable);
+            throw new RuntimeException(throwable);
+        });
     }
     @Override
     public CompletableFuture<Void> reloadAll() {
@@ -486,92 +501,117 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
     private void preWarmCache() {
         CompletableFuture.runAsync(() -> {
-            try {
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Pre-warming cache - discovering existing collections...");
-                }
-                Set<String> existingCollections = PublisherAdapter.toCompletableFutureList(
-                    mongoManager.getDatabase().listCollectionNames()
-                ).join()
-                .stream()
-                .collect(java.util.stream.Collectors.toSet());
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Found existing collections: " + existingCollections);
-                }
-                for (String collection : existingCollections) {
-                    if (!collection.equals(config.getPlayerLanguagesCollection())) {
-                        loadCollectionIntoCache(collection).join();
-                    }
-                }
-                knownCollections.addAll(existingCollections);
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Pre-warming cache completed for " + existingCollections.size() + " collections");
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error pre-warming cache", e);
+            if (config.isDebugLogging()) {
+                LOGGER.info("Pre-warming cache - discovering existing collections...");
             }
-        }, asyncExecutor);
+        }, asyncExecutor)
+        .thenCompose(v -> {
+            return PublisherAdapter.toCompletableFutureList(
+                mongoManager.getDatabase().listCollectionNames()
+            );
+        })
+        .thenCompose(existingCollections -> {
+            Set<String> collections = existingCollections.stream()
+                .collect(java.util.stream.Collectors.toSet());
+            
+            if (config.isDebugLogging()) {
+                LOGGER.info("Found existing collections: " + collections);
+            }
+            
+            // Load collections into cache in parallel
+            List<CompletableFuture<Void>> loadFutures = collections.stream()
+                .filter(collection -> !collection.equals(config.getPlayerLanguagesCollection()))
+                .map(this::loadCollectionIntoCache)
+                .collect(Collectors.toList());
+            
+            knownCollections.addAll(collections);
+            
+            return CompletableFuture.allOf(loadFutures.toArray(new CompletableFuture[0]))
+                .thenRun(() -> {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("Pre-warming cache completed for " + collections.size() + " collections");
+                    }
+                });
+        })
+        .exceptionally(throwable -> {
+            LOGGER.log(Level.WARNING, "Error pre-warming cache", throwable);
+            return null;
+        });
     }
     private CompletableFuture<Void> loadCollectionIntoCache(String collection) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                if (config.isVerboseLogging()) {
-                    LOGGER.info("Loading collection into cache: " + collection);
-                }
-                ConfigDocument configDoc = mongoManager.getConfig(collection).join();
-                if (configDoc != null && configDoc.getData() != null) {
-                    cacheManager.putConfigData(collection, configDoc.getData());
-                    if (config.isVerboseLogging()) {
-                        LOGGER.info("Loaded config data for collection: " + collection);
-                    }
-
-                    Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
-                    if (supportedLanguagesObj instanceof List) {
-                        Set<String> supportedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
-                        collectionLanguages.put(collection, supportedLanguages);
-                        if (config.isDebugLogging()) {
-                            LOGGER.info("Found supported languages in config for " + collection + ": " + supportedLanguages);
-                        }
-                    }
-                }
-
-                Set<String> actualLanguages = PublisherAdapter.toCompletableFutureList(
-                    mongoManager.getCollection(collection)
-                        .find(Filters.exists("lang"))
-                ).join()
-                .stream()
-                .map(doc -> doc.getString("lang"))
-                .filter(lang -> lang != null)
-                .collect(java.util.stream.Collectors.toSet());
-
-                if (config.isVerboseLogging()) {
-                    LOGGER.info("Found actual languages in collection " + collection + ": " + actualLanguages);
-                }
-
-                Set<String> expectedLanguages = collectionLanguages.getOrDefault(collection, actualLanguages);
-                if (actualLanguages.isEmpty() && !expectedLanguages.isEmpty()) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("No actual languages found but expected languages exist for " + collection + ", will regenerate during reload");
-                    }
-                } else if (!expectedLanguages.isEmpty()) {
-                    collectionLanguages.put(collection, expectedLanguages);
-                } else {
-                    collectionLanguages.put(collection, actualLanguages);
-                }
-
-                for (String language : actualLanguages) {
-                    LanguageDocument langDoc = mongoManager.getLanguage(collection, language).join();
-                    if (langDoc != null && langDoc.getData() != null) {
-                        cacheManager.putMessageData(collection, language, langDoc.getData());
-                        if (config.isVerboseLogging()) {
-                            LOGGER.info("Loaded language data for " + collection + ":" + language);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error loading collection into cache: " + collection, e);
+        return CompletableFuture.supplyAsync(() -> {
+            if (config.isVerboseLogging()) {
+                LOGGER.info("Loading collection into cache: " + collection);
             }
-        }, asyncExecutor);
+            return collection;
+        }, asyncExecutor)
+        .thenCompose(col -> {
+            return mongoManager.getConfig(collection)
+                .thenCompose(configDoc -> {
+                    if (configDoc != null && configDoc.getData() != null) {
+                        cacheManager.putConfigData(collection, configDoc.getData());
+                        if (config.isVerboseLogging()) {
+                            LOGGER.info("Loaded config data for collection: " + collection);
+                        }
+
+                        Object supportedLanguagesObj = configDoc.getData().get("_system.supported_languages");
+                        if (supportedLanguagesObj instanceof List) {
+                            Set<String> supportedLanguages = new HashSet<>((List<String>) supportedLanguagesObj);
+                            collectionLanguages.put(collection, supportedLanguages);
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("Found supported languages in config for " + collection + ": " + supportedLanguages);
+                            }
+                        }
+                    }
+
+                    return PublisherAdapter.toCompletableFutureList(
+                        mongoManager.getCollection(collection)
+                            .find(Filters.exists("lang"))
+                    );
+                })
+                .thenCompose(documents -> {
+                    Set<String> actualLanguages = documents.stream()
+                        .map(doc -> doc.getString("lang"))
+                        .filter(lang -> lang != null)
+                        .collect(java.util.stream.Collectors.toSet());
+
+                    if (config.isVerboseLogging()) {
+                        LOGGER.info("Found actual languages in collection " + collection + ": " + actualLanguages);
+                    }
+
+                    Set<String> expectedLanguages = collectionLanguages.getOrDefault(collection, actualLanguages);
+                    if (actualLanguages.isEmpty() && !expectedLanguages.isEmpty()) {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("No actual languages found but expected languages exist for " + collection + ", will regenerate during reload");
+                        }
+                    } else if (!expectedLanguages.isEmpty()) {
+                        collectionLanguages.put(collection, expectedLanguages);
+                    } else {
+                        collectionLanguages.put(collection, actualLanguages);
+                    }
+
+                    // Load language documents in parallel
+                    List<CompletableFuture<Void>> languageLoadFutures = actualLanguages.stream()
+                        .map(language ->
+                            mongoManager.getLanguage(collection, language)
+                                .thenAccept(langDoc -> {
+                                    if (langDoc != null && langDoc.getData() != null) {
+                                        cacheManager.putMessageData(collection, language, langDoc.getData());
+                                        if (config.isVerboseLogging()) {
+                                            LOGGER.info("Loaded language data for " + collection + ":" + language);
+                                        }
+                                    }
+                                })
+                        )
+                        .collect(Collectors.toList());
+
+                    return CompletableFuture.allOf(languageLoadFutures.toArray(new CompletableFuture[0]));
+                })
+                .exceptionally(throwable -> {
+                    LOGGER.log(Level.WARNING, "Error loading collection into cache: " + collection, throwable);
+                    return null;
+                });
+        });
     }
     public void invalidateCache(String collection) {
         cacheManager.invalidateCollection(collection);
@@ -613,6 +653,25 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public CompletableFuture<Boolean> hasMessagesAsync(String collection, String language) {
+        return CompletableFuture.supplyAsync(() -> {
+            String testMessage = cacheManager.getMessage(collection, language, "test.key");
+            if (testMessage != null && !testMessage.equals("test.key")) {
+                return true;
+            }
+            return false;
+        }, asyncExecutor)
+        .thenCompose(cacheResult -> {
+            if (cacheResult) {
+                return CompletableFuture.completedFuture(true);
+            }
+            
+            return mongoManager.getLanguage(collection, language)
+                .thenApply(langDoc -> langDoc != null && langDoc.getData() != null && !langDoc.getData().isEmpty())
+                .exceptionally(throwable -> false);
+        });
     }
 
     public CompletableFuture<Void> forceRegenerateLanguageDocuments(String collection) {
@@ -711,64 +770,67 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
 
     private CompletableFuture<Void> ensureLanguageDocumentsExist(String collection, Set<String> expectedLanguages) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                if (config.isDebugLogging()) {
-                    LOGGER.info("🔍 Checking language documents for collection: " + collection + ", expected: " + expectedLanguages);
-                }
-
-                Set<String> existingLanguages = getExistingLanguagesInCollection(collection).join();
-
-                if (config.isDebugLogging()) {
-                    LOGGER.info("📋 Existing languages: " + existingLanguages);
-                }
-
-                Set<String> missingLanguages = new HashSet<>(expectedLanguages);
-                missingLanguages.removeAll(existingLanguages);
-
-                if (missingLanguages.isEmpty()) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("✅ All language documents exist for collection: " + collection);
-                    }
-                    return;
-                }
-
-                if (config.isDebugLogging()) {
-                    LOGGER.info("❌ Missing language documents in collection " + collection + ": " + missingLanguages);
-                    LOGGER.info("🔧 Creating missing language documents...");
-                }
-
-                List<CompletableFuture<Void>> createFutures = missingLanguages.stream()
-                        .map(language -> {
-                            if (config.isVerboseLogging()) {
-                                LOGGER.info("🆕 Creating language document: " + collection + ":" + language);
-                            }
-                            LanguageDocument langDoc = new LanguageDocument(language, new HashMap<>());
-                            return mongoManager.saveLanguage(collection, langDoc)
-                                    .thenRun(() -> {
-                                        if (config.isVerboseLogging()) {
-                                            LOGGER.info("✅ Created language document: " + collection + ":" + language);
-                                        }
-                                    })
-                                    .exceptionally(throwable -> {
-                                        LOGGER.log(Level.SEVERE, "❌ Failed to create language document " + collection + ":" + language, throwable);
-                                        return null;
-                                    });
-                        })
-                        .collect(Collectors.toList());
-
-                CompletableFuture.allOf(createFutures.toArray(new CompletableFuture[0])).join();
-                if (config.isDebugLogging()) {
-                    LOGGER.info("🎉 Successfully created " + missingLanguages.size() + " missing language documents for collection: " + collection);
-                }
-
-            } catch (Exception e) {
-                if (config.isVerboseLogging()) {
-                    LOGGER.log(Level.SEVERE, "💥 Error ensuring language documents exist for collection: " + collection, e);
-                }
-                throw new RuntimeException(e);
+        return CompletableFuture.supplyAsync(() -> {
+            if (config.isDebugLogging()) {
+                LOGGER.info("🔍 Checking language documents for collection: " + collection + ", expected: " + expectedLanguages);
             }
-        }, asyncExecutor);
+            return expectedLanguages;
+        }, asyncExecutor)
+        .thenCompose(languages -> {
+            return getExistingLanguagesInCollection(collection)
+                .thenCompose(existingLanguages -> {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("📋 Existing languages: " + existingLanguages);
+                    }
+
+                    Set<String> missingLanguages = new HashSet<>(expectedLanguages);
+                    missingLanguages.removeAll(existingLanguages);
+
+                    if (missingLanguages.isEmpty()) {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("✅ All language documents exist for collection: " + collection);
+                        }
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("❌ Missing language documents in collection " + collection + ": " + missingLanguages);
+                        LOGGER.info("🔧 Creating missing language documents...");
+                    }
+
+                    List<CompletableFuture<Void>> createFutures = missingLanguages.stream()
+                            .map(language -> {
+                                if (config.isVerboseLogging()) {
+                                    LOGGER.info("🆕 Creating language document: " + collection + ":" + language);
+                                }
+                                LanguageDocument langDoc = new LanguageDocument(language, new HashMap<>());
+                                return mongoManager.saveLanguage(collection, langDoc)
+                                        .thenRun(() -> {
+                                            if (config.isVerboseLogging()) {
+                                                LOGGER.info("✅ Created language document: " + collection + ":" + language);
+                                            }
+                                        })
+                                        .exceptionally(throwable -> {
+                                            LOGGER.log(Level.SEVERE, "❌ Failed to create language document " + collection + ":" + language, throwable);
+                                            return null;
+                                        });
+                            })
+                            .collect(Collectors.toList());
+
+                    return CompletableFuture.allOf(createFutures.toArray(new CompletableFuture[0]))
+                        .thenRun(() -> {
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("🎉 Successfully created " + missingLanguages.size() + " missing language documents for collection: " + collection);
+                            }
+                        });
+                });
+        })
+        .exceptionally(throwable -> {
+            if (config.isVerboseLogging()) {
+                LOGGER.log(Level.SEVERE, "💥 Error ensuring language documents exist for collection: " + collection, throwable);
+            }
+            throw new RuntimeException(throwable);
+        });
     }
 
     private CompletableFuture<Set<String>> getExistingLanguagesInCollection(String collection) {
@@ -1020,6 +1082,16 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
 
     @Override
     public <T> void createFromObject(T messageObject) {
+        // Delegate to async version and don't block
+        createFromObjectAsync(messageObject)
+            .whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    LOGGER.log(Level.SEVERE, "Error in createFromObject async operation", throwable);
+                }
+            });
+    }
+
+    public <T> CompletableFuture<Void> createFromObjectAsync(T messageObject) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
 
@@ -1029,68 +1101,122 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
 
         Map<String, Object> flatMessages = extractFlatMessages(messageObject);
 
-        for (String language : supportedLanguages) {
-            xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
-                new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, flatMessages);
+        // Create async operations for all languages in parallel
+        List<CompletableFuture<Void>> saveFutures = supportedLanguages.stream()
+            .map(language -> {
+                xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
+                    new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, flatMessages);
+                
+                return mongoManager.saveLanguage(collectionName, langDoc)
+                    .thenRun(() -> {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Created flat messages for language: " + language + " in collection: " + collectionName);
+                        }
+                    })
+                    .exceptionally(throwable -> {
+                        LOGGER.log(Level.SEVERE, "Failed to save messages for language: " + language, throwable);
+                        return null;
+                    });
+            })
+            .collect(Collectors.toList());
 
-            try {
-                mongoManager.saveLanguage(collectionName, langDoc).join();
-
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Created flat messages for language: " + language + " in collection: " + collectionName);
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Failed to save messages for language: " + language, e);
-            }
-        }
-
-        cacheManager.invalidateMessages(collectionName);
+        // Wait for all save operations to complete, then invalidate cache
+        return CompletableFuture.allOf(saveFutures.toArray(new CompletableFuture[0]))
+            .thenRun(() -> cacheManager.invalidateMessages(collectionName));
     }
 
     @Override
     public <T> Messages getOrCreateFromObject(T messageObject) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
+        
+        // Delegate to async version but return Messages immediately
+        // The async operation will complete in background
+        getOrCreateFromObjectAsync(messageObject)
+            .whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    LOGGER.log(Level.SEVERE, "Error in getOrCreateFromObject async operation", throwable);
+                }
+            });
+        
+        return findById(collectionName);
+    }
 
+    public <T> CompletableFuture<Messages> getOrCreateFromObjectAsync(T messageObject) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
 
         if (supportedLanguages.isEmpty()) {
             supportedLanguages = Set.of("en");
         }
 
-        boolean hasMessages = false;
-        for (String language : supportedLanguages) {
-            try {
-                xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
-                    mongoManager.getLanguage(collectionName, language).join();
-                if (langDoc != null && langDoc.getData() != null && !langDoc.getData().isEmpty()) {
-                    hasMessages = true;
-                    break;
+        // Create async checks for all languages in parallel
+        List<CompletableFuture<Boolean>> languageCheckFutures = supportedLanguages.stream()
+            .map(language ->
+                mongoManager.getLanguage(collectionName, language)
+                    .thenApply(langDoc -> langDoc != null && langDoc.getData() != null && !langDoc.getData().isEmpty())
+                    .exceptionally(throwable -> false)
+            )
+            .collect(Collectors.toList());
+
+        return CompletableFuture.allOf(languageCheckFutures.toArray(new CompletableFuture[0]))
+            .thenCompose(v -> {
+                boolean hasMessages = languageCheckFutures.stream()
+                    .anyMatch(future -> future.join()); // Safe .join() here since futures are already completed
+
+                if (!hasMessages) {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("No messages found for " + collectionName + ", creating from object...");
+                    }
+                    return createFromObjectAsync(messageObject)
+                        .thenApply(voidResult -> findById(collectionName));
+                } else {
+                    return CompletableFuture.completedFuture(findById(collectionName));
                 }
-            } catch (Exception e) {
-            }
-        }
-
-        if (!hasMessages) {
-            if (config.isDebugLogging()) {
-                LOGGER.info("No messages found for " + collectionName + ", creating from object...");
-            }
-            createFromObject(messageObject);
-        }
-
-        return findById(collectionName);
+            });
     }
 
     private Map<String, Object> extractFlatMessages(Object messageObject) {
         Map<String, Object> result = new HashMap<>();
-        Class<?> clazz = messageObject.getClass();
+        java.util.Set<Object> visited = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        flattenObject(messageObject, "", result, visited, 0);
+        return result;
+    }
 
+    private void flattenObject(Object obj, String prefix, Map<String, Object> out, java.util.Set<Object> visited, int depth) {
+        if (obj == null) return;
+        if (depth > 8) return; // safety guard
+        if (visited.contains(obj)) return; // cycle guard
+        visited.add(obj);
+
+        Class<?> clazz = obj.getClass();
+
+        // 1) Fields: keep exact field name as segment; simple values -> toString; nested -> recurse
         for (java.lang.reflect.Field field : clazz.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) continue;
             try {
                 field.setAccessible(true);
-                Object value = field.get(messageObject);
+                Object value = field.get(obj);
+                if (value == null) continue;
 
-                if (value != null) {
-                    result.put(field.getName(), value.toString());
+                String key = prefix.isEmpty() ? field.getName() : prefix + "." + field.getName();
+
+                if (isSimpleValue(value)) {
+                    out.put(key, String.valueOf(value));
+                } else if (value instanceof java.util.Map<?, ?> m) {
+                    for (var e : m.entrySet()) {
+                        Object k = e.getKey();
+                        Object v = e.getValue();
+                        if (k != null && v != null) {
+                            String mapKey = key + "." + k.toString();
+                            if (isSimpleValue(v)) {
+                                out.put(mapKey, String.valueOf(v));
+                            } else {
+                                flattenObject(v, mapKey, out, visited, depth + 1);
+                            }
+                        }
+                    }
+                } else {
+                    flattenObject(value, key, out, visited, depth + 1);
                 }
             } catch (Exception e) {
                 if (config.isDebugLogging()) {
@@ -1099,27 +1225,52 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             }
         }
 
+        // 2) Getters: convert to dotted.lowercase segment and apply same recursion/simple rules
         for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
-            if (method.getName().startsWith("get") && method.getParameterCount() == 0 && 
-                !method.getName().equals("getClass")) {
-                try {
-                    method.setAccessible(true);
-                    Object value = method.invoke(messageObject);
+            String name = method.getName();
+            if (!name.startsWith("get") || method.getParameterCount() != 0 || name.equals("getClass")) continue;
+            if (java.lang.reflect.Modifier.isStatic(method.getModifiers())) continue;
+            try {
+                method.setAccessible(true);
+                Object value = method.invoke(obj);
+                if (value == null) continue;
 
-                    if (value != null) {
-                        String fieldName = method.getName().substring(3); // Remove "get"
-                        String key = camelCaseToSnakeCase(fieldName);
-                        result.put(key, value.toString());
+                String fieldName = name.substring(3);
+                String getterKey = camelCaseToSnakeCase(fieldName);
+                String key = prefix.isEmpty() ? getterKey : prefix + "." + getterKey;
+
+                if (isSimpleValue(value)) {
+                    out.put(key, String.valueOf(value));
+                } else if (value instanceof java.util.Map<?, ?> m) {
+                    for (var e : m.entrySet()) {
+                        Object k = e.getKey();
+                        Object v = e.getValue();
+                        if (k != null && v != null) {
+                            String mapKey = key + "." + k.toString();
+                            if (isSimpleValue(v)) {
+                                out.put(mapKey, String.valueOf(v));
+                            } else {
+                                flattenObject(v, mapKey, out, visited, depth + 1);
+                            }
+                        }
                     }
-                } catch (Exception e) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.log(Level.WARNING, "Failed to extract method: " + method.getName(), e);
-                    }
+                } else {
+                    flattenObject(value, key, out, visited, depth + 1);
+                }
+            } catch (Exception e) {
+                if (config.isDebugLogging()) {
+                    LOGGER.log(Level.WARNING, "Failed to extract method: " + method.getName(), e);
                 }
             }
         }
+    }
 
-        return result;
+    private boolean isSimpleValue(Object value) {
+        return value instanceof CharSequence ||
+               value instanceof Number ||
+               value instanceof Boolean ||
+               value instanceof Character ||
+               value.getClass().isEnum();
     }
 
     private String camelCaseToSnakeCase(String camelCase) {

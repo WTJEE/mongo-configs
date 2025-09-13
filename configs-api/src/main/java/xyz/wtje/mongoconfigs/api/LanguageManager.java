@@ -5,6 +5,9 @@ import java.util.concurrent.CompletableFuture;
 public interface LanguageManager {
 
     String getPlayerLanguage(String playerId);
+    default java.util.concurrent.CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> getPlayerLanguage(playerId));
+    }
 
     void setPlayerLanguage(String playerId, String language);
 

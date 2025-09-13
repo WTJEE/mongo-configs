@@ -94,17 +94,37 @@ public class LanguageManagerImpl implements LanguageManager {
         if (cached != null) {
             return cached;
         }
-
-        return playerLanguagesCache.get(playerId, key -> {
+        // Return default immediately and populate cache asynchronously to avoid blocking server thread
+        String fallback = config.getDefaultLanguage();
+        CompletableFuture.runAsync(() -> {
             try {
                 MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
                 Document doc = PublisherAdapter.toCompletableFuture(
                     collection.find(Filters.eq("_id", playerId)).first()
                 ).join();
-
-                String language = doc != null ? doc.getString("language") : config.getDefaultLanguage();
+                String language = doc != null ? doc.getString("language") : fallback;
+                playerLanguagesCache.put(playerId, language);
                 LOGGER.fine("Loaded language from MongoDB for " + playerId + ": " + language);
-                return language;
+            } catch (Exception e) {
+                LOGGER.fine("Async load failed for player language " + playerId + ": " + e.getMessage());
+            }
+        });
+        return fallback;
+    }
+
+    @Override
+    public CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
+        String cached = playerLanguagesCache.getIfPresent(playerId);
+        if (cached != null) return CompletableFuture.completedFuture(cached);
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
+                Document doc = PublisherAdapter.toCompletableFuture(
+                    collection.find(Filters.eq("_id", playerId)).first()
+                ).join();
+                String lang = doc != null ? doc.getString("language") : config.getDefaultLanguage();
+                playerLanguagesCache.put(playerId, lang);
+                return lang;
             } catch (Exception e) {
                 LOGGER.warning("Error loading player language for " + playerId + ": " + e.getMessage());
                 return config.getDefaultLanguage();

@@ -1,3 +1,55 @@
+## Class-based messages — TL;DR
+
+Minimalny i pewny przepis na wiadomości oparte o klasę (to co naprawdę działa).
+
+### 1) Zdefiniuj klasę
+```java
+import xyz.wtje.mongoconfigs.api.annotations.ConfigsFileProperties;
+import xyz.wtje.mongoconfigs.api.annotations.SupportedLanguages;
+
+@ConfigsFileProperties(name = "teleport-messages")
+@SupportedLanguages({"en", "pl"})
+public class TeleportMessages {
+    // Pola → klucze takie jak nazwa pola (bez konwersji)
+    public String playerNotFound = "Player {name} not found!";
+
+    // Gettery → camelCase do dotted.lowercase
+    public String getSuccessTeleportedTo() { return "Teleported to {target}!"; }
+
+    // Zagnieżdżone obiekty/klasy są spłaszczane kropkami
+    public static class Gui {
+        public String title = "Teleport GUI";               // gui.title
+        public String getOpenButton() { return "Open"; }    // gui.open.button
+    }
+    public Gui gui = new Gui();
+}
+```
+
+Klucze:
+- `playerNotFound` → "playerNotFound"
+- `getSuccessTeleportedTo()` → "success.teleported.to"
+- `gui.title` i `gui.open.button` z obiektu zagnieżdżonego
+
+### 2) Zainicjalizuj i używaj
+```java
+import xyz.wtje.mongoconfigs.api.*;
+
+Messages tp;
+
+public void onEnable() {
+    ConfigManager cm = MongoConfigsAPI.getConfigManager();
+    tp = cm.getOrCreateFromObject(new TeleportMessages());
+}
+
+public void sendNotFound(Player p, String target) {
+    String lang = MongoConfigsAPI.getLanguageManager().getPlayerLanguage(p.getUniqueId().toString());
+    String msg = tp.get(lang, "playerNotFound", "name", target); // nazwane placeholdery
+    p.sendMessage("§c" + msg);
+}
+```
+
+To wszystko: jedna klasa + `getOrCreateFromObject` + `get(lang, key, ...)` z nazwanymi placeholderami.
+
 # Messages API - FULL ASYNC ⚡
 
 **Prosty i szybki sposób na multilingual messages z full async approach!** 🔥  
