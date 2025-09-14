@@ -55,7 +55,7 @@ Defines which languages are supported for message translation in MongoMessages c
 ```java
 @SupportedLanguages({"en", "pl", "de", "fr", "es"})
 @ConfigsFileProperties(name = "messages")
-public class GameMessages extends MongoMessages<GameMessages> {
+public class GameMessages {
 
     private String welcome = "Welcome!";
     private String goodbye = "Goodbye!";
@@ -90,7 +90,7 @@ public class ServerConfig extends MongoConfig<ServerConfig> {
 @SupportedLanguages({"en", "pl", "de"})
 @ConfigsFileProperties(name = "game-messages")
 @ConfigsDatabase("minecraft")
-public class GameMessages extends MongoMessages<GameMessages> {
+public class GameMessages {
 
     // Messages will be stored and retrieved based on language
     private String playerJoined = "Player joined!";
@@ -217,12 +217,12 @@ public class WorldConfig { }
 // ✅ Good - explicit language support
 @SupportedLanguages({"en", "es", "fr", "de", "pl"})
 @ConfigsFileProperties(name = "ui-messages")
-public class UIMessages extends MongoMessages<UIMessages> { }
+public class UIMessages { }
 
 // ✅ Good - single language
 @SupportedLanguages({"en"})
 @ConfigsFileProperties(name = "system-messages")
-public class SystemMessages extends MongoMessages<SystemMessages> { }
+public class SystemMessages { }
 ```
 
 ### 4. Collection Naming
@@ -277,7 +277,7 @@ public class WorldConfig extends MongoConfig<WorldConfig> {
 @SupportedLanguages({"en", "pl", "de"})
 @ConfigsFileProperties(name = "chat-messages")
 @ConfigsDatabase("minecraft")
-public class ChatMessages extends MongoMessages<ChatMessages> {
+public class ChatMessages {
 
     // Chat-related messages
     private String playerJoined = "Player {player} joined!";
@@ -288,7 +288,7 @@ public class ChatMessages extends MongoMessages<ChatMessages> {
 @SupportedLanguages({"en", "pl", "de"})
 @ConfigsFileProperties(name = "command-messages")
 @ConfigsDatabase("minecraft")
-public class CommandMessages extends MongoMessages<CommandMessages> {
+public class CommandMessages {
 
     // Command-related messages
     private String noPermission = "You don't have permission!";

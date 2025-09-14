@@ -1,6 +1,6 @@
-# Quick Start - FULL ASYNC ⚡
+# Quick Start - Async-first ⚡
 
-> **Get up and running with MongoDB Configs API in 5 minutes - ASYNC EDITION!** 🚀
+> Get up and running with MongoDB Configs API in minutes.
 
 ## Prerequisites
 
@@ -27,18 +27,7 @@ Add to your `pom.xml`:
 
 ### 2. Initialize the API
 
-```java
-public class MyPlugin extends JavaPlugin {
-
-    @Override
-    public void onEnable() {
-        // MongoDB Configs API is automatically initialized by the plugin
-        // No manual initialization needed!
-        
-        getLogger().info("Plugin ready - MongoDB Configs API available! ⚡");
-    }
-}
-```
+The bundled plugin initializes the API at startup. Access it via `MongoConfigsAPI.getConfigManager()` and `getLanguageManager()`.
 
 ## Basic Usage - ASYNC FIRST! 🚀
 
@@ -118,36 +107,24 @@ public class QuickConfigCheck implements CommandExecutor {
 
 ## Multilingual Messages
 
-### Create Message Class
+Use the Messages API for localized strings (named placeholders only):
 
 ```java
-@ConfigsFileProperties(name = "messages")
-@ConfigsDatabase("minecraft")
-public class Messages extends MongoConfig<Messages> {
-
-    private String welcome = "Welcome to the server!";
-    private String goodbye = "Goodbye!";
-    private String noPermission = "You don't have permission!";
-
-    // Getters and setters...
+@ConfigsFileProperties(name = "teleport-messages")
+@SupportedLanguages({"en","pl"})
+public class TeleportMessages {
+  public String playerNotFound = "Player {name} not found!"; // key: playerNotFound
+  public String getSuccessTeleportedTo() { return "Teleported to {target}!"; } // success.teleported.to
 }
-```
 
-### Use Messages
+// Initialize/merge and get handle
+ConfigManager cm = MongoConfigsAPI.getConfigManager();
+Messages tp = cm.getOrCreateFromObject(new TeleportMessages());
 
-```java
-public class WelcomeListener implements Listener {
-
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-
-        ConfigManager cm = MongoConfigsAPI.getConfigManager();
-        Messages messages = cm.loadObject(Messages.class);
-
-        player.sendMessage(ChatColor.GREEN + messages.getWelcome());
-    }
-}
+// Resolve language and send
+LanguageManager lm = MongoConfigsAPI.getLanguageManager();
+String lang = java.util.Objects.requireNonNullElse(lm.getPlayerLanguage(player.getUniqueId().toString()), lm.getDefaultLanguage());
+player.sendMessage(tp.get(lang, "playerNotFound", "name", targetName));
 ```
 
 ## Advanced Features
@@ -164,15 +141,10 @@ config.save(); // Instantly available on all servers!
 ### Multilingual Support
 
 ```java
-// Manual language detection and translation
 LanguageManager lm = MongoConfigsAPI.getLanguageManager();
-String playerLang = lm.getPlayerLanguage(player.getUniqueId().toString());
-if (playerLang == null) {
-    playerLang = lm.getDefaultLanguage();
-}
-
-Messages messages = cm.loadObject(Messages.class);
-String welcomeMsg = messages.get(playerLang, "welcome"); // Get message in player's language
+String playerLang = java.util.Objects.requireNonNullElse(lm.getPlayerLanguage(player.getUniqueId().toString()), lm.getDefaultLanguage());
+Messages msgs = cm.messagesOf(TeleportMessages.class);
+String welcomeMsg = msgs.get(playerLang, "gui.title");
 ```
 
 ## Next Steps

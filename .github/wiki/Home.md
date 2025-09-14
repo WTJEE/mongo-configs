@@ -1,12 +1,4 @@
-# MongoDB Configs API - Devel### 📝 **Annotations**
-- **[[Annotations Reference]]** - Complete guide to all annotations
-
-## 📚 **Examples**
-
-### 🎮 **Complete Working Examples**
-- **[[Help-System-Example|Help System Example]]** - Multilingual `/pomoc` command with GUI
-
-## ⚡ **Featured Examples** Wiki
+# MongoDB Configs API
 
 > **Advanced MongoDB configuration and translation management library for Minecraft servers**
 
@@ -18,7 +10,7 @@
 ## 🚀 Quick Start
 
 ```java
-// One line = entire configuration system!
+// Load a typed config
 ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig.class);
 ```
 
@@ -27,7 +19,7 @@ ServerConfig config = MongoConfigsAPI.getConfigManager().loadObject(ServerConfig
 ### 🛠️ **Developer API**
 - **[[ConfigManager API]]** - Core configuration management methods
 - **[[LanguageManager API]]** - Multilingual support and player language management
-- **[[Messages API]]** - Working with multilingual messages
+- **[[Messages API]]** - Working with multilingual messages (named placeholders)
 - **[[Configuration-Classes|Configuration Classes]]** - Configuration types and classes
 - **[[Message-Classes|Message Classes]]** - Message configuration classes
 
@@ -70,13 +62,15 @@ config.save(); // ⚡ Auto-sync to all servers!
 // Complex translations with placeholders and formatting
 @ConfigsFileProperties(name = "game-messages")
 @SupportedLanguages({"en", "pl", "de", "fr", "es"})
-public class GameMessages extends MongoMessages<GameMessages> { }
+public class GameMessages { /* define fields/getters with defaults */ }
 
 // Usage with rich formatting
-Messages msg = cm.messagesOf(GameMessages.class);
-String welcome = msg.get(playerLang, "welcome.player", 
-    player.getName(), player.getLevel(), serverName);
-// Result: "Welcome Steve! Level: 25 on MyServer"
+Messages msg = cm.getOrCreateFromObject(new GameMessages());
+String welcome = msg.get(playerLang, "welcome.player", java.util.Map.of(
+    "name", player.getName(),
+    "level", player.getLevel(),
+    "server", serverName
+));
 ```
 
 ### ⚡ **Performance Optimized Caching**

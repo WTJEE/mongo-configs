@@ -2,6 +2,10 @@
 
 Complete guide to creating multilingual message systems with MongoDB Configs API.
 
+Note
+- This page previously showed positional placeholders like {0}, {1}. The current API uses named placeholders only: {name}, {coins}, etc. Pass placeholders as key–value pairs ("name", value, ...) or a Map.
+- For the authoritative, minimal guide see [[Messages-API]].
+
 ## 🌍 Basic Message Class
 
 ### Simple Message Class
@@ -25,7 +29,7 @@ Messages messages = cm.messagesOf(GuiMessages.class);
 String playerLang = lm.getPlayerLanguage(player.getUniqueId().toString());
 
 // Get localized message
-String welcome = messages.get(playerLang, "welcome.message", player.getName());
+String welcome = messages.get(playerLang, "welcome.message", "player", player.getName());
 String button = messages.get(playerLang, "gui.buttons.confirm");
 ```
 
@@ -35,7 +39,7 @@ String button = messages.get(playerLang, "gui.buttons.confirm");
 
 ### Document Structure
 
-Each language is stored as a separate document in the collection:
+Each language is stored as a separate document in the collection (keys are dotted and values are strings; use named placeholders):
 
 ```javascript
 // Collection: gui-messages
@@ -45,7 +49,7 @@ Each language is stored as a separate document in the collection:
   "_id": "en",
   "welcome": {
     "title": "Welcome to the server!",
-    "message": "Hello {0}! Your level is {1}",
+    "message": "Hello {player}! Your level is {level}",
     "subtitle": "Have a great time!"
   },
   "gui": {
@@ -63,7 +67,7 @@ Each language is stored as a separate document in the collection:
     }
   },
   "shop": {
-    "buy_success": "Successfully purchased {0} for {1} coins!",
+    "buy_success": "Successfully purchased {item} for {price} coins!",
     "insufficient_funds": "You don't have enough coins!",
     "item_not_found": "Item not found in shop!"
   }
@@ -74,7 +78,7 @@ Each language is stored as a separate document in the collection:
   "_id": "pl",
   "welcome": {
     "title": "Witaj na serwerze!",
-    "message": "Cześć {0}! Twój poziom to {1}",
+    "message": "Cześć {player}! Twój poziom to {level}",
     "subtitle": "Miłej gry!"
   },
   "gui": {
@@ -92,7 +96,7 @@ Each language is stored as a separate document in the collection:
     }
   },
   "shop": {
-    "buy_success": "Pomyślnie kupiono {0} za {1} monet!",
+    "buy_success": "Pomyślnie kupiono {item} za {price} monet!",
     "insufficient_funds": "Nie masz wystarczająco monet!",
     "item_not_found": "Przedmiot nie został znaleziony w sklepie!"
   }
@@ -141,19 +145,19 @@ public class MessageBuilder {
         return switch (lang) {
             case "en" -> new Document()
                 .append("title", "Welcome to the server!")
-                .append("message", "Hello {0}! Your level is {1}")
+                .append("message", "Hello {player}! Your level is {level}")
                 .append("subtitle", "Have a great time!")
                 .append("first_join", "Welcome to our server for the first time!");
                 
             case "pl" -> new Document()
                 .append("title", "Witaj na serwerze!")
-                .append("message", "Cześć {0}! Twój poziom to {1}")
+                .append("message", "Cześć {player}! Twój poziom to {level}")
                 .append("subtitle", "Miłej gry!")
                 .append("first_join", "Witaj na naszym serwerze po raz pierwszy!");
                 
             case "de" -> new Document()
                 .append("title", "Willkommen auf dem Server!")
-                .append("message", "Hallo {0}! Dein Level ist {1}")
+                .append("message", "Hallo {player}! Dein Level ist {level}")
                 .append("subtitle", "Viel Spaß!")
                 .append("first_join", "Willkommen zum ersten Mal auf unserem Server!");
                 
@@ -233,26 +237,26 @@ public class ShopGUI {
         String title = messages.get(lang, "shop.item.title");
         
         // Message with single parameter
-        String itemName = messages.get(lang, "shop.item.name", item);
+  String itemName = messages.get(lang, "shop.item.name", "item", item);
         
         // Message with multiple parameters
-        String priceText = messages.get(lang, "shop.item.price", price, "coins");
+  String priceText = messages.get(lang, "shop.item.price", java.util.Map.of("price", price, "currency", "coins"));
         
         // Complex formatting
-        String description = messages.get(lang, "shop.item.description", 
-            item,           // {0} - item name
-            price,          // {1} - price
-            stock,          // {2} - stock amount
-            calculateDiscount(price), // {3} - discount
-            player.getName() // {4} - player name
-        );
+    String description = messages.get(lang, "shop.item.description", java.util.Map.of(
+      "item", item,
+      "price", price,
+      "stock", stock,
+      "discount", calculateDiscount(price),
+      "player", player.getName()
+    ));
         
         // Color formatting (supports all Minecraft color formats)
-        String coloredMessage = messages.get(lang, "shop.item.colored",
-            "§6" + item,    // Gold item name
-            "§a$" + price,  // Green price
-            "§c" + stock    // Red stock
-        );
+    String coloredMessage = messages.get(lang, "shop.item.colored", java.util.Map.of(
+      "item", "§6" + item,
+      "price", "§a$" + price,
+      "stock", "§c" + stock
+    ));
         
         player.sendMessage(ColorHelper.parseComponent(coloredMessage));
     }
@@ -267,16 +271,16 @@ public class ShopGUI {
   "shop": {
     "item": {
       "title": "Shop Item",
-      "name": "{0}",
-      "price": "Price: {0} {1}",
-      "description": "Item: {0} | Price: ${1} | Stock: {2} | Discount: {3}% | For: {4}",
-      "colored": "&#FF6B35Item: {0} &#00D9FF| Price: {1} &#FF006E| Stock: {2}",
-      "gradient": "gradient:#FF6B35:#00D9FFItem: {0} &#FFFFFFPrice: {1}"
+  "name": "{item}",
+  "price": "Price: {price} {currency}",
+  "description": "Item: {item} | Price: ${price} | Stock: {stock} | Discount: {discount}% | For: {player}",
+  "colored": "&#FF6B35Item: {item} &#00D9FF| Price: {price} &#FF006E| Stock: {stock}",
+  "gradient": "gradient:#FF6B35:#00D9FFItem: {item} &#FFFFFFPrice: {price}"
     },
     "purchase": {
-      "success": "&#00FF00✅ Successfully purchased {0}!",
-      "failure": "&#FF0000❌ Failed to purchase {0}: {1}",
-      "insufficient_funds": "&#FF6B35⚠️ You need {0} more coins!"
+  "success": "&#00FF00✅ Successfully purchased {item}!",
+  "failure": "&#FF0000❌ Failed to purchase {item}: {reason}",
+  "insufficient_funds": "&#FF6B35⚠️ You need {missing} more coins!"
     }
   }
 }
@@ -422,14 +426,14 @@ public class ErrorMessages { }      // Error handling
       "tournament": {
         "start": "Tournament started!",
         "end": "Tournament ended!",
-        "winner": "{0} won the tournament!"
+  "winner": "{player} won the tournament!"
       }
     },
     "economy": {
       "shop": {
         "purchase": {
           "success": "Purchase successful!",
-          "failed": "Purchase failed: {0}"
+          "failed": "Purchase failed: {reason}"
         }
       }
     }
@@ -473,8 +477,8 @@ public class ErrorMessages { }      // Error handling
 ```javascript
 // ✅ Good - numbered placeholders
 {
-  "welcome": "Hello {0}! You have {1} coins and {2} experience.",
-  "guild_info": "Guild {0} has {1} members and {2} total power."
+  "welcome": "Hello {player}! You have {coins} coins and {exp} experience.",
+  "guild_info": "Guild {name} has {members} members and {power} total power."
 }
 
 // ✅ Also good - named placeholders (if your system supports it)

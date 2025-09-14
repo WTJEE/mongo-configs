@@ -1149,30 +1149,21 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             supportedLanguages = Set.of("en");
         }
 
-        // Create async checks for all languages in parallel
-        List<CompletableFuture<Boolean>> languageCheckFutures = supportedLanguages.stream()
-            .map(language ->
-                mongoManager.getLanguage(collectionName, language)
-                    .thenApply(langDoc -> langDoc != null && langDoc.getData() != null && !langDoc.getData().isEmpty())
-                    .exceptionally(throwable -> false)
-            )
+        // Extract flat messages from POJO
+        Map<String, Object> expectedKeys = extractFlatMessages(messageObject);
+        
+        // Check existing documents and merge missing keys for all languages
+        List<CompletableFuture<Void>> mergeFutures = supportedLanguages.stream()
+            .map(language -> mergeLanguageDocument(collectionName, language, expectedKeys))
             .collect(Collectors.toList());
 
-        return CompletableFuture.allOf(languageCheckFutures.toArray(new CompletableFuture[0]))
-            .thenCompose(v -> {
-                boolean hasMessages = languageCheckFutures.stream()
-                    .anyMatch(future -> future.join()); // Safe .join() here since futures are already completed
-
-                if (!hasMessages) {
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("No messages found for " + collectionName + ", creating from object...");
-                    }
-                    return createFromObjectAsync(messageObject)
-                        .thenApply(voidResult -> findById(collectionName));
-                } else {
-                    return CompletableFuture.completedFuture(findById(collectionName));
+        return CompletableFuture.allOf(mergeFutures.toArray(new CompletableFuture[0]))
+            .thenRun(() -> {
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Completed merge/create for collection: " + collectionName + " with languages: " + supportedLanguages);
                 }
-            });
+            })
+            .thenApply(v -> findById(collectionName));
     }
 
     private Map<String, Object> extractFlatMessages(Object messageObject) {
@@ -1275,5 +1266,69 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
 
     private String camelCaseToSnakeCase(String camelCase) {
         return camelCase.replaceAll("([a-z])([A-Z])", "$1.$2").toLowerCase();
+    }
+
+    private CompletableFuture<Void> mergeLanguageDocument(String collectionName, String language, Map<String, Object> expectedKeys) {
+        return mongoManager.getLanguage(collectionName, language)
+            .thenCompose(existingDoc -> {
+                Map<String, Object> existingData = (existingDoc != null && existingDoc.getData() != null) 
+                    ? existingDoc.getData() : new HashMap<>();
+                
+                // Find missing keys
+                Map<String, Object> missingKeys = new HashMap<>();
+                for (Map.Entry<String, Object> entry : expectedKeys.entrySet()) {
+                    String key = entry.getKey();
+                    if (!hasNestedKey(existingData, key)) {
+                        missingKeys.put(key, entry.getValue());
+                    }
+                }
+                
+                if (missingKeys.isEmpty()) {
+                    if (config.isDebugLogging()) {
+                        LOGGER.info("No missing keys for " + collectionName + ":" + language);
+                    }
+                    return CompletableFuture.completedFuture(null);
+                }
+                
+                // Merge missing keys into existing data
+                Map<String, Object> mergedData = new HashMap<>(existingData);
+                for (Map.Entry<String, Object> entry : missingKeys.entrySet()) {
+                    setNestedValue(mergedData, entry.getKey(), entry.getValue());
+                }
+                
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Adding " + missingKeys.size() + " missing keys to " + collectionName + ":" + language + ": " + missingKeys.keySet());
+                }
+                
+                // Save updated document
+                xyz.wtje.mongoconfigs.core.model.LanguageDocument updatedDoc = 
+                    new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, mergedData);
+                
+                return mongoManager.saveLanguage(collectionName, updatedDoc)
+                    .thenRun(() -> {
+                        // Update cache with new keys
+                        for (Map.Entry<String, Object> entry : missingKeys.entrySet()) {
+                            cacheManager.putMessage(collectionName, language, entry.getKey(), entry.getValue());
+                        }
+                    });
+            })
+            .exceptionally(throwable -> {
+                LOGGER.log(Level.WARNING, "Error merging language document " + collectionName + ":" + language, throwable);
+                return null;
+            });
+    }
+    
+    private boolean hasNestedKey(Map<String, Object> data, String key) {
+        if (!key.contains(".")) {
+            return data.containsKey(key);
+        }
+        String[] parts = key.split("\\.", 2);
+        String currentKey = parts[0];
+        String remainingKey = parts[1];
+        Object nested = data.get(currentKey);
+        if (nested instanceof Map) {
+            return hasNestedKey((Map<String, Object>) nested, remainingKey);
+        }
+        return false;
     }
 }

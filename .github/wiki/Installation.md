@@ -307,27 +307,7 @@ public class MyPlugin extends JavaPlugin {
 
 ### Error Handling
 
-```java
-@Override
-public void onEnable() {
-    try {
-        MongoConfigsAPI.initialize(this);
-        getLogger().info("MongoDB Configs API initialized successfully!");
-    } catch (MongoTimeoutException e) {
-        getLogger().severe("Cannot connect to MongoDB. Please check your connection string.");
-        getLogger().severe("Error: " + e.getMessage());
-        getServer().getPluginManager().disablePlugin(this);
-    } catch (MongoSecurityException e) {
-        getLogger().severe("Authentication failed. Please check your credentials.");
-        getLogger().severe("Error: " + e.getMessage());
-        getServer().getPluginManager().disablePlugin(this);
-    } catch (Exception e) {
-        getLogger().severe("Unexpected error during initialization: " + e.getMessage());
-        e.printStackTrace();
-        getServer().getPluginManager().disablePlugin(this);
-    }
-}
-```
+> The API is initialized by the bundled plugin; there is no manual initialize() call.
 
 ## Verification
 
@@ -353,8 +333,8 @@ public class TestCommand implements CommandExecutor {
             sender.sendMessage("§aConfiguration loaded: " + config.getServerName());
 
             // Test message loading
-            Messages messages = cm.loadObject(Messages.class);
-            sender.sendMessage("§aMessages loaded: " + messages.getWelcome());
+            Messages messages = cm.messagesOf(GuiMessages.class);
+            sender.sendMessage("§aMessages loaded: " + messages.get("en", "welcome.title"));
 
             sender.sendMessage("§aAll systems operational!");
 

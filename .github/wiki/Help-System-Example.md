@@ -16,12 +16,12 @@ import xyz.wtje.mongoconfigs.api.annotations.SupportedLanguages;
 @SupportedLanguages({"en", "pl", "de"}) // Creates 3 documents automatically!
 public class TeleportMessages {
     
-    public String successfullyTeleported = "Successfully teleported to {0}!";
-    public String playerNotFound = "Player {0} not found!";
-    public String teleportCooldown = "Wait {0} seconds before teleporting again!";
+    public String successfullyTeleported = "Successfully teleported to {target}!";
+    public String playerNotFound = "Player {name} not found!";
+    public String teleportCooldown = "Wait {seconds} seconds before teleporting again!";
     public String cannotTeleportToSelf = "You cannot teleport to yourself!";
     public String noPermission = "You don't have permission to teleport!";
-    public String usageMessage = "Usage: /{0} <player>";
+    public String usageMessage = "Usage: /{cmd} <player>";
     
     // Getters work too (getCannotTeleportInCombat → cannot.teleport.in.combat)
     public String getCannotTeleportInCombat() { 
@@ -101,12 +101,12 @@ public class TeleportCommand implements CommandExecutor {
             return true;
         }
         
-        // Get player's language
-        String playerLang = languageManager.getPlayerLanguage(player.getUniqueId());
+    // Get player's language
+    String playerLang = languageManager.getPlayerLanguage(player.getUniqueId().toString());
         
         if (args.length != 1) {
             // 🚀 ASYNC usage message retrieval
-            teleportMessages.getAsync(playerLang, "usage.message", label)
+            teleportMessages.getAsync(playerLang, "usage.message", java.util.Map.of("cmd", label))
                 .thenAccept(usage -> {
                     // Back to main thread for Bukkit API
                     Bukkit.getScheduler().runTask(plugin, () -> {
@@ -121,7 +121,7 @@ public class TeleportCommand implements CommandExecutor {
         
         if (target == null) {
             // 🚀 ASYNC player not found message - NO MAIN THREAD BLOCKING!
-            teleportMessages.getAsync(playerLang, "player.not.found", targetName)
+            teleportMessages.getAsync(playerLang, "player.not.found", java.util.Map.of("name", targetName))
                 .thenAccept(notFound -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         player.sendMessage("§c" + notFound);
@@ -149,7 +149,7 @@ public class TeleportCommand implements CommandExecutor {
             long remainingSeconds = getCooldownSeconds(player);
             
             // 🚀 ASYNC cooldown message with placeholder
-            teleportMessages.getAsync(playerLang, "teleport.cooldown", remainingSeconds)
+            teleportMessages.getAsync(playerLang, "teleport.cooldown", java.util.Map.of("seconds", remainingSeconds))
                 .thenAccept(cooldown -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         player.sendMessage("§e" + cooldown);
@@ -162,7 +162,7 @@ public class TeleportCommand implements CommandExecutor {
         player.teleport(target.getLocation());
         
         // 🚀 ASYNC success message
-        teleportMessages.getAsync(playerLang, "successfully.teleported", target.getName())
+    teleportMessages.getAsync(playerLang, "successfully.teleported", java.util.Map.of("target", target.getName()))
             .thenAccept(success -> {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     player.sendMessage("§a" + success);
@@ -200,36 +200,36 @@ public class TeleportCommand implements CommandExecutor {
 // English document (template from Java class)
 {
   "_id": "en",
-  "successfully.teleported": "Successfully teleported to {0}!",
-  "player.not.found": "Player {0} not found!",
-  "teleport.cooldown": "Wait {0} seconds before teleporting again!",
-  "cannot.teleport.to.self": "You cannot teleport to yourself!",
-  "no.permission": "You don't have permission to teleport!",
-  "usage.message": "Usage: /{0} <player>",
+    "successfully.teleported": "Successfully teleported to {target}!",
+    "player.not.found": "Player {name} not found!",
+    "teleport.cooldown": "Wait {seconds} seconds before teleporting again!",
+    "cannot.teleport.to.self": "You cannot teleport to yourself!",
+    "no.permission": "You don't have permission to teleport!",
+    "usage.message": "Usage: /{cmd} <player>",
   "cannot.teleport.in.combat": "You cannot teleport during combat!"
 }
 
 // Polish document (MANUALLY EDITED after creation)
 {
   "_id": "pl",
-  "successfully.teleported": "Pomyślnie przeteleportowano do {0}!",
-  "player.not.found": "Gracz {0} nie został znaleziony!",
-  "teleport.cooldown": "Poczekaj {0} sekund przed kolejną teleportacją!",
+    "successfully.teleported": "Pomyślnie przeteleportowano do {target}!",
+    "player.not.found": "Gracz {name} nie został znaleziony!",
+    "teleport.cooldown": "Poczekaj {seconds} sekund przed kolejną teleportacją!",
   "cannot.teleport.to.self": "Nie możesz teleportować się do siebie!",
   "no.permission": "Nie masz uprawnień do teleportacji!",
-  "usage.message": "Użycie: /{0} <gracz>",
+    "usage.message": "Użycie: /{cmd} <gracz>",
   "cannot.teleport.in.combat": "Nie możesz się teleportować podczas walki!"
 }
 
 // German document (MANUALLY EDITED after creation)  
 {
   "_id": "de",
-  "successfully.teleported": "Erfolgreich zu {0} teleportiert!",
-  "player.not.found": "Spieler {0} nicht gefunden!",
-  "teleport.cooldown": "Warte {0} Sekunden vor der nächsten Teleportation!",
+    "successfully.teleported": "Erfolgreich zu {target} teleportiert!",
+    "player.not.found": "Spieler {name} nicht gefunden!",
+    "teleport.cooldown": "Warte {seconds} Sekunden vor der nächsten Teleportation!",
   "cannot.teleport.to.self": "Du kannst dich nicht zu dir selbst teleportieren!",
   "no.permission": "Du hast keine Berechtigung zum Teleportieren!",
-  "usage.message": "Verwendung: /{0} <spieler>",
+    "usage.message": "Verwendung: /{cmd} <spieler>",
   "cannot.teleport.in.combat": "Du kannst dich nicht während des Kampfes teleportieren!"
 }
 ```
@@ -246,7 +246,7 @@ public class TeleportCommand implements CommandExecutor {
 ### **⚡ Async vs Sync Performance**
 ```java
 // 🚀 ASYNC - Recommended for most operations (NO main thread blocking!)
-teleportMessages.getAsync("pl", "successfully.teleported", "Steve")
+teleportMessages.getAsync("pl", "successfully.teleported", java.util.Map.of("target", "Steve"))
     .thenAccept(msg -> {
         // Message retrieved in background thread - ~0.1ms cache hit
         Bukkit.getScheduler().runTask(plugin, () -> {
@@ -255,7 +255,7 @@ teleportMessages.getAsync("pl", "successfully.teleported", "Steve")
     });
 
 // ⚡ SYNC - For immediate response only (cache hits = ~0.1ms)
-String msg = teleportMessages.get("pl", "player.not.found", "Alex");  // Instant if cached
+String msg = teleportMessages.get("pl", "player.not.found", "name", "Alex");  // Instant if cached
 player.sendMessage("§c" + msg);
 
 // 🚀 ASYNC batch operations for multiple messages
