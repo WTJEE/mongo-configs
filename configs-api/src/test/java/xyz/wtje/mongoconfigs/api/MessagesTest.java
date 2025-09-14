@@ -28,9 +28,9 @@ class MessagesTest {
         String key = "test.key";
         String expectedValue = "Test Value";
 
-        when(messages.get(lang, key, String.class)).thenReturn(expectedValue);
+    when(messages.get(lang, key, String.class)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
 
-        String result = messages.get(lang, key, String.class);
+    String result = messages.get(lang, key, String.class).join();
 
         assertEquals(expectedValue, result);
         verify(messages).get(lang, key, String.class);
@@ -43,9 +43,9 @@ class MessagesTest {
         String expectedValue = "Hello, John!";
         Object[] placeholders = {"John"};
 
-        when(messages.get(lang, key, placeholders)).thenReturn(expectedValue);
+    when(messages.get(lang, key, placeholders)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
 
-        String result = messages.get(lang, key, placeholders);
+    String result = messages.get(lang, key, placeholders).join();
 
         assertEquals(expectedValue, result);
         verify(messages).get(lang, key, placeholders);
@@ -60,9 +60,9 @@ class MessagesTest {
         placeholders.put("name", "John");
         placeholders.put("count", 5);
 
-        when(messages.get(lang, key, placeholders)).thenReturn(expectedValue);
+    when(messages.get(lang, key, placeholders)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
 
-        String result = messages.get(lang, key, placeholders);
+    String result = messages.get(lang, key, placeholders).join();
 
         assertEquals(expectedValue, result);
         verify(messages).get(lang, key, placeholders);
@@ -74,9 +74,9 @@ class MessagesTest {
         String key = "simple.message";
         String expectedValue = "Simple message";
 
-        when(messages.get(lang, key)).thenReturn(expectedValue);
+    when(messages.get(lang, key)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
 
-        String result = messages.get(lang, key);
+    String result = messages.get(lang, key).join();
 
         assertEquals(expectedValue, result);
         verify(messages).get(lang, key);
@@ -89,9 +89,9 @@ class MessagesTest {
         String expectedValue = "Null test";
         Object[] nullArray = null;
 
-        when(messages.get(lang, key, nullArray)).thenReturn(expectedValue);
+    when(messages.get(lang, key, nullArray)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
 
-        String result = messages.get(lang, key, nullArray);
+    String result = messages.get(lang, key, nullArray).join();
 
         assertEquals(expectedValue, result);
         verify(messages).get(lang, key, nullArray);
@@ -104,17 +104,17 @@ class MessagesTest {
         String englishValue = "Hello";
         String polishValue = "Cześć";
 
-        when(messages.get("en", englishKey, String.class)).thenReturn(englishValue);
-        when(messages.get("pl", polishKey, String.class)).thenReturn(polishValue);
+    when(messages.get("en", englishKey, String.class)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(englishValue));
+    when(messages.get("pl", polishKey, String.class)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(polishValue));
 
-        String englishResult = messages.get("en", englishKey, String.class);
-        String polishResult = messages.get("pl", polishKey, String.class);
+    String englishResult = messages.get("en", englishKey, String.class).join();
+    String polishResult = messages.get("pl", polishKey, String.class).join();
 
         assertEquals(englishValue, englishResult);
         assertEquals(polishValue, polishResult);
 
-        verify(messages).get("en", englishKey, String.class);
-        verify(messages).get("pl", polishKey, String.class);
+    verify(messages).get("en", englishKey, String.class);
+    verify(messages).get("pl", polishKey, String.class);
     }
 
     @Test
@@ -126,55 +126,42 @@ class MessagesTest {
             );
 
             @Override
-            public <T> T get(String lang, String key, Class<T> type) {
+            public <T> java.util.concurrent.CompletableFuture<T> get(String lang, String key, Class<T> type) {
                 String value = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
-                return type.cast(value);
+                return java.util.concurrent.CompletableFuture.completedFuture(type.cast(value));
             }
 
             @Override
-            public String get(String lang, String key, Object... placeholders) {
+            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Object... placeholders) {
                 String template = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
+                String res;
                 if (placeholders != null && placeholders.length > 0) {
-                    return String.format(template, placeholders);
+                    res = String.format(template, placeholders);
+                } else {
+                    res = template;
                 }
-                return template;
+                return java.util.concurrent.CompletableFuture.completedFuture(res);
             }
 
             @Override
-            public String get(String lang, String key, Map<String, Object> placeholders) {
+            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Map<String, Object> placeholders) {
                 String template = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
+                String result = template;
                 if (placeholders != null && !placeholders.isEmpty()) {
-                    String result = template;
                     for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
                         result = result.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
                     }
-                    return result;
                 }
-                return template;
-            }
-            
-            @Override
-            public <T> java.util.concurrent.CompletableFuture<T> getAsync(String lang, String key, Class<T> type) {
-                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, type));
-            }
-            
-            @Override
-            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Object... placeholders) {
-                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, placeholders));
-            }
-            
-            @Override
-            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Map<String, Object> placeholders) {
-                return java.util.concurrent.CompletableFuture.completedFuture(get(lang, key, placeholders));
+                return java.util.concurrent.CompletableFuture.completedFuture(result);
             }
         };
 
-        assertEquals("Hello", concreteMessages.get("en", "greeting", String.class));
-        assertEquals("Cześć", concreteMessages.get("pl", "greeting", String.class));
-        assertEquals("Do widzenia", concreteMessages.get("pl", "farewell"));
+        assertEquals("Hello", concreteMessages.get("en", "greeting", String.class).join());
+        assertEquals("Cześć", concreteMessages.get("pl", "greeting", String.class).join());
+        assertEquals("Do widzenia", concreteMessages.get("pl", "farewell").join());
 
         Map<String, Object> placeholders = Map.of("name", "John");
-        String result = concreteMessages.get("en", "greeting", placeholders);
+        String result = concreteMessages.get("en", "greeting", placeholders).join();
         assertNotNull(result);
     }
 }

@@ -71,18 +71,22 @@ public interface ConfigManager {
     }
 
     default <T> void saveObject(T pojo) {
+        // Deprecated: prefer setObject (async)
         setObject(pojo).join();
     }
 
     default <T> T loadObject(Class<T> type) {
+        // Deprecated: prefer getObject (async)
         return getObject(type).join();
     }
 
     default <T> void save(String id, T value) {
+        // Deprecated: prefer set (async)
         set(id, value).join();
     }
 
     default <T> T load(String id, Class<T> type) {
+        // Deprecated: prefer get (async)
         return get(id, type).join();
     }
 }

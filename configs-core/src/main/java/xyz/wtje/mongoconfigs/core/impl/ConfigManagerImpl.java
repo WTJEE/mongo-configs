@@ -967,36 +967,40 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             private final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
             @Override
-            public <T> T get(String lang, String key, Class<T> type) {
+            public <T> java.util.concurrent.CompletableFuture<T> get(String lang, String key, Class<T> type) {
                 try {
                     Object raw = cacheManager.getMessage(id, lang, key, (Object) null);
                     if (raw == null) {
                         raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, (Object) null);
                     }
-                    if (raw == null) return null;
-                    if (type.isInstance(raw)) return type.cast(raw);
-                    return mapper.convertValue(raw, type);
+                    T result = null;
+                    if (raw != null) {
+                        result = type.isInstance(raw) ? type.cast(raw) : mapper.convertValue(raw, type);
+                    }
+                    return java.util.concurrent.CompletableFuture.completedFuture(result);
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "Error getting typed message: " + id + ":" + lang + ":" + key, e);
-                    return null;
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
                 }
             }
+
             @Override
-            public String get(String lang, String key, Object... placeholders) {
+            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Object... placeholders) {
                 try {
                     String message = cacheManager.getMessage(id, lang, key, (String) null);
                     if (message == null) {
                         message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
                     }
-                    return messageFormatter.format(message, placeholders);
+                    String formatted = messageFormatter.format(message, placeholders);
+                    return java.util.concurrent.CompletableFuture.completedFuture(formatted);
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + lang + ":" + key, e);
-                    return key;
+                    return java.util.concurrent.CompletableFuture.completedFuture(key);
                 }
             }
 
             @Override
-            public String get(String lang, String key, java.util.Map<String, Object> placeholders) {
+            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, java.util.Map<String, Object> placeholders) {
                 if (placeholders == null || placeholders.isEmpty()) {
                     return get(lang, key);
                 }
@@ -1007,55 +1011,6 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
                     flat[i++] = e.getValue();
                 }
                 return get(lang, key, flat);
-            }
-            
-            // 🚀 ASYNC METHODS - NO MAIN THREAD BLOCKING!
-            @Override
-            public <T> java.util.concurrent.CompletableFuture<T> getAsync(String lang, String key, Class<T> type) {
-                return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                    try {
-                        Object raw = cacheManager.getMessage(id, lang, key, (Object) null);
-                        if (raw == null) {
-                            raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, (Object) null);
-                        }
-                        if (raw == null) return null;
-                        if (type.isInstance(raw)) return type.cast(raw);
-                        return mapper.convertValue(raw, type);
-                    } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Error getting async typed message: " + id + ":" + lang + ":" + key, e);
-                        return null;
-                    }
-                }, asyncExecutor);
-            }
-            
-            @Override
-            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, Object... placeholders) {
-                return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                    try {
-                        String message = cacheManager.getMessage(id, lang, key, (String) null);
-                        if (message == null) {
-                            message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
-                        }
-                        return messageFormatter.format(message, placeholders);
-                    } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Error getting async message: " + id + ":" + lang + ":" + key, e);
-                        return key;
-                    }
-                }, asyncExecutor);
-            }
-            
-            @Override
-            public java.util.concurrent.CompletableFuture<String> getAsync(String lang, String key, java.util.Map<String, Object> placeholders) {
-                if (placeholders == null || placeholders.isEmpty()) {
-                    return getAsync(lang, key);
-                }
-                Object[] flat = new Object[placeholders.size() * 2];
-                int i = 0;
-                for (java.util.Map.Entry<String, Object> e : placeholders.entrySet()) {
-                    flat[i++] = e.getKey();
-                    flat[i++] = e.getValue();
-                }
-                return getAsync(lang, key, flat);
             }
         };
     }
@@ -1094,15 +1049,12 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     public <T> CompletableFuture<Void> createFromObjectAsync(T messageObject) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
-
-        if (supportedLanguages.isEmpty()) {
-            supportedLanguages = Set.of("en");
-        }
+        final Set<String> langs = supportedLanguages.isEmpty() ? Set.of("en") : supportedLanguages;
 
         Map<String, Object> flatMessages = extractFlatMessages(messageObject);
 
         // Create async operations for all languages in parallel
-        List<CompletableFuture<Void>> saveFutures = supportedLanguages.stream()
+        List<CompletableFuture<Void>> saveFutures = langs.stream()
             .map(language -> {
                 xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
                     new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, flatMessages);
@@ -1144,23 +1096,20 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     public <T> CompletableFuture<Messages> getOrCreateFromObjectAsync(T messageObject) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
-
-        if (supportedLanguages.isEmpty()) {
-            supportedLanguages = Set.of("en");
-        }
+        final Set<String> langs = supportedLanguages.isEmpty() ? Set.of("en") : supportedLanguages;
 
         // Extract flat messages from POJO
         Map<String, Object> expectedKeys = extractFlatMessages(messageObject);
         
         // Check existing documents and merge missing keys for all languages
-        List<CompletableFuture<Void>> mergeFutures = supportedLanguages.stream()
+        List<CompletableFuture<Void>> mergeFutures = langs.stream()
             .map(language -> mergeLanguageDocument(collectionName, language, expectedKeys))
             .collect(Collectors.toList());
 
         return CompletableFuture.allOf(mergeFutures.toArray(new CompletableFuture[0]))
             .thenRun(() -> {
                 if (config.isDebugLogging()) {
-                    LOGGER.info("Completed merge/create for collection: " + collectionName + " with languages: " + supportedLanguages);
+                    LOGGER.info("Completed merge/create for collection: " + collectionName + " with languages: " + langs);
                 }
             })
             .thenApply(v -> findById(collectionName));

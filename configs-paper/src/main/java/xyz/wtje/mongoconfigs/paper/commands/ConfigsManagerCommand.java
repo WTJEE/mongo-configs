@@ -123,8 +123,16 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("Supported Languages: " + String.join(", ", languages), NamedTextColor.AQUA));
         sender.sendMessage(Component.text("Language Count: " + languages.size(), NamedTextColor.AQUA));
 
-    String sampleMessage = configManager.findById(collection).get("en", "version");
-    sender.sendMessage(Component.text("Sample message (version): " + (sampleMessage == null ? "Not set" : sampleMessage), NamedTextColor.GRAY));
+    configManager.findById(collection)
+        .get("en", "version")
+        .thenAccept(sampleMessage -> {
+            String text = sampleMessage == null ? "Not set" : sampleMessage;
+            sender.sendMessage(Component.text("Sample message (version): " + text, NamedTextColor.GRAY));
+        })
+        .exceptionally(ex -> {
+            sender.sendMessage(Component.text("Sample message (version): error - " + ex.getMessage(), NamedTextColor.RED));
+            return null;
+        });
     }
 
     private void sendHelp(CommandSender sender) {
