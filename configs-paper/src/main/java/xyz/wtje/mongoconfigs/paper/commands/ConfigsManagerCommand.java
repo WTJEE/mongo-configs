@@ -9,8 +9,8 @@ import org.bukkit.command.TabCompleter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import xyz.wtje.mongoconfigs.api.ConfigManager;
-import xyz.wtje.mongoconfigs.api.ConfigCollectionsOps;
 import xyz.wtje.mongoconfigs.api.MongoConfigsAPI;
+import xyz.wtje.mongoconfigs.core.impl.ConfigManagerImpl;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,11 +21,11 @@ import java.util.Set;
 public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
 
     private final ConfigManager configManager;
-    private final ConfigCollectionsOps collectionsOps;
+    private final ConfigManagerImpl configManagerImpl;
 
     public ConfigsManagerCommand() {
-    this.configManager = MongoConfigsAPI.getConfigManager();
-    this.collectionsOps = (ConfigCollectionsOps) this.configManager; // plugin initialization guarantees implementation
+        this.configManager = MongoConfigsAPI.getConfigManager();
+        this.configManagerImpl = (ConfigManagerImpl) this.configManager; // plugin initialization guarantees implementation
     }
 
     @Override
@@ -63,8 +63,8 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
             });
         } else {
             String collection = args[1];
-            if (collectionsOps.collectionExists(collection)) {
-                collectionsOps.reloadCollection(collection).thenRun(() -> {
+            if (configManagerImpl.collectionExists(collection).join()) {
+                configManagerImpl.reloadCollection(collection).thenRun(() -> {
                     sender.sendMessage(Component.text("✓ Collection '" + collection + "' reloaded from MongoDB!", NamedTextColor.GREEN));
                 }).exceptionally(ex -> {
                     sender.sendMessage(Component.text("✗ Error reloading: " + ex.getMessage(), NamedTextColor.RED));
@@ -88,7 +88,7 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleCollections(CommandSender sender) {
-    collectionsOps.getCollections().thenAccept(collections -> {
+    configManagerImpl.getCollections().thenAccept(collections -> {
             if (collections.isEmpty()) {
                 sender.sendMessage(Component.text("No collections found.", NamedTextColor.YELLOW));
                 return;
@@ -96,7 +96,7 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
 
             sender.sendMessage(Component.text("=== Available Collections ===", NamedTextColor.GOLD));
             for (String collection : collections) {
-                Set<String> languages = collectionsOps.getSupportedLanguages(collection);
+                Set<String> languages = configManagerImpl.getSupportedLanguages(collection).join();
                 sender.sendMessage(Component.text("• " + collection + " (Languages: " + String.join(", ", languages) + ")", NamedTextColor.AQUA));
             }
         }).exceptionally(throwable -> {
@@ -112,19 +112,19 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
         }
 
         String collection = args[1];
-    if (!collectionsOps.collectionExists(collection)) {
+    if (!configManagerImpl.collectionExists(collection).join()) {
             sender.sendMessage(Component.text("Collection '" + collection + "' not found!", NamedTextColor.RED));
             return;
         }
 
-    Set<String> languages = collectionsOps.getSupportedLanguages(collection);
+    Set<String> languages = configManagerImpl.getSupportedLanguages(collection).join();
 
         sender.sendMessage(Component.text("=== Collection Info: " + collection + " ===", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("Supported Languages: " + String.join(", ", languages), NamedTextColor.AQUA));
         sender.sendMessage(Component.text("Language Count: " + languages.size(), NamedTextColor.AQUA));
 
-    configManager.findById(collection)
-        .get("en", "version")
+    configManagerImpl.findById(collection)
+        .get("version")
         .thenAccept(sampleMessage -> {
             String text = sampleMessage == null ? "Not set" : sampleMessage;
             sender.sendMessage(Component.text("Sample message (version): " + text, NamedTextColor.GRAY));

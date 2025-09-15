@@ -1,12 +1,10 @@
 package xyz.wtje.mongoconfigs.api;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,23 +16,9 @@ class MessagesTest {
     @Mock
     private Messages messages;
 
-    @BeforeEach
-    void setUp() {
-    }
+    
 
-    @Test
-    void testGetWithType() {
-        String lang = "en";
-        String key = "test.key";
-        String expectedValue = "Test Value";
-
-    when(messages.get(lang, key, String.class)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
-
-    String result = messages.get(lang, key, String.class).join();
-
-        assertEquals(expectedValue, result);
-        verify(messages).get(lang, key, String.class);
-    }
+    // removed: type-based getter no longer exists in Messages API
 
     @Test
     void testGetWithVarArgs() {
@@ -51,22 +35,7 @@ class MessagesTest {
         verify(messages).get(lang, key, placeholders);
     }
 
-    @Test
-    void testGetWithMap() {
-        String lang = "en";
-        String key = "welcome.message";
-        String expectedValue = "Welcome, John! You have 5 messages.";
-        Map<String, Object> placeholders = new HashMap<>();
-        placeholders.put("name", "John");
-        placeholders.put("count", 5);
-
-    when(messages.get(lang, key, placeholders)).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(expectedValue));
-
-    String result = messages.get(lang, key, placeholders).join();
-
-        assertEquals(expectedValue, result);
-        verify(messages).get(lang, key, placeholders);
-    }
+    // removed: map-based placeholders not in minimal Messages API
 
     @Test
     void testGetWithEmptyPlaceholders() {
@@ -126,42 +95,46 @@ class MessagesTest {
             );
 
             @Override
-            public <T> java.util.concurrent.CompletableFuture<T> get(String lang, String key, Class<T> type) {
-                String value = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
-                return java.util.concurrent.CompletableFuture.completedFuture(type.cast(value));
+            public java.util.concurrent.CompletableFuture<String> get(String path) {
+                return java.util.concurrent.CompletableFuture.completedFuture(path);
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Object... placeholders) {
-                String template = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
-                String res;
-                if (placeholders != null && placeholders.length > 0) {
-                    res = String.format(template, placeholders);
-                } else {
-                    res = template;
+            public java.util.concurrent.CompletableFuture<String> get(String path, String language) {
+                String value = data.getOrDefault(language, Map.of()).getOrDefault(path, path);
+                return java.util.concurrent.CompletableFuture.completedFuture(value);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, Object... placeholders) {
+                return java.util.concurrent.CompletableFuture.completedFuture(path);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, String language, Object... placeholders) {
+                String template = data.getOrDefault(language, Map.of()).getOrDefault(path, path);
+                String res = template;
+                if (placeholders != null) {
+                    for (int i = 0; i < placeholders.length; i++) {
+                        res = res.replace("{" + i + "}", String.valueOf(placeholders[i]));
+                    }
                 }
                 return java.util.concurrent.CompletableFuture.completedFuture(res);
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Map<String, Object> placeholders) {
-                String template = data.getOrDefault(lang, Map.of()).getOrDefault(key, key);
-                String result = template;
-                if (placeholders != null && !placeholders.isEmpty()) {
-                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
-                        result = result.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
-                    }
-                }
-                return java.util.concurrent.CompletableFuture.completedFuture(result);
+            public java.util.concurrent.CompletableFuture<java.util.List<String>> getList(String path) {
+                return java.util.concurrent.CompletableFuture.completedFuture(java.util.Collections.emptyList());
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<java.util.List<String>> getList(String path, String language) {
+                return java.util.concurrent.CompletableFuture.completedFuture(java.util.Collections.emptyList());
             }
         };
 
-        assertEquals("Hello", concreteMessages.get("en", "greeting", String.class).join());
-        assertEquals("Cześć", concreteMessages.get("pl", "greeting", String.class).join());
-        assertEquals("Do widzenia", concreteMessages.get("pl", "farewell").join());
-
-        Map<String, Object> placeholders = Map.of("name", "John");
-        String result = concreteMessages.get("en", "greeting", placeholders).join();
-        assertNotNull(result);
+        assertEquals("Hello", concreteMessages.get("greeting", "en").join());
+        assertEquals("Cześć", concreteMessages.get("greeting", "pl").join());
+        assertEquals("Goodbye", concreteMessages.get("farewell", "en").join());
     }
 }

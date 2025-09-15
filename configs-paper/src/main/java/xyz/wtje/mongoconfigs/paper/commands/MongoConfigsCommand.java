@@ -2,6 +2,7 @@ package xyz.wtje.mongoconfigs.paper.commands;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,6 +15,9 @@ import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -35,24 +39,37 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        String senderLanguage = getSenderLanguage(sender);
+        getSenderLanguageAsync(sender)
+            .whenComplete((senderLanguage, error) -> {
+                if (error != null) {
+                    sender.sendMessage("§c[ERROR] Failed to get language: " + error.getMessage());
+                    return;
+                }
+                
+                handleCommandWithLanguage(sender, args, senderLanguage);
+            });
+
+        return true;
+    }
+    
+    private void handleCommandWithLanguage(CommandSender sender, String[] args, String senderLanguage) {
 
         if (!sender.hasPermission("mongoconfigs.admin")) {
             String noPermissionMessage = languageConfig.getMessage("commands.no-permission", senderLanguage);
             sender.sendMessage(ColorHelper.parseComponent(noPermissionMessage));
-            return true;
+            return;
         }
 
         if (args.length == 0) {
             showHelp(sender);
-            return true;
+            return;
         }
 
         String subcommand = args[0].toLowerCase();
 
         switch (subcommand) {
-            case "reload" -> handleReload(sender, args);
-            case "reloadall" -> handleReloadAll(sender);
+            case "reload" -> handleReload(sender, args, senderLanguage);
+            case "reloadall" -> handleReloadAll(sender, senderLanguage);
             case "collections" -> handleCollections(sender);
             case "testcollections" -> handleTestCollections(sender);
             case "help" -> showHelp(sender);
@@ -64,22 +81,21 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        return true;
+        return;
     }
 
     private String translateColors(String text) {
         return ColorHelper.colorize(text);
     }
 
-    private String getSenderLanguage(CommandSender sender) {
+    private CompletableFuture<String> getSenderLanguageAsync(CommandSender sender) {
         if (sender instanceof Player player) {
             return languageManager.getPlayerLanguage(player.getUniqueId().toString());
         }
-        return "en";
+        return CompletableFuture.completedFuture("en");
     }
 
-    private void handleReload(CommandSender sender, String[] args) {
-        String senderLanguage = getSenderLanguage(sender);
+    private void handleReload(CommandSender sender, String[] args, String senderLanguage) {
         String reloadingMessage = languageConfig.getMessage("commands.admin.reloading", senderLanguage);
         sender.sendMessage(ColorHelper.parseComponent(reloadingMessage));
 
@@ -128,8 +144,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private void handleReloadAll(CommandSender sender) {
-        String senderLanguage = getSenderLanguage(sender);
+    private void handleReloadAll(CommandSender sender, String senderLanguage) {
         sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading ALL collections from MongoDB..."));
 
         configManager.reloadAll()
@@ -167,18 +182,39 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             .thenAccept(collections -> plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage(Component.text("§6=== Available Collections ===").color(NamedTextColor.GOLD));
                 sender.sendMessage(ColorHelper.parseComponent("&7📋 Collections: &f" + collections.size()));
-                for (String collection : collections) {
-                    try {
-                        Set<String> languages = configManager.getSupportedLanguages(collection);
-                        boolean exists = configManager.collectionExists(collection);
-                        String status = exists ? "§a✅" : "§c❌";
-                        sender.sendMessage(Component.text(String.format("%s §f%s §7- Languages: §e%s",
-                                status, collection, String.join(", ", languages))));
-                    } catch (Exception e) {
-                        sender.sendMessage(Component.text(String.format("§c❌ §f%s §7- Error: %s",
-                                collection, e.getMessage())));
-                    }
-                }
+                
+                // Process collections asynchronously
+                List<CompletableFuture<Void>> collectionFutures = collections.stream()
+                    .map(collection -> {
+                        return configManager.getSupportedLanguages(collection)
+                            .thenCombine(configManager.collectionExists(collection), 
+                                (languages, exists) -> {
+                                    String status = exists ? "§a✅" : "§c❌";
+                                    return String.format("%s §f%s §7- Languages: §e%s",
+                                        status, collection, String.join(", ", languages));
+                                })
+                            .thenAccept(message -> {
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    sender.sendMessage(Component.text(message));
+                                });
+                            })
+                            .exceptionally(throwable -> {
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    sender.sendMessage(Component.text(String.format("§c❌ §f%s §7- Error: %s",
+                                        collection, throwable.getMessage())));
+                                });
+                                return null;
+                            });
+                    })
+                    .collect(Collectors.toList());
+                
+                // Wait for all to complete
+                CompletableFuture.allOf(collectionFutures.toArray(new CompletableFuture[0]))
+                    .thenRun(() -> {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            sender.sendMessage(ColorHelper.parseComponent("&a✅ Collections listing completed!"));
+                        });
+                    });
             }))
             .exceptionally(throwable -> {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {

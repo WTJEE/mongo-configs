@@ -3,18 +3,35 @@ package xyz.wtje.mongoconfigs.api;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Interface for operations on MongoDB collections
+ */
 public interface ConfigCollectionsOps {
+    
+    /**
+     * Get all available collections
+     * @return Future with set of collection names
+     */
     CompletableFuture<Set<String>> getCollections();
-    Set<String> getSupportedLanguages(String collection);
+    
+    /**
+     * Check if a collection exists
+     * @param collection collection name
+     * @return true if collection exists
+     */
     boolean collectionExists(String collection);
+    
+    /**
+     * Reload a specific collection from MongoDB
+     * @param collection collection name
+     * @return Future that completes when reload is done
+     */
     CompletableFuture<Void> reloadCollection(String collection);
-    CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections);
-    CompletableFuture<Void> reloadCollectionsBatch(Set<String> collections, int maxConcurrency);
-    void invalidateCache(String collection);
-    void invalidateCache();
-    CompletableFuture<Void> invalidateAllAsync();
-    boolean hasMessages(String collection, String language);
-    CompletableFuture<Void> forceRegenerateLanguageDocuments(String collection);
-    CompletableFuture<Void> forceRegenerateCollection(String collection, Set<String> expectedLanguages);
-    CompletableFuture<Void> updateSupportedLanguages(String collection, Set<String> languages);
+    
+    /**
+     * Get supported languages for a collection
+     * @param collection collection name
+     * @return set of supported language codes
+     */
+    Set<String> getSupportedLanguages(String collection);
 }

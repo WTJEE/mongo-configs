@@ -38,112 +38,142 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String playerLanguage;
-        try {
-            playerLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
-        } catch (Exception e) {
-            player.sendMessage("§c[ERROR] Failed to get player language: " + e.getMessage());
-            playerLanguage = "en"; // fallback
-        }
-
-        if (args.length == 0) {
-            try {
-                openLanguageGUI(player);
-            } catch (Exception e) {
-                player.sendMessage("§c[ERROR] Failed to open GUI: " + e.getMessage());
-                showLanguageInfo(player, player.getUniqueId().toString());
-            }
-            return true;
-        }
-
-        String requestedLanguage = args[0].toLowerCase();
-
-        if (!languageManager.isLanguageSupported(requestedLanguage)) {
-            String unsupportedMessage = config.getMessage("commands.language.unsupported", playerLanguage)
-                .replace("{language}", requestedLanguage);
-            player.sendMessage(ColorHelper.parseComponent(unsupportedMessage));
-            showAvailableLanguages(player);
-            return true;
-        }
-
-        final String finalRequestedLanguage = requestedLanguage;
-        final String finalPlayerLanguage = playerLanguage;
-        final Player finalPlayer = player;
-
-        languageManager.setPlayerLanguage(player.getUniqueId(), requestedLanguage)
-            .whenComplete((result, error) -> {
+        // Handle async getPlayerLanguage
+        languageManager.getPlayerLanguage(player.getUniqueId().toString())
+            .whenComplete((playerLanguage, error) -> {
                 if (error != null) {
-                    String errorMessage = config.getMessage("commands.language.error", finalPlayerLanguage);
-                    finalPlayer.sendMessage(ColorHelper.parseComponent(errorMessage));
+                    player.sendMessage("§c[ERROR] Failed to get player language: " + error.getMessage());
+                    handleCommand(player, args, "en"); // fallback
                 } else {
-                    String displayName = languageManager.getLanguageDisplayName(finalRequestedLanguage);
-                    String successMessage = config.getMessage("commands.language.success", finalPlayerLanguage)
-                        .replace("{language}", displayName);
-                    finalPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
+                    handleCommand(player, args, playerLanguage);
                 }
             });
 
         return true;
     }
 
+    private void handleCommand(Player player, String[] args, String playerLanguage) {
+
+        if (args.length == 0) {
+            try {
+                openLanguageGUI(player, playerLanguage);
+            } catch (Exception e) {
+                player.sendMessage("§c[ERROR] Failed to open GUI: " + e.getMessage());
+                showLanguageInfo(player, player.getUniqueId().toString(), playerLanguage);
+            }
+            return;
+        }
+
+        String requestedLanguage = args[0].toLowerCase();
+
+        languageManager.getSupportedLanguages()
+            .whenComplete((supportedLanguages, error) -> {
+                if (error != null) {
+                    player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    return;
+                }
+                
+                boolean isSupported = Arrays.asList(supportedLanguages).contains(requestedLanguage);
+                if (!isSupported) {
+                    String unsupportedMessage = config.getMessage("commands.language.unsupported", playerLanguage)
+                        .replace("{language}", requestedLanguage);
+                    player.sendMessage(ColorHelper.parseComponent(unsupportedMessage));
+                    showAvailableLanguages(player, playerLanguage);
+                    return;
+                }
+                
+                // Language is supported, proceed with setting it
+                setPlayerLanguage(player, requestedLanguage, playerLanguage);
+            });
+    }
+    
+    private void setPlayerLanguage(Player player, String requestedLanguage, String playerLanguage) {
+
+        languageManager.setPlayerLanguage(player.getUniqueId(), requestedLanguage)
+            .whenComplete((result, error) -> {
+                if (error != null) {
+                    String errorMessage = config.getMessage("commands.language.error", playerLanguage);
+                    player.sendMessage(ColorHelper.parseComponent(errorMessage));
+                } else {
+                    String displayName = config.getMessage("language.names." + requestedLanguage, requestedLanguage);
+                    String successMessage = config.getMessage("commands.language.success", playerLanguage)
+                        .replace("{language}", displayName);
+                    player.sendMessage(ColorHelper.parseComponent(successMessage));
+                }
+            });
+    }
+
     private String translateColors(String text) {
         return ColorHelper.colorize(text);
     }
 
-    private void showLanguageInfo(Player player, String playerId) {
-        String playerLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
-        String currentLanguage = languageManager.getPlayerLanguage(playerId);
-        String displayName = languageManager.getLanguageDisplayName(currentLanguage);
+    private void showLanguageInfo(Player player, String playerId, String playerLanguage) {
+        languageManager.getPlayerLanguage(playerId)
+            .whenComplete((currentLanguage, error) -> {
+                if (error != null) {
+                    player.sendMessage("§c[ERROR] Failed to get language info: " + error.getMessage());
+                    return;
+                }
+                
+                String displayName = config.getMessage("language.names." + currentLanguage, currentLanguage);
+                String currentMessage = config.getMessage("commands.language.current", playerLanguage)
+                    .replace("{language}", displayName);
+                player.sendMessage(ColorHelper.parseComponent(currentMessage));
 
-        String currentMessage = config.getMessage("commands.language.current", playerLanguage)
-            .replace("{language}", displayName);
-    player.sendMessage(ColorHelper.parseComponent(currentMessage));
-
-        showAvailableLanguages(player);
+                showAvailableLanguages(player, playerLanguage);
+            });
     }
 
-    private void showAvailableLanguages(Player player) {
-        String playerLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+    private void showAvailableLanguages(Player player, String playerLanguage) {
         String availableHeader = config.getMessage("commands.language.available-header", playerLanguage);
-    player.sendMessage(ColorHelper.parseComponent(availableHeader));
+        player.sendMessage(ColorHelper.parseComponent(availableHeader));
 
-        StringBuilder languages = new StringBuilder();
-        String[] supportedLanguages = languageManager.getSupportedLanguages();
+        languageManager.getSupportedLanguages()
+            .whenComplete((supportedLanguages, error) -> {
+                if (error != null) {
+                    player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    return;
+                }
+                
+                StringBuilder languages = new StringBuilder();
+                for (int i = 0; i < supportedLanguages.length; i++) {
+                    String lang = supportedLanguages[i];
+                    String displayName = config.getMessage("language.names." + lang, lang);
 
-        for (int i = 0; i < supportedLanguages.length; i++) {
-            String lang = supportedLanguages[i];
-            String displayName = languageManager.getLanguageDisplayName(lang);
+                    String languageFormat = config.getMessage("commands.language.available-format", playerLanguage)
+                        .replace("{code}", lang)
+                        .replace("{name}", displayName);
 
-            String languageFormat = config.getMessage("commands.language.available-format", playerLanguage)
-                .replace("{code}", lang)
-                .replace("{name}", displayName);
+                    languages.append(languageFormat);
 
-            languages.append(languageFormat);
+                    if (i < supportedLanguages.length - 1) {
+                        languages.append(config.getMessage("commands.language.separator", playerLanguage));
+                    }
+                }
 
-            if (i < supportedLanguages.length - 1) {
-                languages.append(config.getMessage("commands.language.separator", playerLanguage));
-            }
-        }
+                player.sendMessage(ColorHelper.parseComponent(languages.toString()));
 
-    player.sendMessage(ColorHelper.parseComponent(languages.toString()));
-
-        String usageMessage = config.getMessage("commands.language.usage", playerLanguage);
-    player.sendMessage(ColorHelper.parseComponent(usageMessage));
+                String usageMessage = config.getMessage("commands.language.usage", playerLanguage);
+                player.sendMessage(ColorHelper.parseComponent(usageMessage));
+            });
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            return Arrays.stream(languageManager.getSupportedLanguages())
-                    .filter(lang -> lang.toLowerCase().startsWith(partial))
-                    .collect(Collectors.toList());
+            // For tab completion, we'll use a simple fallback
+            // since we can't easily handle async in tab completion
+            return Arrays.asList("en", "pl", "es", "fr", "de")
+                .stream()
+                .filter(lang -> lang.toLowerCase().startsWith(partial))
+                .collect(Collectors.toList());
         }
 
         return List.of();
     }
 
-    private void openLanguageGUI(Player player) {
+    private void openLanguageGUI(Player player, String playerLanguage) {
         try {
             LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
 
@@ -155,7 +185,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             }
         } catch (Exception e) {
             player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
-            showLanguageInfo(player, player.getUniqueId().toString());
+            showLanguageInfo(player, player.getUniqueId().toString(), playerLanguage);
         }
     }
 }

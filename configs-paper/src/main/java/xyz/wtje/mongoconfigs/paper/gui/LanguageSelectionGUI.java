@@ -44,7 +44,9 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
         this.inventory = Bukkit.createInventory(this, config.getGuiSize(),
             ColorHelper.parseComponent(config.getGuiTitle()));
-    }    public void open() {
+    }
+
+    public void open() {
         try {
             buildInventoryAsync().thenAccept(builtInventory -> {
                 Bukkit.getScheduler().runTask(getPlugin(), () -> {
@@ -73,30 +75,29 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     private CompletableFuture<Inventory> buildInventoryAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            Inventory tempInventory = Bukkit.createInventory(null, config.getGuiSize(),
-                Component.text("Building...", NamedTextColor.GRAY));
+        return languageManager.getSupportedLanguages()
+            .thenCombine(languageManager.getPlayerLanguage(player.getUniqueId().toString()),
+                (supportedLanguages, currentLanguage) -> {
+                    Inventory tempInventory = Bukkit.createInventory(null, config.getGuiSize(),
+                        Component.text("Building...", NamedTextColor.GRAY));
 
-            String[] supportedLanguages = languageManager.getSupportedLanguages();
-            String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+                    int slot = config.getGuiStartSlot();
 
-            int slot = config.getGuiStartSlot();
+                    for (String language : supportedLanguages) {
+                        ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
+                        tempInventory.setItem(slot, item);
+                        slot++;
 
-            for (String language : supportedLanguages) {
-                ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
-                tempInventory.setItem(slot, item);
-                slot++;
+                        if (slot % 9 == 8) {
+                            slot += 2;
+                        }
+                    }
 
-                if (slot % 9 == 8) {
-                    slot += 2;
-                }
-            }
+                    ItemStack closeButton = createCloseButton();
+                    tempInventory.setItem(config.getCloseButtonSlot(), closeButton);
 
-            ItemStack closeButton = createCloseButton();
-            tempInventory.setItem(config.getCloseButtonSlot(), closeButton);
-
-            return tempInventory;
-        });
+                    return tempInventory;
+                });
     }
 
     private ItemStack createCloseButton() {
@@ -176,7 +177,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
     private ItemStack updateItemDisplay(ItemStack item, String language, boolean isSelected, String playerLanguage) {
         ItemMeta meta = item.getItemMeta();
 
-        String displayName = languageManager.getLanguageDisplayName(language);
+        String displayName = languageManager.getLanguageDisplayName(language).join();
         Component nameComponent = ColorHelper.parseComponent(displayName);
 
         meta.displayName(nameComponent);
@@ -246,63 +247,70 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
 
         ItemMeta meta = clickedItem.getItemMeta();
-            if (meta != null && meta.hasDisplayName() &&
+        if (meta != null && meta.hasDisplayName() &&
             meta.displayName().equals(ColorHelper.parseComponent(config.getCloseButtonName()))) {
             clickingPlayer.closeInventory();
-            String currentPlayerLanguage = languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString());
-                String closeMessage = config.getMessage("gui.closed", currentPlayerLanguage);
-                if (!closeMessage.isEmpty()) {
-                    clickingPlayer.sendMessage(ColorHelper.parseComponent(closeMessage));
-                }
+            languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString())
+                .thenAccept(currentPlayerLanguage -> {
+                    String closeMessage = config.getMessage("gui.closed", currentPlayerLanguage);
+                    if (!closeMessage.isEmpty()) {
+                        Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                            clickingPlayer.sendMessage(ColorHelper.parseComponent(closeMessage));
+                        });
+                    }
+                });
             return;
         }
 
         if (isLanguageItem(clickedItem)) {
-            String[] supportedLanguages = languageManager.getSupportedLanguages();
-            int slot = event.getSlot();
+            languageManager.getSupportedLanguages().thenCombine(
+                languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString()),
+                (supportedLanguages, currentPlayerLanguage) -> {
+                    int slot = event.getSlot();
+                    String selectedLanguage = getLanguageFromSlot(slot, supportedLanguages);
 
-            String selectedLanguage = getLanguageFromSlot(slot, supportedLanguages);
-
-            if (selectedLanguage != null) {
-                String currentPlayerLanguage = languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString());
-
-                languageManager.setPlayerLanguage(clickingPlayer.getUniqueId(), selectedLanguage)
-                    .whenComplete((result, error) -> {
-                        Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                            if (error != null) {
-                                getPlugin().getLogger().warning("Failed to update language for " +
-                                    clickingPlayer.getName() + ": " + error.getMessage());
-                                String errorMessage = config.getMessage("commands.language.error", currentPlayerLanguage);
-                                clickingPlayer.sendMessage(ColorHelper.parseComponent(errorMessage));
-                            } else {
-                                String displayName = languageManager.getLanguageDisplayName(selectedLanguage);
-                                String successMessage = config.getMessage("commands.language.success", selectedLanguage)
-                                    .replace("{language}", displayName);
-                                clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
-
-                                refreshInventory(clickingPlayer);
-                            }
-                        });
-                    });
-            }
+                    if (selectedLanguage != null) {
+                        return languageManager.setPlayerLanguage(clickingPlayer.getUniqueId(), selectedLanguage)
+                            .whenComplete((result, error) -> {
+                                Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                                    if (error != null) {
+                                        getPlugin().getLogger().warning("Failed to update language for " +
+                                            clickingPlayer.getName() + ": " + error.getMessage());
+                                        String errorMessage = config.getMessage("commands.language.error", currentPlayerLanguage);
+                                        clickingPlayer.sendMessage(ColorHelper.parseComponent(errorMessage));
+                                    } else {
+                                        String displayName = languageManager.getLanguageDisplayName(selectedLanguage).join();
+                                        String successMessage = config.getMessage("commands.language.success", selectedLanguage)
+                                            .replace("{language}", displayName);
+                                        clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
+                                        // Refresh inventory after successful update
+                                        refreshInventory(clickingPlayer);
+                                    }
+                                });
+                            });
+                    }
+                    return null;
+                });
         }
     }
 
     private void refreshInventory(Player player) {
-        String[] supportedLanguages = languageManager.getSupportedLanguages();
-        String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+        languageManager.getSupportedLanguages().thenCombine(
+            languageManager.getPlayerLanguage(player.getUniqueId().toString()),
+            (supportedLanguages, currentLanguage) -> {
+                int slot = config.getGuiStartSlot();
 
-        int slot = config.getGuiStartSlot();
+                for (String language : supportedLanguages) {
+                    ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
+                    inventory.setItem(slot, item);
+                    slot++;
 
-        for (String language : supportedLanguages) {
-            ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
-            inventory.setItem(slot, item);
-            slot++;
-
-            if (slot % 9 == 8) {
-                slot += 2;
-            }
-        }
+                    if (slot % 9 == 8) {
+                        slot += 2;
+                    }
+                }
+                return null;
+            });
     }
 
     private String getLanguageFromSlot(int slot, String[] languages) {
@@ -332,32 +340,39 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
         isPreloading = true;
 
-        String[] languages = languageManager.getSupportedLanguages();
+        languageManager.getSupportedLanguages().thenAccept(languages -> {
+            CompletableFuture.runAsync(() -> {
+                for (String language : languages) {
+                    if (!CACHED_HEADS.containsKey(language)) {
+                        String texture = config.getLanguageHeadTextures().get(language);
+                        if (texture != null) {
+                            try {
+                                ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+                                SkullMeta meta = (SkullMeta) item.getItemMeta();
 
-        CompletableFuture.runAsync(() -> {
-            for (String language : languages) {
-                if (!CACHED_HEADS.containsKey(language)) {
-                    String texture = config.getLanguageHeadTextures().get(language);
-                    if (texture != null) {
-                        try {
-                            ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-                            SkullMeta meta = (SkullMeta) item.getItemMeta();
+                                PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
+                                PlayerTextures textures = profile.getTextures();
 
-                            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
-                            PlayerTextures textures = profile.getTextures();
+                                String decoded = new String(Base64.getDecoder().decode(texture));
+                                String url = decoded.split("\"url\":\"")[1].split("\"")[0];
 
-                            String decoded = new String(Base64.getDecoder().decode(texture));
-                            String url = decoded.split("\"url\":\"")[1].split("\"")[0];
+                                textures.setSkin(new URL(url));
+                                profile.setTextures(textures);
+                                meta.setOwnerProfile(profile);
+                                item.setItemMeta(meta);
 
-                            textures.setSkin(new URL(url));
-                            profile.setTextures(textures);
-                            meta.setOwnerProfile(profile);
-                            item.setItemMeta(meta);
+                                CACHED_HEADS.put(language, item);
 
-                            CACHED_HEADS.put(language, item);
-
-                            Thread.sleep(50);
-                        } catch (Exception e) {
+                                Thread.sleep(50);
+                            } catch (Exception e) {
+                                Material fallbackMaterial = config.getFallbackMaterials().get(language);
+                                if (fallbackMaterial == null) {
+                                    fallbackMaterial = getLanguageMaterialStatic(language);
+                                }
+                                ItemStack fallback = new ItemStack(fallbackMaterial);
+                                CACHED_HEADS.put(language, fallback);
+                            }
+                        } else {
                             Material fallbackMaterial = config.getFallbackMaterials().get(language);
                             if (fallbackMaterial == null) {
                                 fallbackMaterial = getLanguageMaterialStatic(language);
@@ -365,20 +380,14 @@ public class LanguageSelectionGUI implements InventoryHolder {
                             ItemStack fallback = new ItemStack(fallbackMaterial);
                             CACHED_HEADS.put(language, fallback);
                         }
-                    } else {
-                        Material fallbackMaterial = config.getFallbackMaterials().get(language);
-                        if (fallbackMaterial == null) {
-                            fallbackMaterial = getLanguageMaterialStatic(language);
-                        }
-                        ItemStack fallback = new ItemStack(fallbackMaterial);
-                        CACHED_HEADS.put(language, fallback);
                     }
                 }
-            }
-            isPreloading = false;
 
-            Bukkit.getScheduler().runTask(org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(LanguageSelectionGUI.class),
-                () -> Bukkit.getLogger().info("Language GUI heads preloaded successfully"));
+                isPreloading = false;
+
+                Bukkit.getScheduler().runTask(org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(LanguageSelectionGUI.class),
+                    () -> Bukkit.getLogger().info("Language GUI heads preloaded successfully"));
+            });
         });
     }
 
@@ -395,25 +404,29 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
     public void openSimple() {
         try {
-            String[] supportedLanguages = languageManager.getSupportedLanguages();
-            String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString());
+            languageManager.getSupportedLanguages().thenCombine(
+                languageManager.getPlayerLanguage(player.getUniqueId().toString()),
+                (supportedLanguages, currentLanguage) -> {
+                    int slot = config.getGuiStartSlot();
 
-            int slot = config.getGuiStartSlot();
+                    for (String language : supportedLanguages) {
+                        ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
+                        inventory.setItem(slot, item);
+                        slot++;
 
-            for (String language : supportedLanguages) {
-                ItemStack item = buildLanguageItemComplete(language, language.equals(currentLanguage), currentLanguage);
-                inventory.setItem(slot, item);
-                slot++;
+                        if (slot % 9 == 8) {
+                            slot += 2;
+                        }
+                    }
 
-                if (slot % 9 == 8) {
-                    slot += 2;
-                }
-            }
+                    ItemStack closeButton = createCloseButton();
+                    inventory.setItem(config.getCloseButtonSlot(), closeButton);
 
-            ItemStack closeButton = createCloseButton();
-            inventory.setItem(config.getCloseButtonSlot(), closeButton);
-
-            player.openInventory(inventory);
+                    Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        player.openInventory(inventory);
+                    });
+                    return null;
+                });
         } catch (Exception e) {
             player.sendMessage("§c[ERROR] Failed to open simple GUI: " + e.getMessage());
         }

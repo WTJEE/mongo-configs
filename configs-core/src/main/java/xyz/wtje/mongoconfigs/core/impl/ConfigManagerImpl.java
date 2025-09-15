@@ -15,6 +15,7 @@ import com.mongodb.client.model.UpdateOptions;
 import org.bson.Document;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
@@ -23,7 +24,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.time.Duration;
-public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.api.ConfigCollectionsOps {
+public class ConfigManagerImpl implements ConfigManager {
     private static final Logger LOGGER = Logger.getLogger(ConfigManagerImpl.class.getName());
     private final MongoManager mongoManager;
     private final CacheManager cacheManager;
@@ -99,11 +100,11 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
             }
         }, asyncExecutor);
     }
-    public Set<String> getSupportedLanguages(String collection) {
-        return collectionLanguages.getOrDefault(collection, Set.of());
+    public CompletableFuture<Set<String>> getSupportedLanguages(String collection) {
+        return CompletableFuture.completedFuture(collectionLanguages.getOrDefault(collection, Set.of()));
     }
-    public boolean collectionExists(String collection) {
-        return knownCollections.contains(collection) || cacheManager.hasCollection(collection);
+    public CompletableFuture<Boolean> collectionExists(String collection) {
+        return CompletableFuture.completedFuture(knownCollections.contains(collection) || cacheManager.hasCollection(collection));
     }
     public CompletableFuture<Void> reloadCollection(String collection) {
         return CompletableFuture.runAsync(() -> {
@@ -626,7 +627,6 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
         }
     }
 
-    @Override
     public CompletableFuture<Void> invalidateAllAsync() {
         return cacheManager.invalidateAllAsync()
                 .thenRun(() -> {
@@ -961,61 +961,72 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
         return typedConfigManager.getObject(id, type);
     }
 
-    @Override
     public Messages findById(String id) {
         return new Messages() {
-            private final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            
+            @Override
+            public CompletableFuture<String> get(String path) {
+                return get(path, config.getDefaultLanguage());
+            }
 
             @Override
-            public <T> java.util.concurrent.CompletableFuture<T> get(String lang, String key, Class<T> type) {
+            public CompletableFuture<String> get(String path, String language) {
                 try {
-                    Object raw = cacheManager.getMessage(id, lang, key, (Object) null);
-                    if (raw == null) {
-                        raw = cacheManager.getMessage(id, config.getDefaultLanguage(), key, (Object) null);
+                    String message = cacheManager.getMessage(id, language, path, (String) null);
+                    if (message == null) {
+                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
                     }
-                    T result = null;
-                    if (raw != null) {
-                        result = type.isInstance(raw) ? type.cast(raw) : mapper.convertValue(raw, type);
-                    }
-                    return java.util.concurrent.CompletableFuture.completedFuture(result);
+                    return CompletableFuture.completedFuture(message);
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting typed message: " + id + ":" + lang + ":" + key, e);
-                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
+                    return CompletableFuture.completedFuture(path);
                 }
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, Object... placeholders) {
+            public CompletableFuture<String> get(String path, Object... placeholders) {
+                return get(path, config.getDefaultLanguage(), placeholders);
+            }
+
+            @Override
+            public CompletableFuture<String> get(String path, String language, Object... placeholders) {
                 try {
-                    String message = cacheManager.getMessage(id, lang, key, (String) null);
+                    String message = cacheManager.getMessage(id, language, path, (String) null);
                     if (message == null) {
-                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), key, key);
+                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
                     }
                     String formatted = messageFormatter.format(message, placeholders);
-                    return java.util.concurrent.CompletableFuture.completedFuture(formatted);
+                    return CompletableFuture.completedFuture(formatted);
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + lang + ":" + key, e);
-                    return java.util.concurrent.CompletableFuture.completedFuture(key);
+                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
+                    return CompletableFuture.completedFuture(path);
                 }
             }
 
             @Override
-            public java.util.concurrent.CompletableFuture<String> get(String lang, String key, java.util.Map<String, Object> placeholders) {
-                if (placeholders == null || placeholders.isEmpty()) {
-                    return get(lang, key);
+            public CompletableFuture<List<String>> getList(String path) {
+                return getList(path, config.getDefaultLanguage());
+            }
+
+            @Override
+            public CompletableFuture<List<String>> getList(String path, String language) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    List<String> list = cacheManager.getMessage(id, language, path, (List<String>) null);
+                    if (list == null) {
+                        @SuppressWarnings("unchecked")
+                        List<String> defaultList = cacheManager.getMessage(id, config.getDefaultLanguage(), path, (List<String>) null);
+                        list = defaultList != null ? defaultList : java.util.Collections.singletonList(path);
+                    }
+                    return CompletableFuture.completedFuture(list);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error getting message list: " + id + ":" + language + ":" + path, e);
+                    return CompletableFuture.completedFuture(java.util.Collections.singletonList(path));
                 }
-                Object[] flat = new Object[placeholders.size() * 2];
-                int i = 0;
-                for (java.util.Map.Entry<String, Object> e : placeholders.entrySet()) {
-                    flat[i++] = e.getKey();
-                    flat[i++] = e.getValue();
-                }
-                return get(lang, key, flat);
             }
         };
     }
 
-    @Override
     public Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageClass);
         
@@ -1036,14 +1047,8 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
 
     @Override
-    public <T> void createFromObject(T messageObject) {
-        // Delegate to async version and don't block
-        createFromObjectAsync(messageObject)
-            .whenComplete((result, throwable) -> {
-                if (throwable != null) {
-                    LOGGER.log(Level.SEVERE, "Error in createFromObject async operation", throwable);
-                }
-            });
+    public <T> CompletableFuture<Void> createFromObject(T messageObject) {
+        return createFromObjectAsync(messageObject);
     }
 
     public <T> CompletableFuture<Void> createFromObjectAsync(T messageObject) {
@@ -1078,19 +1083,8 @@ public class ConfigManagerImpl implements ConfigManager, xyz.wtje.mongoconfigs.a
     }
 
     @Override
-    public <T> Messages getOrCreateFromObject(T messageObject) {
-        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageObject.getClass());
-        
-        // Delegate to async version but return Messages immediately
-        // The async operation will complete in background
-        getOrCreateFromObjectAsync(messageObject)
-            .whenComplete((result, throwable) -> {
-                if (throwable != null) {
-                    LOGGER.log(Level.SEVERE, "Error in getOrCreateFromObject async operation", throwable);
-                }
-            });
-        
-        return findById(collectionName);
+    public <T> CompletableFuture<Messages> getOrCreateFromObject(T messageObject) {
+        return getOrCreateFromObjectAsync(messageObject);
     }
 
     public <T> CompletableFuture<Messages> getOrCreateFromObjectAsync(T messageObject) {

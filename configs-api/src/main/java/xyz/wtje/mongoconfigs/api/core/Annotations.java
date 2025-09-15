@@ -9,7 +9,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class Annotations {
-
     private static final ConcurrentHashMap<Class<?>, String> ID_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, String> DB_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, String> COLLECTION_CACHE = new ConcurrentHashMap<>();
@@ -27,14 +26,14 @@ public final class Annotations {
     public static String databaseFrom(Class<?> type) {
         return DB_CACHE.computeIfAbsent(type, t -> {
             var a = t.getAnnotation(ConfigsDatabase.class);
-            return a != null ? a.value() : null;  // null = use default from config
+            return a != null ? a.value() : null;
         });
     }
 
     public static String collectionFrom(Class<?> type) {
         return COLLECTION_CACHE.computeIfAbsent(type, t -> {
             var a = t.getAnnotation(ConfigsCollection.class);
-            return a != null ? a.value() : idFrom(t);  // fallback to ID
+            return a != null ? a.value() : idFrom(t);
         });
     }
 

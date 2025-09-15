@@ -36,8 +36,8 @@
     </properties>
 
     <modules>
-        <module>configs-api</module>
         <module>configs-core</module>
+        <module>configs-api</module>
         <module>configs-paper</module>
     </modules>
 

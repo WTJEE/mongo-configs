@@ -89,30 +89,10 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     @Override
-    public String getPlayerLanguage(String playerId) {
-        String cached = playerLanguagesCache.getIfPresent(playerId);
-        if (cached != null) {
-            return cached;
-        }
-        // Return default immediately and populate cache asynchronously to avoid blocking server thread
-        String fallback = config.getDefaultLanguage();
-        CompletableFuture.runAsync(() -> {
-            try {
-                MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
-                Document doc = PublisherAdapter.toCompletableFuture(
-                    collection.find(Filters.eq("_id", playerId)).first()
-                ).join();
-                String language = doc != null ? doc.getString("language") : fallback;
-                playerLanguagesCache.put(playerId, language);
-                LOGGER.fine("Loaded language from MongoDB for " + playerId + ": " + language);
-            } catch (Exception e) {
-                LOGGER.fine("Async load failed for player language " + playerId + ": " + e.getMessage());
-            }
-        });
-        return fallback;
+    public CompletableFuture<String> getPlayerLanguage(String playerId) {
+        return getPlayerLanguageAsync(playerId);
     }
 
-    @Override
     public CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
         String cached = playerLanguagesCache.getIfPresent(playerId);
         if (cached != null) return CompletableFuture.completedFuture(cached);
@@ -133,49 +113,8 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     @Override
-    public void setPlayerLanguage(String playerId, String language) {
-        if (!isLanguageSupported(language)) {
-            throw new IllegalArgumentException("Unsupported language: " + language);
-        }
-
-        String currentLanguage = playerLanguagesCache.getIfPresent(playerId);
-        if (language.equals(currentLanguage)) {
-            LOGGER.fine("Language already set for player " + playerId + ": " + language + ", skipping update");
-            return;
-        }
-
-        playerLanguagesCache.put(playerId, language);
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
-                Document currentDoc = PublisherAdapter.toCompletableFuture(
-                    collection.find(Filters.eq("_id", playerId)).first()
-                ).join();
-
-                String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
-                if (language.equals(currentDbLanguage)) {
-                    LOGGER.fine("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
-                    return;
-                }
-
-                PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
-
-                PublisherAdapter.toCompletableFuture(
-                    collection.replaceOne(
-                        Filters.eq("_id", playerId),
-                        doc.toDocument(),
-                        new ReplaceOptions().upsert(true)
-                    )
-                ).join();
-
-                LOGGER.fine("Saved language preference for " + playerId + ": " + language);
-            } catch (Exception e) {
-                LOGGER.warning("Error saving player language: " + e.getMessage());
-            }
-        });
-
-        LOGGER.fine("Updated language for player " + playerId + " to " + language);
+    public CompletableFuture<Void> setPlayerLanguage(String playerId, String language) {
+        return setPlayerLanguageAsync(playerId, language);
     }
 
     public CompletableFuture<Void> setPlayerLanguage(java.util.UUID playerId, String language) {
@@ -183,21 +122,20 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     public CompletableFuture<Void> setPlayerLanguageAsync(String playerId, String language) {
-        return CompletableFuture.runAsync(() -> {
-            if (!isLanguageSupported(language)) {
-                throw new IllegalArgumentException("Unsupported language: " + language);
+        return isLanguageSupported(language).thenCompose(supported -> {
+            if (!supported) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("Unsupported language: " + language));
             }
 
             String currentLanguage = playerLanguagesCache.getIfPresent(playerId);
             if (language.equals(currentLanguage)) {
                 LOGGER.fine("Language already set for player " + playerId + ": " + language + ", skipping update");
-                return;
+                return CompletableFuture.completedFuture(null);
             }
 
             playerLanguagesCache.put(playerId, language);
-
             LOGGER.fine("Updated language for player " + playerId + " to " + language);
-        }).thenCompose(v -> {
+
             return CompletableFuture.runAsync(() -> {
                 try {
                     MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
@@ -231,18 +169,18 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     @Override
-    public String getDefaultLanguage() {
-        return config.getDefaultLanguage();
+    public CompletableFuture<String> getDefaultLanguage() {
+        return CompletableFuture.completedFuture(config.getDefaultLanguage());
     }
 
     @Override
-    public String[] getSupportedLanguages() {
-        return config.getSupportedLanguages().toArray(new String[0]);
+    public CompletableFuture<String[]> getSupportedLanguages() {
+        return CompletableFuture.completedFuture(config.getSupportedLanguages().toArray(new String[0]));
     }
 
     @Override
-    public boolean isLanguageSupported(String language) {
-        return config.getSupportedLanguages().contains(language);
+    public CompletableFuture<Boolean> isLanguageSupported(String language) {
+        return CompletableFuture.completedFuture(config.getSupportedLanguages().contains(language));
     }
 
     public void clearCache() {
@@ -251,24 +189,26 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     @Override
-    public String getLanguageDisplayName(String language) {
-        Map<String, String> displayNames = config.getLanguageDisplayNames();
-        String displayName = displayNames.get(language);
+    public CompletableFuture<String> getLanguageDisplayName(String language) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, String> displayNames = config.getLanguageDisplayNames();
+            String displayName = displayNames.get(language);
 
-        if (displayName == null) {
-            return language;
-        }
-
-        if (isBase64Encoded(displayName)) {
-            try {
-                return new String(Base64.getDecoder().decode(displayName));
-            } catch (Exception e) {
-                LOGGER.warning("Failed to decode base64 display name for language: " + language);
-                return displayName;
+            if (displayName == null) {
+                return language;
             }
-        }
 
-        return displayName;
+            if (isBase64Encoded(displayName)) {
+                try {
+                    return new String(Base64.getDecoder().decode(displayName));
+                } catch (Exception e) {
+                    LOGGER.warning("Failed to decode base64 display name for language: " + language);
+                    return displayName;
+                }
+            }
+
+            return displayName;
+        });
     }
 
     private boolean isBase64Encoded(String str) {

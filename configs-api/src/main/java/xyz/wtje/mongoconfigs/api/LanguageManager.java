@@ -1,25 +1,25 @@
 package xyz.wtje.mongoconfigs.api;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public interface LanguageManager {
-
-    String getPlayerLanguage(String playerId);
-    default java.util.concurrent.CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
-        return java.util.concurrent.CompletableFuture.supplyAsync(() -> getPlayerLanguage(playerId));
+    CompletableFuture<String> getPlayerLanguage(String playerId);
+    CompletableFuture<Void> setPlayerLanguage(String playerId, String language);
+    
+    // UUID overloads for convenience
+    default CompletableFuture<String> getPlayerLanguage(UUID playerId) {
+        return getPlayerLanguage(playerId.toString());
     }
-
-    void setPlayerLanguage(String playerId, String language);
-
-    CompletableFuture<Void> setPlayerLanguage(java.util.UUID playerId, String language);
-
-    CompletableFuture<Void> setPlayerLanguageAsync(String playerId, String language);
-
-    String getDefaultLanguage();
-
-    String[] getSupportedLanguages();
-
-    boolean isLanguageSupported(String language);
-
-    String getLanguageDisplayName(String language);
+    
+    default CompletableFuture<Void> setPlayerLanguage(UUID playerId, String language) {
+        return setPlayerLanguage(playerId.toString(), language);
+    }
+    
+    CompletableFuture<String> getDefaultLanguage();
+    CompletableFuture<String[]> getSupportedLanguages();
+    CompletableFuture<Boolean> isLanguageSupported(String language);
+    
+    // Language display names
+    CompletableFuture<String> getLanguageDisplayName(String language);
 }
