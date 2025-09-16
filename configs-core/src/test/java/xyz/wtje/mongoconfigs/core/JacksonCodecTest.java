@@ -160,3 +160,4 @@ class JacksonCodecTest {
         public Date createdAt;
     }
 }
+

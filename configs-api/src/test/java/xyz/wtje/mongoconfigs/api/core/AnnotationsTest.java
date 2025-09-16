@@ -86,3 +86,4 @@ class AnnotationsTest {
     static class TestConfigWithoutAnnotation {
     }
 }
+

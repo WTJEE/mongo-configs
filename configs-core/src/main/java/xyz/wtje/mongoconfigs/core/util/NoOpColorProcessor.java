@@ -16,3 +16,4 @@ public class NoOpColorProcessor implements ColorProcessor {
     public void clearCache() {
     }
 }
+

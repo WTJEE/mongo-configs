@@ -12,7 +12,7 @@ public class PluginConfiguration {
     }
 
     public String getMongoConnectionString() {
-        return config.getString("mongodb.connection-string", "mongodb://localhost:27017");
+        return config.getString("mongodb.connection-string", "mongodb:");
     }
 
     public String getMongoDatabase() {
@@ -108,3 +108,4 @@ public class PluginConfiguration {
     }
 
 }
+

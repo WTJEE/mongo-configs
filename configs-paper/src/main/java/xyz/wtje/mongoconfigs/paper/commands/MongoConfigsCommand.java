@@ -148,32 +148,28 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading ALL collections from MongoDB..."));
 
         configManager.reloadAll()
-            .thenRun(() -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
-
-                    try {
-                        var collections = configManager.getCollections().join();
-                        sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));
-                        for (String collection : collections) {
-                            sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
-                        }
-                    } catch (Exception e) {
-                        sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: " + e.getMessage()));
-                    }
-                });
-            })
-            .exceptionally(throwable -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+            .thenCompose(ignored -> configManager.getCollections())
+            .whenComplete((collections, throwable) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (throwable != null) {
                     String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                         .replace("{error}", throwable.getMessage());
                     sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collections: " + throwable.getMessage()));
-                });
-                return null;
-            });
-    }
+                    sender.sendMessage(ColorHelper.parseComponent("&c??? Error reloading collections: " + throwable.getMessage()));
+                    return;
+                }
 
+                sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
+
+                if (collections != null) {
+                    sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));
+                    for (String collection : collections) {
+                        sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                    }
+                } else {
+                    sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: result unavailable."));
+                }
+            }));
+    }
 
     private void handleCollections(CommandSender sender) {
         sender.sendMessage(ColorHelper.parseComponent("&e🔍 Loading collections from MongoDB..."));
@@ -183,7 +179,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(Component.text("§6=== Available Collections ===").color(NamedTextColor.GOLD));
                 sender.sendMessage(ColorHelper.parseComponent("&7📋 Collections: &f" + collections.size()));
                 
-                // Process collections asynchronously
+                
                 List<CompletableFuture<Void>> collectionFutures = collections.stream()
                     .map(collection -> {
                         return configManager.getSupportedLanguages(collection)
@@ -208,7 +204,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                     })
                     .collect(Collectors.toList());
                 
-                // Wait for all to complete
+                
                 CompletableFuture.allOf(collectionFutures.toArray(new CompletableFuture[0]))
                     .thenRun(() -> {
                         Bukkit.getScheduler().runTask(plugin, () -> {
@@ -303,7 +299,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 2 && "reload".equals(args[0])) {
-            // Avoid blocking for tab completion; return empty list or consider caching a snapshot in future
+            
             return List.of();
         }
 
@@ -311,3 +307,4 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         return List.of();
     }
 }
+

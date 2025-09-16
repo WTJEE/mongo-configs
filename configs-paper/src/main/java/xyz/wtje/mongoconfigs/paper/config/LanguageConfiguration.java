@@ -164,3 +164,4 @@ public class LanguageConfiguration {
         return config.getString("player-languages.database", "minecraft");
     }
 }
+

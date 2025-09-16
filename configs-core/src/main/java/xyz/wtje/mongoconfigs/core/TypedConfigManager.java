@@ -110,3 +110,4 @@ public final class TypedConfigManager {
                 .thenApply(doc -> doc == null ? null : codec.toPojo(doc, type));
     }
 }
+

@@ -40,3 +40,4 @@ class ConfigManagerSmokeTest {
         manager.shutdown();
     }
 }
+

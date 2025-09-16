@@ -1,6 +1,6 @@
 ﻿# Creating Configs
 
-Model your configuration data as plain Java classes. MongoConfigs serialises them with Jackson, stores them in MongoDB, and keeps defaults in sync.
+Model your configuration data as plain Java classes. MongoConfigs serialises them with Jackson, stores them in MongoDB, and keeps defaults in sync. When running on Paper with the official plugin, grab the `ConfigManager` from `MongoConfigsAPI`; it is already configured using `config.yml`.
 
 ## Define a config class
 
@@ -33,10 +33,20 @@ Keep fields public and simple. MongoConfigs reflects over them, converts to nest
 
 ## Push defaults and read configs
 
-Use the `ConfigManager` to persist and fetch your POJOs. `getConfigOrGenerate` stores defaults the first time and returns live data afterwards.
+Use the `ConfigManager` to persist and fetch your POJOs. Paper plugins typically obtain it like this:
 
 ```java
-PluginSettings settings = new PluginSettings();
+private ConfigManager configManager;
+
+@Override
+public void onEnable() {
+    this.configManager = MongoConfigsAPI.getConfigManager();
+}
+```
+
+Then seed or load documents asynchronously. `getConfigOrGenerate` stores defaults the first time and returns live data afterwards.
+
+```java
 configManager.getConfigOrGenerate(PluginSettings.class, PluginSettings::new)
     .thenAccept(loaded -> {
         this.settings = loaded;
@@ -48,7 +58,7 @@ To update values programmatically, modify the object and call `setObject`.
 
 ```java
 settings.maintenanceMode = true;
-configManager.setObject(settings);
+configManager.setObject(settings); // runs off-thread
 ```
 
 Use `reloadCollection("plugin-settings")` or `reloadAll()` when you update values directly in MongoDB to refresh caches.
@@ -64,4 +74,4 @@ configManager.getTypedConfigManager()
 
 Call `get("plugin-settings", "broadcastIntervalSeconds", Integer.class)` to read a single property without loading the whole document.
 
-Continue with [Messages API](Messages-API) to publish language-specific strings or jump to the [Example Plugin](Example-Plugin) for a complete walkthrough.
+Continue with [Messages API](Messages-API) to publish language-specific strings or jump to the [Example Plugin](Example-Plugin) for a complete Paper integration.

@@ -50,3 +50,4 @@ public class HotReloadCommand implements CommandExecutor {
         sender.sendMessage("§7/hotreload status §f- Show system status");
     }
 }
+

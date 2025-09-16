@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class TypedDocument {
-    private String id; // stored as _id in Mongo
+    private String id; 
     private Map<String, Object> fields;
     private Date updatedAt;
     private long version;
@@ -66,7 +66,7 @@ public class TypedDocument {
     public Map<String, Object> getFields() { return fields; }
     public void setFields(Map<String, Object> fields) { this.fields = fields; }
 
-    public Map<String, Object> getData() { return fields; } // Alias for getFields for compatibility
+    public Map<String, Object> getData() { return fields; } 
 
     public Date getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Date updatedAt) { this.updatedAt = updatedAt; }
@@ -74,3 +74,4 @@ public class TypedDocument {
     public long getVersion() { return version; }
     public void setVersion(long version) { this.version = version; }
 }
+

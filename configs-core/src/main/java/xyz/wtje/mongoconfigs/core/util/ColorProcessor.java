@@ -8,3 +8,4 @@ public interface ColorProcessor {
 
     void clearCache();
 }
+

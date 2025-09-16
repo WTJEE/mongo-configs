@@ -46,3 +46,4 @@ public final class Annotations {
 
     private Annotations() {}
 }
+

@@ -8,15 +8,15 @@ public class MongoConfig {
     private String database = "minecraft";
     private int maxPoolSize = 20;
     private int minPoolSize = 5;
-    private long maxConnectionIdleTime = 60000; // 60 seconds
-    private long maxConnectionLifeTime = 1800000; // 30 minutes
+    private long maxConnectionIdleTime = 60000; 
+    private long maxConnectionLifeTime = 1800000; 
     private int serverSelectionTimeoutMs = 5000;
     private int socketTimeoutMs = 10000;
     private int connectTimeoutMs = 5000;
 
     private long cacheMaxSize = 10000;
-    private long cacheTtlSeconds = 0; // no expiration - cache until server restart
-    private long cacheRefreshAfterSeconds = 60; // 1 minute
+    private long cacheTtlSeconds = 0; 
+    private long cacheRefreshAfterSeconds = 60; 
     private boolean cacheRecordStats = true;
 
     private boolean enableChangeStreams = true;
@@ -117,3 +117,4 @@ public class MongoConfig {
     public boolean isVerboseLogging() { return verboseLogging; }
     public void setVerboseLogging(boolean verboseLogging) { this.verboseLogging = verboseLogging; }
 }
+

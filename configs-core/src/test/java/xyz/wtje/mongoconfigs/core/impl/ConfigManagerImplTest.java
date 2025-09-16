@@ -16,3 +16,4 @@ class ConfigManagerImplTest {
         impl.shutdown();
     }
 }
+

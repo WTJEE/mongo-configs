@@ -167,12 +167,12 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
 
                     return ensureLanguagesFuture.thenCompose(v2 -> {
-                        // Load language documents in parallel
+                        
                         List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
                                 .map(lang -> mongoManager.getLanguage(collection, lang))
                                 .collect(Collectors.toList());
 
-                        // Cache config data if available
+                        
                         if (configDoc != null && configDoc.getData() != null) {
                             cacheManager.putConfigData(collection, configDoc.getData());
                             if (config.isDebugLogging()) {
@@ -184,13 +184,13 @@ public class ConfigManagerImpl implements ConfigManager {
                             }
                         }
 
-                        // Process language futures in parallel
+                        
                         return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
                             .thenRun(() -> {
                                 int loadedLanguages = 0;
                                 for (CompletableFuture<LanguageDocument> future : languageFutures) {
                                     try {
-                                        LanguageDocument langDoc = future.join(); // Safe since allOf already completed
+                                        LanguageDocument langDoc = future.join(); 
                                         if (langDoc != null && langDoc.getData() != null) {
                                             cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
                                             loadedLanguages++;
@@ -519,7 +519,7 @@ public class ConfigManagerImpl implements ConfigManager {
                 LOGGER.info("Found existing collections: " + collections);
             }
             
-            // Load collections into cache in parallel
+            
             List<CompletableFuture<Void>> loadFutures = collections.stream()
                 .filter(collection -> !collection.equals(config.getPlayerLanguagesCollection()))
                 .map(this::loadCollectionIntoCache)
@@ -591,7 +591,7 @@ public class ConfigManagerImpl implements ConfigManager {
                         collectionLanguages.put(collection, actualLanguages);
                     }
 
-                    // Load language documents in parallel
+                    
                     List<CompletableFuture<Void>> languageLoadFutures = actualLanguages.stream()
                         .map(language ->
                             mongoManager.getLanguage(collection, language)
@@ -1030,11 +1030,11 @@ public class ConfigManagerImpl implements ConfigManager {
     public Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator) {
         String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(messageClass);
         
-        // Check if messages exist
+        
         Messages messages = findById(collectionName);
         
-        // For simplicity, always return the messages instance
-        // The generator logic would be implemented here if needed
+        
+        
         if (generator != null) {
             try {
                 generator.get();
@@ -1058,7 +1058,7 @@ public class ConfigManagerImpl implements ConfigManager {
 
         Map<String, Object> flatMessages = extractFlatMessages(messageObject);
 
-        // Create async operations for all languages in parallel
+        
         List<CompletableFuture<Void>> saveFutures = langs.stream()
             .map(language -> {
                 xyz.wtje.mongoconfigs.core.model.LanguageDocument langDoc = 
@@ -1077,7 +1077,7 @@ public class ConfigManagerImpl implements ConfigManager {
             })
             .collect(Collectors.toList());
 
-        // Wait for all save operations to complete, then invalidate cache
+        
         return CompletableFuture.allOf(saveFutures.toArray(new CompletableFuture[0]))
             .thenRun(() -> cacheManager.invalidateMessages(collectionName));
     }
@@ -1092,10 +1092,10 @@ public class ConfigManagerImpl implements ConfigManager {
         Set<String> supportedLanguages = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(messageObject.getClass());
         final Set<String> langs = supportedLanguages.isEmpty() ? Set.of("en") : supportedLanguages;
 
-        // Extract flat messages from POJO
+        
         Map<String, Object> expectedKeys = extractFlatMessages(messageObject);
         
-        // Check existing documents and merge missing keys for all languages
+        
         List<CompletableFuture<Void>> mergeFutures = langs.stream()
             .map(language -> mergeLanguageDocument(collectionName, language, expectedKeys))
             .collect(Collectors.toList());
@@ -1118,13 +1118,13 @@ public class ConfigManagerImpl implements ConfigManager {
 
     private void flattenObject(Object obj, String prefix, Map<String, Object> out, java.util.Set<Object> visited, int depth) {
         if (obj == null) return;
-        if (depth > 8) return; // safety guard
-        if (visited.contains(obj)) return; // cycle guard
+        if (depth > 8) return; 
+        if (visited.contains(obj)) return; 
         visited.add(obj);
 
         Class<?> clazz = obj.getClass();
 
-        // 1) Fields: keep exact field name as segment; simple values -> toString; nested -> recurse
+        
         for (java.lang.reflect.Field field : clazz.getDeclaredFields()) {
             if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) continue;
             try {
@@ -1159,7 +1159,7 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }
 
-        // 2) Getters: convert to dotted.lowercase segment and apply same recursion/simple rules
+        
         for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
             String name = method.getName();
             if (!name.startsWith("get") || method.getParameterCount() != 0 || name.equals("getClass")) continue;
@@ -1217,7 +1217,7 @@ public class ConfigManagerImpl implements ConfigManager {
                 Map<String, Object> existingData = (existingDoc != null && existingDoc.getData() != null) 
                     ? existingDoc.getData() : new HashMap<>();
                 
-                // Find missing keys
+                
                 Map<String, Object> missingKeys = new HashMap<>();
                 for (Map.Entry<String, Object> entry : expectedKeys.entrySet()) {
                     String key = entry.getKey();
@@ -1233,7 +1233,7 @@ public class ConfigManagerImpl implements ConfigManager {
                     return CompletableFuture.completedFuture(null);
                 }
                 
-                // Merge missing keys into existing data
+                
                 Map<String, Object> mergedData = new HashMap<>(existingData);
                 for (Map.Entry<String, Object> entry : missingKeys.entrySet()) {
                     setNestedValue(mergedData, entry.getKey(), entry.getValue());
@@ -1243,13 +1243,13 @@ public class ConfigManagerImpl implements ConfigManager {
                     LOGGER.info("Adding " + missingKeys.size() + " missing keys to " + collectionName + ":" + language + ": " + missingKeys.keySet());
                 }
                 
-                // Save updated document
+                
                 xyz.wtje.mongoconfigs.core.model.LanguageDocument updatedDoc = 
                     new xyz.wtje.mongoconfigs.core.model.LanguageDocument(language, mergedData);
                 
                 return mongoManager.saveLanguage(collectionName, updatedDoc)
                     .thenRun(() -> {
-                        // Update cache with new keys
+                        
                         for (Map.Entry<String, Object> entry : missingKeys.entrySet()) {
                             cacheManager.putMessage(collectionName, language, entry.getKey(), entry.getValue());
                         }
@@ -1275,3 +1275,4 @@ public class ConfigManagerImpl implements ConfigManager {
         return false;
     }
 }
+

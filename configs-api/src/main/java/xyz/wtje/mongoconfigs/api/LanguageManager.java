@@ -7,7 +7,7 @@ public interface LanguageManager {
     CompletableFuture<String> getPlayerLanguage(String playerId);
     CompletableFuture<Void> setPlayerLanguage(String playerId, String language);
     
-    // UUID overloads for convenience
+    
     default CompletableFuture<String> getPlayerLanguage(UUID playerId) {
         return getPlayerLanguage(playerId.toString());
     }
@@ -20,6 +20,7 @@ public interface LanguageManager {
     CompletableFuture<String[]> getSupportedLanguages();
     CompletableFuture<Boolean> isLanguageSupported(String language);
     
-    // Language display names
+    
     CompletableFuture<String> getLanguageDisplayName(String language);
 }
+

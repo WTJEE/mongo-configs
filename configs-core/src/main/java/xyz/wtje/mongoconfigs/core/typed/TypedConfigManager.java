@@ -20,7 +20,7 @@ public class TypedConfigManager {
 	}
 
 	public <T> CompletableFuture<Void> setObject(T pojo) {
-		return CompletableFuture.completedFuture(null); // TODO: implement reflection based storage
+		return CompletableFuture.completedFuture(null); 
 	}
 
 	public <T> CompletableFuture<T> getObject(Class<T> type) {
@@ -48,10 +48,11 @@ public class TypedConfigManager {
 	}
 
 	public <T> CompletableFuture<Void> setObject(String id, T pojo, boolean overwrite) {
-		return setObject(id, pojo); // placeholder
+		return setObject(id, pojo); 
 	}
 
 	public <T> CompletableFuture<T> getConfigOrGenerate(Class<T> type, Supplier<T> generator) {
 		return CompletableFuture.completedFuture(generator.get());
 	}
 }
+

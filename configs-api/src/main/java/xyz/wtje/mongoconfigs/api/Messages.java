@@ -11,3 +11,4 @@ public interface Messages {
     CompletableFuture<List<String>> getList(String path);
     CompletableFuture<List<String>> getList(String path, String language);
 }
+

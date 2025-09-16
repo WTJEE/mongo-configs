@@ -19,3 +19,4 @@ public class BukkitColorProcessor implements ColorProcessor {
         ColorUtils.clearCache();
     }
 }
+

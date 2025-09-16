@@ -79,7 +79,7 @@ public class PluginMessages {
 
 ## Bootstrapping the messages
 
-Initialize the config once (for example, on plugin enable) and keep the returned `Messages` handle for lookups. Everything is asynchronous, so chain futures instead of blocking the main thread.
+When you depend on the Paper plugin module, the `ConfigManager` is already configured from `config.yml`. Read it from `MongoConfigsAPI` and register your defaults.
 
 ```java
 public final class HelpPlugin implements JavaPlugin {
@@ -88,8 +88,7 @@ public final class HelpPlugin implements JavaPlugin {
 
     @Override
     public void onEnable() {
-        MongoConfig mongoConfig = loadMongoSettings(); // your own loader
-        this.configManager = new MongoConfigManager(mongoConfig);
+        this.configManager = MongoConfigsAPI.getConfigManager();
 
         PluginMessages defaults = new PluginMessages();
         configManager.getOrCreateFromObject(defaults)
@@ -105,6 +104,8 @@ public final class HelpPlugin implements JavaPlugin {
 }
 ```
 
+Embedding the library outside Paper works the same way: create `MongoConfigManager`, call `getOrCreateFromObject`, and handle the `CompletableFuture` asynchronously.
+
 ## Reading values in handlers
 
 ```java
@@ -118,12 +119,14 @@ You can also fetch language-specific variants:
 messages.get("general.playerJoined", "pl", "player", player.getName());
 ```
 
+If you must touch Bukkit API objects, use `Bukkit.getScheduler().runTask` inside the continuation to hop back to the main thread.
+
 ## Keeping it fast
 
 - Reuse the same `PluginMessages` instance when calling `getOrCreateFromObject` so schema discovery happens once.
 - Avoid `join()` or `get()` on the main thread; chain futures or schedule sync callbacks to the game thread.
 - Call `configManager.reloadCollection("help-messages")` or `reloadAll()` asynchronously if you need live updates; caches are warmed automatically.
 - Prefer short, flat lists over deeply nested documents when you can; each nested class adds a small amount of reflection work only during initial sync.
-- If you use custom colour processing, set it through `configManager.setColorProcessor` once so formatting happens off-thread.
+- If you use custom colour processing, the Paper module wires in `BukkitColorProcessor`. Replace it once at startup via `configManager.setColorProcessor` if you need different formatting.
 
 Continue with [Best Practices](Best-Practices) for production advice or jump ahead to the [Example Plugin](Example-Plugin).

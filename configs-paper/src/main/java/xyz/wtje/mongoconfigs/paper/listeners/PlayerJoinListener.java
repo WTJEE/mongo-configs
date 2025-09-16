@@ -20,11 +20,12 @@ public class PlayerJoinListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         String playerId = event.getPlayer().getUniqueId().toString();
 
-        // Preload player language asynchronously to cache it
+        
         languageManager.getPlayerLanguage(playerId)
             .exceptionally(throwable -> {
-                // Silently ignore errors in background preloading
-                return "en"; // fallback
+                
+                return "en"; 
             });
     }
 }
+

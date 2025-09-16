@@ -1,14 +1,39 @@
 ﻿# Installation
 
-This guide covers the minimum steps required to add MongoConfigs to your project and connect it to a MongoDB instance.
+MongoConfigs can be consumed in two ways:
 
-## Requirements
+1. **Paper plugin (`mongo-configs-paper`)** – drop the plugin on your server and let it read `config.yml` for the MongoDB URI and cache settings. Your own plugins access the API through `MongoConfigsAPI` without building the config manually.
+2. **Embedded library** – add the dependency to an arbitrary JVM application and create a `MongoConfig` instance yourself.
 
-- Java 17 or newer (matches the target version of the project)
-- Access to a MongoDB server (Atlas, local, or self-hosted)
-- Build system with Maven or Gradle support
+Pick the path that matches your environment.
 
-## 1. Pull the dependency
+## Using the Paper plugin (recommended)
+
+1. Place the released `mongo-configs-paper` JAR in your server's `plugins/` directory and restart.
+2. Edit `plugins/MongoConfigs/config.yml` with your MongoDB URI, database, and cache settings. The plugin also manages `languages.yml`.
+3. In your plugin's `plugin.yml`, declare a soft or hard dependency so the API is initialised first:
+
+   ```yaml
+   depend: [MongoConfigs]
+   ```
+4. Grab the managers from `MongoConfigsAPI` inside `onEnable` – the Paper module has already created and configured them from the YAML files, so you do **not** call the builder yourself.
+
+   ```java
+   private ConfigManager configManager;
+   private LanguageManager languageManager;
+
+   @Override
+   public void onEnable() {
+       configManager = MongoConfigsAPI.getConfigManager();
+       languageManager = MongoConfigsAPI.getLanguageManager();
+   }
+   ```
+
+All asynchronous work (MongoDB I/O, serialization, caching) runs on the worker pools defined in `config.yml`. Your plugin only schedules continuations when it needs to touch Bukkit state.
+
+## Embedded library usage (advanced)
+
+If you are integrating MongoConfigs in a non-Paper environment, add the dependency manually and build the configuration object.
 
 ### Maven
 
@@ -25,8 +50,6 @@ This guide covers the minimum steps required to add MongoConfigs to your project
 </dependency>
 ```
 
-Replace `VERSION` with the latest release tag.
-
 ### Gradle (Kotlin DSL)
 
 ```kotlin
@@ -39,30 +62,19 @@ dependencies {
 }
 ```
 
-## 2. Provide MongoDB credentials
-
-Create a `MongoConfig` instance with your connection details. At minimum you need the connection string, database name, and collection names for configs, messages, and typed configs.
+Construct `MongoConfig` with your connection info (either through setters or the builder) and pass it to `MongoConfigManager`.
 
 ```java
-MongoConfig mongoConfig = MongoConfig.builder()
+MongoConfig config = MongoConfig.builder()
     .connectionString("mongodb://localhost:27017")
-    .database("my-plugin")
+    .database("my-app")
     .configsCollection("configs")
     .messagesCollection("messages")
     .typedConfigsCollection("typed-configs")
     .build();
+
+MongoConfigManager manager = new MongoConfigManager(config);
+manager.initialize();
 ```
 
-## 3. Bootstrap the manager
-
-Instantiate the `MongoConfigManager` with the config and call `initialize()` on startup. Pair it with `shutdown()` when your plugin/app closes to clean up threads.
-
-```java
-MongoConfigManager configManager = new MongoConfigManager(mongoConfig);
-configManager.initialize();
-
-// On disable / shutdown
-configManager.shutdown();
-```
-
-The manager will create missing collections and seed cache structures automatically. Continue with [Creating Configs](Creating-Configs) to model data or jump straight to the [Example Plugin](Example-Plugin).
+Shut the manager down when your application stops to close the MongoDB client and thread pools.

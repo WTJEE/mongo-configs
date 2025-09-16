@@ -20,3 +20,4 @@ public final class ColorHelper {
         return ColorUtils.parseComponent(message);
     }
 }
+

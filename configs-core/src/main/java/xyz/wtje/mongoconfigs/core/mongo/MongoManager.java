@@ -44,7 +44,7 @@ public class MongoManager {
         String connectionStr = config.getConnectionString();
         LOGGER.info("MongoManager: Creating client with connection string: " + 
             (connectionStr.contains("@") ? 
-                connectionStr.replaceAll("://[^@]+@", "://***:***@") : 
+                connectionStr.replaceAll("://[^@]*@", "://***@") :
                 connectionStr));
 
         ConnectionString connectionString = new ConnectionString(connectionStr);
@@ -265,3 +265,4 @@ public class MongoManager {
         }
     }
 }
+

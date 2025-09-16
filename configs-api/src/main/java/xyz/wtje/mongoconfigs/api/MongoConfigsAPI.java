@@ -1,8 +1,6 @@
 package xyz.wtje.mongoconfigs.api;
 
-/**
- * Central API access point for MongoDB Configs
- */
+
 public class MongoConfigsAPI {
     private static ConfigManager configManager;
     private static LanguageManager languageManager;

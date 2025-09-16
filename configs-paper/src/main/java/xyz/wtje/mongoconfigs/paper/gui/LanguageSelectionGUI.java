@@ -283,7 +283,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                                         String successMessage = config.getMessage("commands.language.success", selectedLanguage)
                                             .replace("{language}", displayName);
                                         clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
-                                        // Refresh inventory after successful update
+                                        
                                         refreshInventory(clickingPlayer);
                                     }
                                 });
@@ -438,3 +438,4 @@ public class LanguageSelectionGUI implements InventoryHolder {
         isPreloading = false;
     }
 }
+

@@ -271,3 +271,4 @@ class CacheManagerTest {
         assertDoesNotThrow(() -> cacheManager.putConfigDataAsync("col", emptyData).join());
     }
 }
+

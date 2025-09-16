@@ -37,7 +37,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             String connectionString = pluginConfig.getMongoConnectionString();
             getLogger().info("Using MongoDB connection string: " + 
                 (connectionString.contains("@") ? 
-                    connectionString.replaceAll("://[^@]+@", "://***:***@") : 
+                    connectionString.replaceAll("://[^@]*@", "://***@") :
                     connectionString));
 
             MongoConfig mongoConfig = createMongoConfig();
@@ -112,7 +112,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         String connectionString = pluginConfig.getMongoConnectionString();
         getLogger().info("createMongoConfig: Setting connection string to: " + 
             (connectionString.contains("@") ? 
-                connectionString.replaceAll("://[^@]+@", "://***:***@") : 
+                connectionString.replaceAll("://[^@]*@", "://***@") :
                 connectionString));
 
         config.setConnectionString(connectionString);
@@ -160,7 +160,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         getCommand("mongoconfigs").setExecutor(adminCommand);
         getCommand("mongoconfigs").setTabCompleter(adminCommand);
 
-        ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand();
+        ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand(this);
         getCommand("configsmanager").setExecutor(configsManagerCommand);
         getCommand("configsmanager").setTabCompleter(configsManagerCommand);
 
@@ -205,3 +205,4 @@ public class MongoConfigsPlugin extends JavaPlugin {
     }
 
 }
+

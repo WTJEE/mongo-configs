@@ -18,7 +18,7 @@ class MessagesTest {
 
     
 
-    // removed: type-based getter no longer exists in Messages API
+    
 
     @Test
     void testGetWithVarArgs() {
@@ -35,7 +35,7 @@ class MessagesTest {
         verify(messages).get(lang, key, placeholders);
     }
 
-    // removed: map-based placeholders not in minimal Messages API
+    
 
     @Test
     void testGetWithEmptyPlaceholders() {
@@ -138,3 +138,4 @@ class MessagesTest {
         assertEquals("Goodbye", concreteMessages.get("farewell", "en").join());
     }
 }
+

@@ -38,12 +38,12 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        // Handle async getPlayerLanguage
+        
         languageManager.getPlayerLanguage(player.getUniqueId().toString())
             .whenComplete((playerLanguage, error) -> {
                 if (error != null) {
                     player.sendMessage("§c[ERROR] Failed to get player language: " + error.getMessage());
-                    handleCommand(player, args, "en"); // fallback
+                    handleCommand(player, args, "en"); 
                 } else {
                     handleCommand(player, args, playerLanguage);
                 }
@@ -82,7 +82,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
                     return;
                 }
                 
-                // Language is supported, proceed with setting it
+                
                 setPlayerLanguage(player, requestedLanguage, playerLanguage);
             });
     }
@@ -162,8 +162,8 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            // For tab completion, we'll use a simple fallback
-            // since we can't easily handle async in tab completion
+            
+            
             return Arrays.asList("en", "pl", "es", "fr", "de")
                 .stream()
                 .filter(lang -> lang.toLowerCase().startsWith(partial))
@@ -189,3 +189,4 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         }
     }
 }
+
