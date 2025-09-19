@@ -1235,6 +1235,10 @@ public class ConfigManagerImpl implements ConfigManager {
 
                 if (isSimpleValue(value)) {
                     out.put(key, String.valueOf(value));
+                } else if (value instanceof Iterable<?> iterable) {
+                    out.put(key, copyToList(iterable));
+                } else if (value.getClass().isArray()) {
+                    out.put(key, copyArrayToList(value));
                 } else if (value instanceof java.util.Map<?, ?> m) {
                     for (var e : m.entrySet()) {
                         Object k = e.getKey();
@@ -1274,6 +1278,10 @@ public class ConfigManagerImpl implements ConfigManager {
 
                 if (isSimpleValue(value)) {
                     out.put(key, String.valueOf(value));
+                } else if (value instanceof Iterable<?> iterable) {
+                    out.put(key, copyToList(iterable));
+                } else if (value.getClass().isArray()) {
+                    out.put(key, copyArrayToList(value));
                 } else if (value instanceof java.util.Map<?, ?> m) {
                     for (var e : m.entrySet()) {
                         Object k = e.getKey();
@@ -1296,6 +1304,24 @@ public class ConfigManagerImpl implements ConfigManager {
                 }
             }
         }
+    }
+
+    private java.util.List<String> copyToList(Iterable<?> iterable) {
+        java.util.ArrayList<String> list = new java.util.ArrayList<>();
+        for (Object element : iterable) {
+            list.add(element == null ? "null" : element.toString());
+        }
+        return java.util.Collections.unmodifiableList(list);
+    }
+
+    private java.util.List<String> copyArrayToList(Object array) {
+        int length = java.lang.reflect.Array.getLength(array);
+        java.util.ArrayList<String> list = new java.util.ArrayList<>(length);
+        for (int i = 0; i < length; i++) {
+            Object element = java.lang.reflect.Array.get(array, i);
+            list.add(element == null ? "null" : element.toString());
+        }
+        return java.util.Collections.unmodifiableList(list);
     }
 
     private boolean isSimpleValue(Object value) {
