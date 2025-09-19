@@ -87,7 +87,7 @@ public class MessageFormatter {
 
         if (placeholders.length % 2 != 0) {
             Object trailing = placeholders[placeholders.length - 1];
-            LOGGER.log(Level.WARNING, "Odd number of placeholder arguments for message "{0}"; ignoring trailing value "{1}".", new Object[]{message, trailing});
+            LOGGER.log(Level.WARNING, "Odd number of placeholder arguments for message \"{0}\"; ignoring trailing value \"{1}\".", new Object[]{message, trailing});
         }
 
         if (usableLength == placeholders.length) {
@@ -100,7 +100,7 @@ public class MessageFormatter {
     private Object[] derivePositionalPairs(String message, Object[] values) {
         String[] keys = extractPlaceholders(message);
         if (keys.length == 0) {
-            LOGGER.log(Level.FINE, "Received placeholder values for message "{0}" but it defines no placeholders.", message);
+            LOGGER.log(Level.FINE, "Received placeholder values for message \"{0}\" but it defines no placeholders.", message);
             return new Object[0];
         }
 
@@ -112,9 +112,9 @@ public class MessageFormatter {
         }
 
         if (values.length < keys.length) {
-            LOGGER.log(Level.WARNING, "Not enough placeholder values for message "{0}"; expected {1}, received {2}.", new Object[]{message, keys.length, values.length});
+            LOGGER.log(Level.WARNING, "Not enough placeholder values for message \"{0}\"; expected {1}, received {2}.", new Object[]{message, keys.length, values.length});
         } else if (values.length > keys.length) {
-            LOGGER.log(Level.WARNING, "Too many placeholder values provided for message "{0}"; expected {1}, received {2}.", new Object[]{message, keys.length, values.length});
+            LOGGER.log(Level.WARNING, "Too many placeholder values provided for message \"{0}\"; expected {1}, received {2}.", new Object[]{message, keys.length, values.length});
         }
 
         return pairs;
