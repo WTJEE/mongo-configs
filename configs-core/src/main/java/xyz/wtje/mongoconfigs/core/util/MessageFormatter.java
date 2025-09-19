@@ -1,10 +1,14 @@
 package xyz.wtje.mongoconfigs.core.util;
 
+import java.util.Arrays;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MessageFormatter {
 
+    private static final Logger LOGGER = Logger.getLogger(MessageFormatter.class.getName());
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{([^}]+)\\}");
     private ColorProcessor colorProcessor = new NoOpColorProcessor();
 
@@ -28,8 +32,17 @@ public class MessageFormatter {
     }
 
     private String replacePlaceholders(String message, Object... placeholders) {
+        if (placeholders == null || placeholders.length == 0) {
+            return message;
+        }
+
+        Object[] pairs = placeholders;
         if (placeholders.length % 2 != 0) {
-            throw new IllegalArgumentException("Placeholders must be provided in key-value pairs");
+            LOGGER.log(Level.WARNING, "Odd number of placeholder arguments for message \"{0}\"; ignoring last entry.", message);
+            pairs = Arrays.copyOf(placeholders, placeholders.length - 1);
+            if (pairs.length == 0) {
+                return message;
+            }
         }
 
         StringBuilder result = new StringBuilder(message.length() + 64);
@@ -40,7 +53,7 @@ public class MessageFormatter {
             result.append(message, lastEnd, matcher.start());
 
             String key = matcher.group(1);
-            String replacement = findReplacement(key, placeholders);
+            String replacement = findReplacement(key, pairs);
 
             if (replacement != null) {
                 result.append(replacement);

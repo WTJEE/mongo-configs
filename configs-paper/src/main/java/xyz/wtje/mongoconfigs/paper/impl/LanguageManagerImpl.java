@@ -190,25 +190,27 @@ public class LanguageManagerImpl implements LanguageManager {
 
     @Override
     public CompletableFuture<String> getLanguageDisplayName(String language) {
-        return CompletableFuture.supplyAsync(() -> {
+        try {
             Map<String, String> displayNames = config.getLanguageDisplayNames();
             String displayName = displayNames.get(language);
 
             if (displayName == null) {
-                return language;
+                return CompletableFuture.completedFuture(language);
             }
 
             if (isBase64Encoded(displayName)) {
                 try {
-                    return new String(Base64.getDecoder().decode(displayName));
+                    displayName = new String(Base64.getDecoder().decode(displayName));
                 } catch (Exception e) {
                     LOGGER.warning("Failed to decode base64 display name for language: " + language);
-                    return displayName;
                 }
             }
 
-            return displayName;
-        });
+            return CompletableFuture.completedFuture(displayName);
+        } catch (Exception e) {
+            LOGGER.warning("Error resolving display name for " + language + ": " + e.getMessage());
+            return CompletableFuture.completedFuture(language);
+        }
     }
 
     private boolean isBase64Encoded(String str) {
