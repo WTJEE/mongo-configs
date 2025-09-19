@@ -1,7 +1,15 @@
 package xyz.wtje.mongoconfigs.api;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,6 +24,8 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
     private final String[] supportedLanguages;
     private final Map<String, Messages> messagesCache = new ConcurrentHashMap<>();
     private final Map<String, Object> configCache = new ConcurrentHashMap<>();
+    private final ObjectMapper languageMapper;
+    private final Map<String, Map<String, Map<String, Object>>> languageDocuments = new ConcurrentHashMap<>();
     private final java.util.Set<String> registeredCollections = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public static ConfigManager getInstance() {
@@ -47,6 +57,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         } else {
             this.supportedLanguages = new String[]{"en", "pl"};
         }
+        this.languageMapper = createLanguageMapper();
         System.out.println("ConfigManager initialized with MongoDB: " + mongoUri + " database: " + database);
     }
 
@@ -55,6 +66,16 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         this.database = database;
         this.defaultLanguage = defaultLanguage;
         this.supportedLanguages = supportedLanguages;
+        this.languageMapper = createLanguageMapper();
+    }
+
+    private static ObjectMapper createLanguageMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+        return mapper;
     }
 
     private Map<String, Object> readConfigYml(String configFile) {
@@ -123,6 +144,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         return java.util.concurrent.CompletableFuture.runAsync(() -> {
             messagesCache.clear();
             configCache.clear();
+            languageDocuments.clear();
             registeredCollections.clear();
             System.out.println("Cleared all cached messages and configs");
         });
@@ -196,6 +218,93 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         };
     }
 
+    @Override
+    public <T> java.util.concurrent.CompletableFuture<T> getLanguageClass(Class<T> type, String language) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> resolveLanguageClass(type, language));
+    }
+
+    @Override
+    public <T> java.util.concurrent.CompletableFuture<java.util.Map<String, T>> getLanguageClasses(Class<T> type) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            java.util.Set<String> languages = new java.util.LinkedHashSet<>(xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(type));
+            if (supportedLanguages != null) {
+                for (String lang : supportedLanguages) {
+                    languages.add(lang);
+                }
+            }
+            languages.add(defaultLanguage);
+            java.util.Map<String, T> result = new java.util.LinkedHashMap<>();
+            for (String lang : languages) {
+                result.put(lang, resolveLanguageClass(type, lang));
+            }
+            return result;
+        });
+    }
+
+    private <T> T resolveLanguageClass(Class<T> type, String language) {
+        String collectionId = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(type);
+        String normalized = normalizeLanguage(language);
+        T base = instantiateLanguageClass(type);
+        Map<String, Object> defaults = loadLanguageDocument(collectionId, defaultLanguage);
+        base = mergeLanguageData(type, base, defaults);
+        if (!normalized.equals(defaultLanguage)) {
+            Map<String, Object> overrides = loadLanguageDocument(collectionId, normalized);
+            if (overrides == null || overrides.isEmpty()) {
+                overrides = defaults;
+            }
+            base = mergeLanguageData(type, base, overrides);
+        }
+        return base;
+    }
+
+    private String normalizeLanguage(String language) {
+        return (language == null || language.isBlank()) ? defaultLanguage : language;
+    }
+
+    private Map<String, Object> loadLanguageDocument(String collectionId, String language) {
+        java.util.Map<String, Map<String, Object>> byLanguage = languageDocuments.get(collectionId);
+        if (byLanguage != null) {
+            Map<String, Object> cached = byLanguage.get(language);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        Map<String, Object> fetched = fetchLanguageDocumentFromMongoDB(collectionId, language);
+        return cacheLanguageDocument(collectionId, language, fetched);
+    }
+
+    private Map<String, Object> fetchLanguageDocumentFromMongoDB(String collectionId, String language) {
+        System.out.println("Loading language document from MongoDB: " + collectionId + " [" + language + "]");
+        return null;
+    }
+
+    private Map<String, Object> cacheLanguageDocument(String collectionId, String language, Map<String, Object> data) {
+        Map<String, Map<String, Object>> byLanguage = languageDocuments.computeIfAbsent(collectionId, key -> new ConcurrentHashMap<>());
+        Map<String, Object> snapshot = data != null ? new ConcurrentHashMap<>(data) : new ConcurrentHashMap<>();
+        byLanguage.put(language, snapshot);
+        return snapshot;
+    }
+
+    private <T> T mergeLanguageData(Class<T> type, T base, Map<String, Object> data) {
+        if (base == null || data == null || data.isEmpty()) {
+            return base;
+        }
+        try {
+            byte[] buffer = languageMapper.writeValueAsBytes(data);
+            return languageMapper.readerForUpdating(base).readValue(buffer);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to merge language data for " + type.getName(), e);
+        }
+    }
+
+    private <T> T instantiateLanguageClass(Class<T> type) {
+        try {
+            return type.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to instantiate language class: " + type.getName(), e);
+        }
+    }
+
     private Map<String, Object> extractFlatMessages(Object messageObject) {
         Map<String, Object> result = new java.util.HashMap<>();
         java.util.Set<Object> visited = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -242,6 +351,15 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         System.out.println("Saving messages to MongoDB collection: " + collectionId + " -> " + messages.size() + " keys");
         for (String lang : supportedLanguages) {
             System.out.println("  Creating document for language: " + lang);
+        }
+        cacheLanguageDocument(collectionId, defaultLanguage, messages);
+        Map<String, Map<String, Object>> byLanguage = languageDocuments.get(collectionId);
+        if (byLanguage != null && supportedLanguages != null) {
+            for (String lang : supportedLanguages) {
+                if (!lang.equals(defaultLanguage)) {
+                    byLanguage.computeIfAbsent(lang, key -> new ConcurrentHashMap<>());
+                }
+            }
         }
         try {
             Thread.sleep(50);
@@ -301,6 +419,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         return java.util.concurrent.CompletableFuture.runAsync(() -> {
             messagesCache.remove(collection);
             configCache.entrySet().removeIf(entry -> entry.getKey().equals(collection) || entry.getKey().startsWith(collection + "."));
+            languageDocuments.remove(collection);
             registeredCollections.add(collection);
         });
     }

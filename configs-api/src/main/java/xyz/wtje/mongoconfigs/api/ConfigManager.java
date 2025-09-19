@@ -1,5 +1,6 @@
 package xyz.wtje.mongoconfigs.api;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -28,6 +29,14 @@ public interface ConfigManager {
     
     
     
+    default <T> CompletableFuture<T> getLanguageClass(Class<T> type, String language) {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException("Language class resolution not implemented"));
+    }
+
+    default <T> CompletableFuture<Map<String, T>> getLanguageClasses(Class<T> type) {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException("Language class resolution not implemented"));
+    }
+
     default void setColorProcessor(Object colorProcessor) {
         
         
@@ -45,4 +54,5 @@ public interface ConfigManager {
         return null;
     }
 }
+
 

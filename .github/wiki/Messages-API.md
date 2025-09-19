@@ -1,4 +1,4 @@
-﻿# Messages API
+# Messages API
 
 This page shows how to model your messages as plain Java objects (POJOs) so they can be synchronized with MongoConfigs. Following the pattern gives you type-safe defaults, lets writers work directly in MongoDB, and keeps lookups non-blocking. If you are unfamiliar with typed configs, skim [Creating Configs](Creating-Configs) first.
 
@@ -119,8 +119,43 @@ You can also fetch language-specific variants:
 messages.get("general.playerJoined", "pl", "player", player.getName());
 ```
 
+If you prefer to stay completely asynchronous, keep chaining futures. For handlers that only need cached values you can also grab a `Messages.View` once the messages object is ready:
+
+```java
+Messages.View msg = messages.view(playerLanguage);
+String joined = msg.format("general.playerJoined", player.getName());
+List<String> motd = msg.list("general.motd");
+player.sendMessage(color(joined));
+motd.forEach(line -> player.sendMessage(color(line)));
+```
+
+The view joins the underlying futures internally, so only create it after `getOrCreateFromObject` completes. Calls remain non-blocking in practice because the cache resolves the futures immediately.
+
+
 If you must touch Bukkit API objects, use `Bukkit.getScheduler().runTask` inside the continuation to hop back to the main thread.
 
+## Fetching Typed Language Classes
+
+When you need the full message object for a particular locale, call the asynchronous helpers on `ConfigManager`:
+
+```java
+configManager.getLanguageClass(PluginMessages.class, "pl")
+    .thenAccept(polish -> {
+        String title = polish.gui.title;
+        // use the translated values
+    });
+```
+
+`getLanguageClass` resolves a single language, merging stored data with the defaults defined in your POJO. To process every language at once, use `getLanguageClasses` which returns a map keyed by language code:
+
+```java
+configManager.getLanguageClasses(PluginMessages.class)
+    .thenAccept(classes -> classes.forEach((code, bundle) -> {
+        getLogger().info("Loaded " + code + " title -> " + bundle.gui.title);
+    }));
+```
+
+Both methods complete on worker threads and never touch the main server thread. They fall back to the default language when a translation is missing, so your command handlers always receive a fully populated object.
 ## Keeping it fast
 
 - Reuse the same `PluginMessages` instance when calling `getOrCreateFromObject` so schema discovery happens once.
@@ -130,3 +165,5 @@ If you must touch Bukkit API objects, use `Bukkit.getScheduler().runTask` inside
 - If you use custom colour processing, the Paper module wires in `BukkitColorProcessor`. Replace it once at startup via `configManager.setColorProcessor` if you need different formatting.
 
 Continue with [Best Practices](Best-Practices) for production advice or jump ahead to the [Example Plugin](Example-Plugin).
+
+

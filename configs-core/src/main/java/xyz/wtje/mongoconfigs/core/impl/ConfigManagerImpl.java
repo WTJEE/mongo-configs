@@ -12,6 +12,13 @@ import xyz.wtje.mongoconfigs.core.util.ColorProcessor;
 import xyz.wtje.mongoconfigs.core.util.MessageFormatter;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.UpdateOptions;
+import java.io.IOException;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import org.bson.Document;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -35,6 +42,7 @@ public class ConfigManagerImpl implements ConfigManager {
     private final Set<String> knownCollections = ConcurrentHashMap.newKeySet();
     private final Map<String, Set<String>> collectionLanguages = new ConcurrentHashMap<>();
     private final TypedConfigManager typedConfigManager;
+    private final ObjectMapper languageMapper;
     public ConfigManagerImpl(MongoConfig config) {
         this.config = config;
         this.mongoManager = new MongoManager(config);
@@ -52,6 +60,12 @@ public class ConfigManagerImpl implements ConfigManager {
 
         this.messageFormatter = new MessageFormatter();
         this.typedConfigManager = new TypedConfigManager(mongoManager.getCollection(config.getTypedConfigsCollection()), mongoManager);
+        this.languageMapper = new ObjectMapper();
+        this.languageMapper.registerModule(new JavaTimeModule());
+        this.languageMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        this.languageMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        this.languageMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
         LOGGER.info("ConfigManager initialized with MongoDB database: " + config.getDatabase() +
                    ", Cache TTL: " + (ttlSeconds <= 0 ? "no expiration" : ttlSeconds + "s") +
@@ -1025,6 +1039,91 @@ public class ConfigManagerImpl implements ConfigManager {
                 }
             }
         };
+    }
+
+    @Override
+    public <T> CompletableFuture<T> getLanguageClass(Class<T> type, String language) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(type);
+        String requestedLanguage = (language == null || language.isBlank()) ? config.getDefaultLanguage() : language;
+        return loadLanguageClass(collectionName, type, requestedLanguage);
+    }
+
+    @Override
+    public <T> CompletableFuture<Map<String, T>> getLanguageClasses(Class<T> type) {
+        String collectionName = xyz.wtje.mongoconfigs.api.core.Annotations.idFrom(type);
+
+        return getSupportedLanguages(collectionName).thenCompose(supported -> {
+            Set<String> languages = new LinkedHashSet<>();
+            if (supported != null) {
+                languages.addAll(supported);
+            }
+            Set<String> annotated = xyz.wtje.mongoconfigs.api.core.Annotations.langsFrom(type);
+            if (!annotated.isEmpty()) {
+                languages.addAll(annotated);
+            }
+            languages.add(config.getDefaultLanguage());
+
+            List<CompletableFuture<Map.Entry<String, T>>> futures = languages.stream()
+                .map(lang -> getLanguageClass(type, lang)
+                    .thenApply(instance -> Map.entry(lang, instance)))
+                .collect(Collectors.toList());
+
+            return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> {
+                    Map<String, T> result = new LinkedHashMap<>();
+                    for (CompletableFuture<Map.Entry<String, T>> future : futures) {
+                        Map.Entry<String, T> entry = future.join();
+                        result.put(entry.getKey(), entry.getValue());
+                    }
+                    return result;
+                });
+        });
+    }
+
+    private <T> CompletableFuture<T> loadLanguageClass(String collectionName, Class<T> type, String language) {
+        String normalized = (language == null || language.isBlank()) ? config.getDefaultLanguage() : language;
+
+        return mongoManager.getLanguage(collectionName, normalized)
+            .thenCompose(doc -> {
+                if (doc != null && doc.getData() != null && !doc.getData().isEmpty()) {
+                    collectionLanguages.computeIfAbsent(collectionName, key -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+                        .add(normalized);
+                    return CompletableFuture.completedFuture(mergeLanguageData(type, doc.getData()));
+                }
+                if (!normalized.equals(config.getDefaultLanguage())) {
+                    return mongoManager.getLanguage(collectionName, config.getDefaultLanguage())
+                        .thenApply(defaultDoc -> {
+                            if (defaultDoc != null && defaultDoc.getData() != null && !defaultDoc.getData().isEmpty()) {
+                                collectionLanguages.computeIfAbsent(collectionName, key -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+                                    .add(config.getDefaultLanguage());
+                                return mergeLanguageData(type, defaultDoc.getData());
+                            }
+                            return newLanguageInstance(type);
+                        });
+                }
+                return CompletableFuture.completedFuture(newLanguageInstance(type));
+            });
+    }
+
+    private <T> T mergeLanguageData(Class<T> type, Map<String, Object> data) {
+        T base = newLanguageInstance(type);
+        if (data == null || data.isEmpty()) {
+            return base;
+        }
+        try {
+            byte[] buffer = languageMapper.writeValueAsBytes(data);
+            return languageMapper.readerForUpdating(base).readValue(buffer);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to map language data for " + type.getName(), e);
+        }
+    }
+
+    private <T> T newLanguageInstance(Class<T> type) {
+        try {
+            return type.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Language class must have a no-args constructor: " + type.getName(), e);
+        }
     }
 
     public Messages getMessagesOrGenerate(Class<?> messageClass, Supplier<Void> generator) {
