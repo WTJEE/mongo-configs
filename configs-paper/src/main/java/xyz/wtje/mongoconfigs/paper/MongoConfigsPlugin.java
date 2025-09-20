@@ -154,22 +154,46 @@ public class MongoConfigsPlugin extends JavaPlugin {
     }
 
     private void registerCommands() {
-        LanguageCommand languageCommand = new LanguageCommand(languageManager, languageConfig);
-        getCommand("language").setExecutor(languageCommand);
-        getCommand("language").setTabCompleter(languageCommand);
+        // Register language command with null safety
+        if (getCommand("language") != null) {
+            LanguageCommand languageCommand = new LanguageCommand(languageManager, languageConfig);
+            getCommand("language").setExecutor(languageCommand);
+            getCommand("language").setTabCompleter(languageCommand);
+            getLogger().info("✅ Language command registered successfully");
+        } else {
+            getLogger().severe("❌ Failed to register /language command - command not found in plugin.yml!");
+        }
 
-        MongoConfigsCommand adminCommand = new MongoConfigsCommand(configManager, languageManager, this, languageConfig);
-        getCommand("mongoconfigs").setExecutor(adminCommand);
-        getCommand("mongoconfigs").setTabCompleter(adminCommand);
+        // Register admin command
+        if (getCommand("mongoconfigs") != null) {
+            MongoConfigsCommand adminCommand = new MongoConfigsCommand(configManager, languageManager, this, languageConfig);
+            getCommand("mongoconfigs").setExecutor(adminCommand);
+            getCommand("mongoconfigs").setTabCompleter(adminCommand);
+            getLogger().info("✅ MongoConfigs admin command registered");
+        } else {
+            getLogger().warning("⚠️ Could not register /mongoconfigs command");
+        }
 
-        ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand(this);
-        getCommand("configsmanager").setExecutor(configsManagerCommand);
-        getCommand("configsmanager").setTabCompleter(configsManagerCommand);
+        // Register configs manager command
+        if (getCommand("configsmanager") != null) {
+            ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand(this);
+            getCommand("configsmanager").setExecutor(configsManagerCommand);
+            getCommand("configsmanager").setTabCompleter(configsManagerCommand);
+            getLogger().info("✅ ConfigsManager command registered");
+        } else {
+            getLogger().warning("⚠️ Could not register /configsmanager command");
+        }
 
-        HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager());
-        getCommand("hotreload").setExecutor(hotReloadCommand);
+        // Register hotreload command
+        if (getCommand("hotreload") != null) {
+            HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager());
+            getCommand("hotreload").setExecutor(hotReloadCommand);
+            getLogger().info("✅ HotReload command registered");
+        } else {
+            getLogger().warning("⚠️ Could not register /hotreload command");
+        }
 
-        getLogger().info("Commands registered successfully");
+        getLogger().info("✅ Command registration phase completed");
     }
 
     private void registerListeners() {

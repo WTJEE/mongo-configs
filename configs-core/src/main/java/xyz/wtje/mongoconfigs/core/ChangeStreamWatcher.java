@@ -228,11 +228,31 @@ public final class ChangeStreamWatcher {
                 } else if (idValue.isObjectId()) {
                     docId = idValue.asObjectId().getValue().toString();
                 } else {
-                    // Async conversion to avoid BsonDocument.toJson() blocking
-                    CompletableFuture.supplyAsync(() -> idValue.toString())
-                        .thenAccept(convertedId -> {
-                            String finalDocId = convertedId;
-                            processDocumentChangeAsync(opType, finalDocId, event);
+                    // Heavy BSON->JSON conversion moved to async thread pool to avoid blocking
+                    CompletableFuture.supplyAsync(() -> {
+                        // Perform the conversion in a worker thread, not main thread
+                        try {
+                            // Use more efficient conversion without toJson() which is very slow
+                            if (idValue.isDocument()) {
+                                // For documents, extract _id field if present
+                                var doc = idValue.asDocument();
+                                if (doc.containsKey("_id")) {
+                                    return doc.get("_id").toString();
+                                }
+                            }
+                            // Fallback to simple toString (much faster than toJson)
+                            return idValue.toString();
+                        } catch (Exception e) {
+                            LOGGER.warning("Failed to convert BSON ID: " + e.getMessage());
+                            return "unknown-" + System.currentTimeMillis();
+                        }
+                    }, java.util.concurrent.ForkJoinPool.commonPool())
+                        .thenAcceptAsync(convertedId -> {
+                            processDocumentChangeSync(opType, convertedId, event);
+                        }, java.util.concurrent.ForkJoinPool.commonPool())
+                        .exceptionally(throwable -> {
+                            LOGGER.log(Level.WARNING, "Error in async BSON conversion", throwable);
+                            return null;
                         });
                     return; // Exit early for async processing
                 }
