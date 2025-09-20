@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
 import java.time.Duration;
+import java.util.logging.Logger;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class CacheManager {
+    private static final Logger LOGGER = Logger.getLogger(CacheManager.class.getName());
 
     private final Cache<String, Object> messageCache;
     private final AsyncCache<String, Object> asyncMessageCache;
@@ -29,16 +31,25 @@ public class CacheManager {
     }
 
     public CacheManager(long maxSize, Duration ttl, boolean recordStats) {
-        Caffeine<Object, Object> caffeineBuilder = Caffeine.newBuilder()
-                .maximumSize(maxSize);
+        Caffeine<Object, Object> caffeineBuilder = Caffeine.newBuilder();
 
-        if (ttl != null) {
+        if (maxSize > 0) {
+            caffeineBuilder.maximumSize(maxSize);
+        }
+
+        if (ttl != null && !ttl.isZero() && !ttl.isNegative()) {
             caffeineBuilder.expireAfterWrite(ttl);
         }
 
         if (recordStats) {
             caffeineBuilder.recordStats();
         }
+
+        caffeineBuilder.removalListener((key, value, cause) -> {
+            if (cause.wasEvicted()) {
+                LOGGER.fine(() -> "Cache eviction for " + key + " due to " + cause);
+            }
+        });
 
         this.messageCache = caffeineBuilder.build();
         this.asyncMessageCache = caffeineBuilder.buildAsync();
@@ -132,10 +143,39 @@ public class CacheManager {
             return;
         }
 
+        if (value instanceof Iterable<?> iterable) {
+            putMessage(collection, language, key, copyToStringList(iterable));
+            return;
+        }
+
+        if (value != null && value.getClass().isArray()) {
+            putMessage(collection, language, key, copyArrayToStringList(value));
+            return;
+        }
+
         if (value != null) {
             putMessage(collection, language, key, value);
         }
     }
+
+    private java.util.List<String> copyToStringList(Iterable<?> iterable) {
+        java.util.ArrayList<String> copy = new java.util.ArrayList<>();
+        for (Object element : iterable) {
+            copy.add(element == null ? "null" : element.toString());
+        }
+        return java.util.Collections.unmodifiableList(copy);
+    }
+
+    private java.util.List<String> copyArrayToStringList(Object array) {
+        int length = java.lang.reflect.Array.getLength(array);
+        java.util.ArrayList<String> copy = new java.util.ArrayList<>(length);
+        for (int i = 0; i < length; i++) {
+            Object element = java.lang.reflect.Array.get(array, i);
+            copy.add(element == null ? "null" : element.toString());
+        }
+        return java.util.Collections.unmodifiableList(copy);
+    }
+
     public void putConfigData(String collection, Map<String, Object> data) {
         configRequests.incrementAndGet();
         if (data != null) {
@@ -264,6 +304,3 @@ public class CacheManager {
         return CompletableFuture.runAsync(this::cleanUp);
     }
 }
-
-
-

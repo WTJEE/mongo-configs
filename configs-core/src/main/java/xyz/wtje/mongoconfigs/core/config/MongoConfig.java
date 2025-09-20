@@ -14,7 +14,7 @@ public class MongoConfig {
     private int socketTimeoutMs = 10000;
     private int connectTimeoutMs = 5000;
 
-    private long cacheMaxSize = 10000;
+    private long cacheMaxSize = 0;
     private long cacheTtlSeconds = 0; 
     private long cacheRefreshAfterSeconds = 60; 
     private boolean cacheRecordStats = true;
@@ -117,4 +117,5 @@ public class MongoConfig {
     public boolean isVerboseLogging() { return verboseLogging; }
     public void setVerboseLogging(boolean verboseLogging) { this.verboseLogging = verboseLogging; }
 }
+
 
