@@ -59,6 +59,15 @@ public class ConfigManagerImpl implements ConfigManager {
             this.cacheManager = new CacheManager(maxSize, Duration.ofSeconds(ttlSeconds), recordStats);
         }
 
+        // Log every cache invalidation for visibility in console
+        this.cacheManager.addInvalidationListener(coll -> {
+            if ("*".equals(coll)) {
+                LOGGER.info("🧹 Cache: pełna inwalidacja wszystkich kolekcji");
+            } else if (coll != null) {
+                LOGGER.info("🧹 Cache: inwalidacja kolekcji -> " + coll);
+            }
+        });
+
         this.messageFormatter = new MessageFormatter();
         this.typedConfigManager = new TypedConfigManager(mongoManager.getCollection(config.getTypedConfigsCollection()), mongoManager);
         this.languageMapper = new ObjectMapper();
@@ -140,12 +149,11 @@ public class ConfigManagerImpl implements ConfigManager {
     
     public CompletableFuture<Void> reloadCollection(String collection, boolean invalidateCache) {
         return CompletableFuture.runAsync(() -> {
-            if (config.isDebugLogging()) {
-                LOGGER.info("Reloading collection: " + collection);
-            }
+            LOGGER.info("🔁 Start reload kolekcji: " + collection + " (invalidateCache=" + invalidateCache + ")");
             
             // Only invalidate if not called from change stream (to avoid double invalidation)
             if (invalidateCache) {
+                LOGGER.info("🧹 Inwalidacja cache dla kolekcji: " + collection);
                 cacheManager.invalidateCollection(collection);
             }
         }, asyncExecutor)
@@ -208,7 +216,7 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
 
                     return ensureLanguagesFuture.thenCompose(v2 -> {
-                        // Load all language documents
+            // Load all language documents
                         List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
                                 .map(lang -> mongoManager.getLanguage(collection, lang))
                                 .collect(Collectors.toList());
@@ -253,11 +261,9 @@ public class ConfigManagerImpl implements ConfigManager {
                                     }
                                 }
 
-                                if (config.isDebugLogging()) {
-                                    LOGGER.info("Successfully reloaded collection " + collection + " - Config: " + 
-                                               (configDoc != null ? "loaded" : "missing") + ", Languages: " + 
-                                               loadedLanguages + "/" + finalExpectedLanguages.size());
-                                }
+                                LOGGER.info("✅ Zakończono reload kolekcji: " + collection +
+                                            " | Config=" + (configDoc != null ? "loaded" : "missing") +
+                                            " | Languages=" + loadedLanguages + "/" + finalExpectedLanguages.size());
                             });
                     });
                 });
@@ -658,23 +664,18 @@ public class ConfigManagerImpl implements ConfigManager {
             watcher.setReloadCallback(changedCollection -> {
                 CompletableFuture.runAsync(() -> {
                     try {
-                        if (config.isDebugLogging()) {
-                            LOGGER.info("🔄 Reloading collection due to change stream event: " + changedCollection);
-                        }
+                        // Always print clear info logs for visibility
+                        LOGGER.info("♻️ Odświeżam kolekcję po zmianie (Change Stream): " + changedCollection);
                         // Don't use .join() to avoid potential deadlocks
                         // Pass false to avoid double cache invalidation (change stream already invalidated)
                         reloadCollection(changedCollection, false)
-                            .thenRun(() -> {
-                                if (config.isDebugLogging()) {
-                                    LOGGER.info("✅ Collection reload completed for: " + changedCollection);
-                                }
-                            })
+                            .thenRun(() -> LOGGER.info("✅ Odświeżono kolekcję (cache przeładowany): " + changedCollection))
                             .exceptionally(throwable -> {
-                                LOGGER.log(Level.WARNING, "Error reloading collection from change stream: " + changedCollection, throwable);
+                                LOGGER.log(Level.WARNING, "❌ Błąd podczas odświeżania kolekcji po Change Stream: " + changedCollection, throwable);
                                 return null;
                             });
                     } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Error processing change stream callback for: " + changedCollection, e);
+                        LOGGER.log(Level.WARNING, "❌ Błąd obsługi callbacku Change Stream dla: " + changedCollection, e);
                     }
                 }, asyncExecutor);
             });

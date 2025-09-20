@@ -375,13 +375,13 @@ public final class ChangeStreamWatcher {
                                 if (isConfigDocument(docId, freshDoc)) {
                                     Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
                                     cacheManager.putConfigData(collectionName, configData);
-                                    LOGGER.info("🔄 Reloaded CONFIG document " + docId + " from MongoDB to cache");
+                                    LOGGER.info("🧩 Zaktualizowano cache CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
                                 } else {
                                     String lang = freshDoc.getString("lang");
                                     if (lang != null && !lang.isEmpty()) {
                                         Map<String, Object> messageData = copyDocumentExcluding(freshDoc, Set.of("_id", "lang", "updatedAt"));
                                         cacheManager.putMessageData(collectionName, lang, messageData);
-                                        LOGGER.info("🔄 Reloaded LANGUAGE document " + docId + " (lang: " + lang + ") from MongoDB to cache");
+                                        LOGGER.info("🧩 Zaktualizowano cache LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
                                     }
                                 }
                             }
@@ -421,11 +421,11 @@ public final class ChangeStreamWatcher {
                     }
                     reloadCallback.accept(collectionName);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "💥 CRITICAL: Cache reload failed for " + collectionName, e);
+                    LOGGER.log(Level.SEVERE, "💥 CRITICAL: Inwalidacja/odświeżenie cache nie powiodło się dla kolekcji: " + collectionName, e);
                 }
             });
         } else {
-            LOGGER.warning("⚠️ No cache manager or reload callback set for collection: " + collectionName);
+            LOGGER.warning("⚠️ Brak cacheManager lub reloadCallback dla kolekcji: " + collectionName);
         }
     }
 
