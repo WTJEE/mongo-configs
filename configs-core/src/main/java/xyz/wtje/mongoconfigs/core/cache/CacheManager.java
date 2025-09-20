@@ -1,29 +1,30 @@
 package xyz.wtje.mongoconfigs.core.cache;
 
-import com.github.benmanes.caffeine.cache.AsyncCache;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-
 import java.time.Duration;
-import java.util.logging.Logger;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class CacheManager {
     private static final Logger LOGGER = Logger.getLogger(CacheManager.class.getName());
 
-    private final Cache<String, Object> messageCache;
-    private final AsyncCache<String, Object> asyncMessageCache;
-    private final Cache<String, Object> configCache;
-    private final AsyncCache<String, Object> asyncConfigCache;
-    private final AtomicLong configRequests = new AtomicLong(0);
-    private final AtomicLong messageRequests = new AtomicLong(0);
+    private final ConcurrentMap<String, Object> messageCache;
+    private final ConcurrentMap<String, Object> configCache;
+    private final AtomicLong configRequests;
+    private final AtomicLong messageRequests;
+    private final long maxSize;
+    private final Duration ttl;
+    private final boolean recordStats;
 
     public CacheManager() {
-        this(10000, Duration.ofSeconds(Long.MAX_VALUE), true);
+        this(0, null, true);
     }
 
     public CacheManager(long maxSize, Duration ttl) {
@@ -31,61 +32,40 @@ public class CacheManager {
     }
 
     public CacheManager(long maxSize, Duration ttl, boolean recordStats) {
-        Caffeine<Object, Object> caffeineBuilder = Caffeine.newBuilder();
+        this.maxSize = maxSize;
+        this.ttl = ttl;
+        this.recordStats = recordStats;
+        this.messageCache = new ConcurrentHashMap<>();
+        this.configCache = new ConcurrentHashMap<>();
+        this.configRequests = new AtomicLong(0);
+        this.messageRequests = new AtomicLong(0);
 
-        if (maxSize > 0) {
-            caffeineBuilder.maximumSize(maxSize);
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.fine(() -> "CacheManager initialised (maxSize=" + maxSize + ", ttl=" + ttl + ", recordStats=" + recordStats + ")");
         }
-
-        if (ttl != null && !ttl.isZero() && !ttl.isNegative()) {
-            caffeineBuilder.expireAfterWrite(ttl);
-        }
-
-        if (recordStats) {
-            caffeineBuilder.recordStats();
-        }
-
-        caffeineBuilder.removalListener((key, value, cause) -> {
-            if (cause.wasEvicted()) {
-                LOGGER.fine(() -> "Cache eviction for " + key + " due to " + cause);
-            }
-        });
-
-        this.messageCache = caffeineBuilder.build();
-        this.asyncMessageCache = caffeineBuilder.buildAsync();
-        this.configCache = caffeineBuilder.build();
-        this.asyncConfigCache = caffeineBuilder.buildAsync();
     }
 
     @SuppressWarnings("unchecked")
     public <T> T getMessage(String collection, String language, String key, T defaultValue) {
         messageRequests.incrementAndGet();
         String cacheKey = collection + ":" + language + ":" + key;
-        Object cached = messageCache.getIfPresent(cacheKey);
+        Object cached = messageCache.get(cacheKey);
         return cached != null ? (T) cached : defaultValue;
     }
 
     public String getMessage(String collection, String language, String key) {
         messageRequests.incrementAndGet();
         String cacheKey = collection + ":" + language + ":" + key;
-        Object cached = messageCache.getIfPresent(cacheKey);
+        Object cached = messageCache.get(cacheKey);
         return cached != null ? cached.toString() : null;
     }
 
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
-        messageRequests.incrementAndGet();
-        String cacheKey = collection + ":" + language + ":" + key;
-        CompletableFuture<Object> cachedFuture = asyncMessageCache.getIfPresent(cacheKey);
-        if (cachedFuture != null) {
-            return cachedFuture.thenApply(cached -> cached != null ? cached.toString() : null);
-        } else {
-            return CompletableFuture.completedFuture(null);
-        }
+        return CompletableFuture.completedFuture(getMessage(collection, language, key));
     }
 
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key, String defaultValue) {
-        return getMessageAsync(collection, language, key)
-                .thenApply(result -> result != null ? result : defaultValue);
+        return CompletableFuture.completedFuture(getMessage(collection, language, key, defaultValue));
     }
 
     public void putMessage(String collection, String language, String key, Object value) {
@@ -94,18 +74,12 @@ public class CacheManager {
         }
         String cacheKey = collection + ":" + language + ":" + key;
         messageCache.put(cacheKey, value);
-        asyncMessageCache.put(cacheKey, CompletableFuture.completedFuture(value));
+        enforceCapacity(messageCache, "messages");
     }
 
     public CompletableFuture<Void> putMessageAsync(String collection, String language, String key, Object value) {
-        if (key == null || key.isEmpty() || value == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        String cacheKey = collection + ":" + language + ":" + key;
-        return CompletableFuture.runAsync(() -> {
-            messageCache.put(cacheKey, value);
-            asyncMessageCache.put(cacheKey, CompletableFuture.completedFuture(value));
-        });
+        putMessage(collection, language, key, value);
+        return CompletableFuture.completedFuture(null);
     }
 
     public void putMessageData(String collection, String language, Map<String, Object> data) {
@@ -122,11 +96,8 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> putMessageDataAsync(String collection, String language, Map<String, Object> data) {
-        if (data == null || data.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        return CompletableFuture.runAsync(() -> putMessageData(collection, language, data));
+        putMessageData(collection, language, data);
+        return CompletableFuture.completedFuture(null);
     }
 
     @SuppressWarnings("unchecked")
@@ -158,22 +129,22 @@ public class CacheManager {
         }
     }
 
-    private java.util.List<String> copyToStringList(Iterable<?> iterable) {
-        java.util.ArrayList<String> copy = new java.util.ArrayList<>();
+    private List<String> copyToStringList(Iterable<?> iterable) {
+        ArrayList<String> copy = new ArrayList<>();
         for (Object element : iterable) {
             copy.add(element == null ? "null" : element.toString());
         }
-        return java.util.Collections.unmodifiableList(copy);
+        return Collections.unmodifiableList(copy);
     }
 
-    private java.util.List<String> copyArrayToStringList(Object array) {
+    private List<String> copyArrayToStringList(Object array) {
         int length = java.lang.reflect.Array.getLength(array);
-        java.util.ArrayList<String> copy = new java.util.ArrayList<>(length);
+        ArrayList<String> copy = new ArrayList<>(length);
         for (int i = 0; i < length; i++) {
             Object element = java.lang.reflect.Array.get(array, i);
             copy.add(element == null ? "null" : element.toString());
         }
-        return java.util.Collections.unmodifiableList(copy);
+        return Collections.unmodifiableList(copy);
     }
 
     public void putConfigData(String collection, Map<String, Object> data) {
@@ -182,99 +153,91 @@ public class CacheManager {
             for (Map.Entry<String, Object> entry : data.entrySet()) {
                 configCache.put(collection + ":" + entry.getKey(), entry.getValue());
             }
+            enforceCapacity(configCache, "configs");
         }
     }
 
     public CompletableFuture<Void> putConfigDataAsync(String collection, Map<String, Object> data) {
-        if (data == null || data.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        return CompletableFuture.runAsync(() -> {
-            configRequests.incrementAndGet();
-            for (Map.Entry<String, Object> entry : data.entrySet()) {
-                configCache.put(collection + ":" + entry.getKey(), entry.getValue());
-            }
-        });
+        putConfigData(collection, data);
+        return CompletableFuture.completedFuture(null);
     }
 
     public boolean hasCollection(String collection) {
-        return configCache.asMap().keySet().stream().anyMatch(key -> key.startsWith(collection + ":")) ||
-               messageCache.asMap().keySet().stream().anyMatch(key -> key.startsWith(collection + ":"));
+        return configCache.keySet().stream().anyMatch(key -> key.startsWith(collection + ":")) ||
+               messageCache.keySet().stream().anyMatch(key -> key.startsWith(collection + ":"));
     }
 
     public CompletableFuture<Boolean> hasCollectionAsync(String collection) {
-        return CompletableFuture.supplyAsync(() -> hasCollection(collection));
+        return CompletableFuture.completedFuture(hasCollection(collection));
     }
 
     @SuppressWarnings("unchecked")
     public <T> T get(String key, T defaultValue) {
         configRequests.incrementAndGet();
-        Object cached = configCache.getIfPresent(key);
+        Object cached = configCache.get(key);
         return cached != null ? (T) cached : defaultValue;
     }
 
     public CompletableFuture<Object> getAsync(String key) {
-        return CompletableFuture.supplyAsync(() -> {
-            configRequests.incrementAndGet();
-            return configCache.getIfPresent(key);
-        });
+        return CompletableFuture.completedFuture(get(key, null));
     }
 
     @SuppressWarnings("unchecked")
     public <T> CompletableFuture<T> getAsync(String key, T defaultValue) {
-        return getAsync(key).thenApply(cached -> cached != null ? (T) cached : defaultValue);
+        return CompletableFuture.completedFuture(get(key, defaultValue));
     }
 
     public void put(String key, Object value) {
         configCache.put(key, value);
+        enforceCapacity(configCache, "configs");
     }
 
     public CompletableFuture<Void> putAsync(String key, Object value) {
-        return CompletableFuture.runAsync(() -> configCache.put(key, value));
+        put(key, value);
+        return CompletableFuture.completedFuture(null);
     }
 
     public void invalidate(String key) {
-        configCache.invalidate(key);
-        messageCache.asMap().keySet().removeIf(cacheKey -> cacheKey.startsWith(key + ":"));
-        asyncMessageCache.asMap().keySet().removeIf(cacheKey -> cacheKey.startsWith(key + ":"));
+        configCache.remove(key);
+        messageCache.keySet().removeIf(cacheKey -> cacheKey.startsWith(key + ":"));
     }
 
     public CompletableFuture<Void> invalidateAsync(String key) {
-        return CompletableFuture.runAsync(() -> invalidate(key));
+        invalidate(key);
+        return CompletableFuture.completedFuture(null);
     }
 
     public void invalidateCollection(String collection) {
-        configCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
-        messageCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
-        asyncMessageCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
+        configCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
+        messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
     }
 
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
-        return CompletableFuture.runAsync(() -> invalidateCollection(collection));
+        invalidateCollection(collection);
+        return CompletableFuture.completedFuture(null);
     }
 
     public void invalidateAll() {
-        configCache.invalidateAll();
-        messageCache.invalidateAll();
-        asyncMessageCache.asMap().clear();
+        configCache.clear();
+        messageCache.clear();
     }
 
     public CompletableFuture<Void> invalidateAllAsync() {
-        return CompletableFuture.runAsync(this::invalidateAll);
+        invalidateAll();
+        return CompletableFuture.completedFuture(null);
     }
 
     public void invalidateMessages(String collection) {
-        messageCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
-        asyncMessageCache.asMap().keySet().removeIf(key -> key.startsWith(collection + ":"));
+        messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
     }
 
     public CompletableFuture<Void> invalidateMessagesAsync(String collection) {
-        return CompletableFuture.runAsync(() -> invalidateMessages(collection));
+        invalidateMessages(collection);
+        return CompletableFuture.completedFuture(null);
     }
 
     public long getEstimatedSize() {
-        return messageCache.estimatedSize() + configCache.estimatedSize();
+        return messageCache.size() + configCache.size();
     }
 
     public long getConfigRequests() {
@@ -286,21 +249,37 @@ public class CacheManager {
     }
 
     public long getMessageCacheSize() {
-        return messageCache.estimatedSize();
+        return messageCache.size();
     }
 
     public long getLocalCacheSize() {
-        return configCache.estimatedSize();
+        return configCache.size();
     }
 
     public void cleanUp() {
-        messageCache.cleanUp();
-        configCache.cleanUp();
-        asyncMessageCache.asMap().clear();
-        asyncConfigCache.asMap().clear();
+        enforceCapacity(messageCache, "messages");
+        enforceCapacity(configCache, "configs");
     }
 
     public CompletableFuture<Void> cleanUpAsync() {
-        return CompletableFuture.runAsync(this::cleanUp);
+        cleanUp();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void enforceCapacity(ConcurrentMap<String, Object> cache, String cacheName) {
+        if (maxSize <= 0) {
+            return;
+        }
+
+        while (cache.size() > maxSize) {
+            String evictedKey = cache.keySet().stream().findFirst().orElse(null);
+            if (evictedKey == null) {
+                break;
+            }
+            cache.remove(evictedKey);
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine(() -> "Cache eviction for " + evictedKey + " due to size limit in " + cacheName);
+            }
+        }
     }
 }
