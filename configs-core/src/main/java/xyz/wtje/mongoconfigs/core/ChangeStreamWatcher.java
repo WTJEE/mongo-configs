@@ -227,39 +227,25 @@ public final class ChangeStreamWatcher {
                     docId = idValue.asString().getValue();
                 } else if (idValue.isObjectId()) {
                     docId = idValue.asObjectId().getValue().toString();
+                } else if (idValue.isInt32()) {
+                    docId = String.valueOf(idValue.asInt32().getValue());
+                } else if (idValue.isInt64()) {
+                    docId = String.valueOf(idValue.asInt64().getValue());
+                } else if (idValue.isDouble()) {
+                    docId = String.valueOf(idValue.asDouble().getValue());
+                } else if (idValue.isDecimal128()) {
+                    docId = idValue.asDecimal128().getValue().toString();
                 } else {
-                    // Heavy BSON->JSON conversion moved to async thread pool to avoid blocking
-                    CompletableFuture.supplyAsync(() -> {
-                        // Perform the conversion in a worker thread, not main thread
-                        try {
-                            // Use more efficient conversion without toJson() which is very slow
-                            if (idValue.isDocument()) {
-                                // For documents, extract _id field if present
-                                var doc = idValue.asDocument();
-                                if (doc.containsKey("_id")) {
-                                    return doc.get("_id").toString();
-                                }
-                            }
-                            // Fallback to simple toString (much faster than toJson)
-                            return idValue.toString();
-                        } catch (Exception e) {
-                            LOGGER.warning("Failed to convert BSON ID: " + e.getMessage());
-                            return "unknown-" + System.currentTimeMillis();
-                        }
-                    }, java.util.concurrent.ForkJoinPool.commonPool())
-                        .thenAcceptAsync(convertedId -> {
-                            processDocumentChangeSync(opType, convertedId, event);
-                        }, java.util.concurrent.ForkJoinPool.commonPool())
-                        .exceptionally(throwable -> {
-                            LOGGER.log(Level.WARNING, "Error in async BSON conversion", throwable);
-                            return null;
-                        });
-                    return; // Exit early for async processing
+                    // For complex types, use simple toString() without JSON conversion
+                    docId = "doc-" + System.nanoTime(); // Avoid conversion entirely
+                    if (LOGGER.isLoggable(Level.FINE)) {
+                        LOGGER.fine("Complex document ID type, using generated ID: " + docId);
+                    }
                 }
             }
         }
 
-        // Process normally for simple cases
+        // Process document change asynchronously to avoid blocking
         processDocumentChangeAsync(opType, docId, event);
     }
     

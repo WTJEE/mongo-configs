@@ -26,8 +26,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 public class LanguageSelectionGUI implements InventoryHolder {
+    private static final Logger LOGGER = Logger.getLogger(LanguageSelectionGUI.class.getName());
 
     private final LanguageManagerImpl languageManager;
     private final LanguageConfiguration config;
@@ -36,6 +39,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
     private static final Map<String, ItemStack> CACHED_HEADS = new ConcurrentHashMap<>();
     private static final Map<String, CompletableFuture<ItemStack>> LOADING_HEADS = new ConcurrentHashMap<>();
+    private static final Map<String, String> TEXTURE_URL_CACHE = new ConcurrentHashMap<>(); // Cache decoded URLs
     private static volatile boolean isPreloading = false;
 
     public LanguageSelectionGUI(Player player, LanguageManagerImpl languageManager, LanguageConfiguration config) {
@@ -48,6 +52,30 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public CompletableFuture<Void> openAsync() {
+        // Check if heads are preloaded
+        if (CACHED_HEADS.isEmpty()) {
+            // Preload heads first if not already done
+            return CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages())
+                .thenCompose(v -> buildInventoryAsync())
+                .thenAccept(builtInventory -> {
+                    Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        try {
+                            for (int i = 0; i < builtInventory.getSize(); i++) {
+                                ItemStack item = builtInventory.getItem(i);
+                                if (item != null) {
+                                    inventory.setItem(i, item);
+                                }
+                            }
+                            player.openInventory(inventory);
+                        } catch (Exception e) {
+                            player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
+                            openSimpleAsync();
+                        }
+                    });
+                });
+        }
+        
+        // Heads already cached, build directly
         return buildInventoryAsync().thenAccept(builtInventory -> {
             Bukkit.getScheduler().runTask(getPlugin(), () -> {
                 try {
@@ -175,8 +203,20 @@ public class LanguageSelectionGUI implements InventoryHolder {
             PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
             PlayerTextures textures = profile.getTextures();
 
-            String decoded = new String(Base64.getDecoder().decode(texture));
-            String url = decoded.split("\"url\":\"")[1].split("\"")[0];
+            // Use cached URL if available to avoid Base64 decoding
+            String url = TEXTURE_URL_CACHE.computeIfAbsent(texture, t -> {
+                try {
+                    String decoded = new String(Base64.getDecoder().decode(t));
+                    return decoded.split("\"url\":\"")[1].split("\"")[0];
+                } catch (Exception e) {
+                    LOGGER.warning("Failed to decode texture for " + language + ": " + e.getMessage());
+                    return null;
+                }
+            });
+            
+            if (url == null) {
+                throw new IllegalStateException("Failed to decode texture URL");
+            }
 
             textures.setSkin(new URL(url));
             profile.setTextures(textures);
@@ -419,8 +459,19 @@ public class LanguageSelectionGUI implements InventoryHolder {
                                 PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
                                 PlayerTextures textures = profile.getTextures();
 
-                                String decoded = new String(Base64.getDecoder().decode(texture));
-                                String url = decoded.split("\"url\":\"")[1].split("\"")[0];
+                                // Use cached URL to avoid repeated decoding
+                                String url = TEXTURE_URL_CACHE.computeIfAbsent(texture, t -> {
+                                    try {
+                                        String decoded = new String(Base64.getDecoder().decode(t));
+                                        return decoded.split("\"url\":\"")[1].split("\"")[0];
+                                    } catch (Exception ex) {
+                                        return null;
+                                    }
+                                });
+                                
+                                if (url == null) {
+                                    throw new IllegalStateException("Failed to decode URL");
+                                }
 
                                 textures.setSkin(new URL(url));
                                 profile.setTextures(textures);
@@ -513,6 +564,20 @@ public class LanguageSelectionGUI implements InventoryHolder {
         CACHED_HEADS.clear();
         LOADING_HEADS.clear();
         isPreloading = false;
+    }
+    
+    private void preloadHeadsForCurrentLanguages() {
+        try {
+            String[] languages = languageManager.getSupportedLanguages().get(1, TimeUnit.SECONDS);
+            for (String language : languages) {
+                if (!CACHED_HEADS.containsKey(language)) {
+                    ItemStack head = createHeadWithTextureAsync(language);
+                    CACHED_HEADS.put(language, head);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to preload heads: " + e.getMessage());
+        }
     }
 }
 
