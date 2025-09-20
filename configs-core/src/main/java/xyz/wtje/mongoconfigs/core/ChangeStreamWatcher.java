@@ -239,7 +239,14 @@ public final class ChangeStreamWatcher {
             case "replace":
                 var fullDocument = event.getFullDocument();
                 if (fullDocument != null && docId != null) {
-                    // Simply reload the document from MongoDB and update cache
+                    // Update our local cache first
+                    cache.put(docId, fullDocument);
+                    LOGGER.info("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
+                    
+                    // Direct update to CacheManager for immediate effect
+                    applyDocumentToCache(fullDocument, docId);
+                    
+                    // Also reload from MongoDB to ensure consistency
                     reloadDocumentFromMongoDB(docId);
                 }
                 // Trigger plugin reload
@@ -347,6 +354,8 @@ public final class ChangeStreamWatcher {
     private void reloadDocumentFromMongoDB(String docId) {
         if (docId == null || docId.isEmpty()) return;
         
+        LOGGER.info("🔄 ROZPOCZYNAM RELOAD DOKUMENTU z MongoDB: " + docId + " w kolekcji: " + collectionName);
+        
         CompletableFuture.runAsync(() -> {
             try {
                 // Convert string ID to proper BSON type
@@ -375,30 +384,34 @@ public final class ChangeStreamWatcher {
                                 if (isConfigDocument(docId, freshDoc)) {
                                     Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
                                     cacheManager.putConfigData(collectionName, configData);
-                                    LOGGER.info("🧩 Zaktualizowano cache CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
+                                    LOGGER.info("⭐ ZAKTUALIZOWANO CACHE CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
                                 } else {
                                     String lang = freshDoc.getString("lang");
                                     if (lang != null && !lang.isEmpty()) {
                                         Map<String, Object> messageData = copyDocumentExcluding(freshDoc, Set.of("_id", "lang", "updatedAt"));
                                         cacheManager.putMessageData(collectionName, lang, messageData);
-                                        LOGGER.info("🧩 Zaktualizowano cache LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
+                                        LOGGER.info("⭐ ZAKTUALIZOWANO CACHE LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
                                     }
                                 }
                             }
+                        } else {
+                            LOGGER.warning("⚠️ Nie znaleziono dokumentu " + docId + " w MongoDB");
                         }
                     }
 
                     @Override
                     public void onError(Throwable t) {
-                        LOGGER.log(Level.WARNING, "Failed to reload document " + docId + " from MongoDB", t);
+                        LOGGER.log(Level.WARNING, "❌ Błąd podczas ładowania dokumentu " + docId + " z MongoDB", t);
                     }
 
                     @Override
-                    public void onComplete() {}
+                    public void onComplete() {
+                        LOGGER.info("✅ ZAKOŃCZONO RELOAD DOKUMENTU: " + docId + " w kolekcji: " + collectionName);
+                    }
                 });
                 
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error reloading document " + docId + " from MongoDB", e);
+                LOGGER.log(Level.WARNING, "❌ Błąd podczas przeładowania dokumentu " + docId + " z MongoDB", e);
             }
         });
     }
@@ -414,18 +427,18 @@ public final class ChangeStreamWatcher {
         if (cacheManager != null && reloadCallback != null) {
             CompletableFuture.runAsync(() -> {
                 try {
-                    LOGGER.info("🎯 " + reason + " - refreshing cache for: " + collectionName + 
+                    LOGGER.info("🎯 INWALIDACJA I PRZEŁADOWANIE CACHE: " + reason + " - odświeżam cache dla: " + collectionName + 
                                " (invalidateCache: " + invalidateCache + ")");
                     if (invalidateCache) {
                         cacheManager.invalidateCollection(collectionName);
                     }
                     reloadCallback.accept(collectionName);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "💥 CRITICAL: Inwalidacja/odświeżenie cache nie powiodło się dla kolekcji: " + collectionName, e);
+                    LOGGER.log(Level.SEVERE, "💥 KRYTYCZNY: Inwalidacja/odświeżenie cache nie powiodło się dla kolekcji: " + collectionName, e);
                 }
             });
         } else {
-            LOGGER.warning("⚠️ Brak cacheManager lub reloadCallback dla kolekcji: " + collectionName);
+            LOGGER.warning("⚠️ BŁĄD: Brak cacheManager lub reloadCallback dla kolekcji: " + collectionName);
         }
     }
 
@@ -525,6 +538,7 @@ public final class ChangeStreamWatcher {
                 .limit(20) // Check only first 20 docs for performance
                 .subscribe(new Subscriber<Document>() {
                     private boolean changesDetected = false;
+                    private Set<String> changedDocIds = new HashSet<>();
                     
                     @Override
                     public void onSubscribe(Subscription s) { s.request(Long.MAX_VALUE); }
@@ -536,21 +550,29 @@ public final class ChangeStreamWatcher {
                         
                         // If document not in cache or content changed
                         if (cachedDoc == null || !documentsEqual(doc, cachedDoc)) {
+                            // Update our cache
                             cache.put(docId, doc);
+                            
+                            // Track which documents changed for detailed logging
+                            changedDocIds.add(docId);
                             changesDetected = true;
+                            
+                            // Apply changes to CacheManager directly for immediate effect
+                            applyDocumentToCache(doc, docId);
                         }
                     }
 
                     @Override
                     public void onError(Throwable t) {
-                        LOGGER.log(Level.WARNING, "🚨 Error during document update check for: " + collectionName, t);
+                        LOGGER.log(Level.WARNING, "🚨 BŁĄD podczas sprawdzania aktualizacji dokumentów dla: " + collectionName, t);
                     }
 
                     @Override
                     public void onComplete() {
                         if (changesDetected) {
-                            LOGGER.info("🔄 Document updates detected in: " + collectionName);
-                            triggerCacheReload("📝 Document content updates detected");
+                            LOGGER.info("🔄 WYKRYTO ZMIANY W DOKUMENTACH: " + collectionName + 
+                                       " (zmienione dokumenty: " + changedDocIds + ")");
+                            triggerCacheReload("📝 Wykryto zmiany zawartości dokumentów");
                         }
                         lastPollingCheck = currentTime;
                     }

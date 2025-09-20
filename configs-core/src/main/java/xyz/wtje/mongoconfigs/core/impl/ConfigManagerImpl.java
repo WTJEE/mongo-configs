@@ -43,6 +43,7 @@ public class ConfigManagerImpl implements ConfigManager {
     private final Map<String, Set<String>> collectionLanguages = new ConcurrentHashMap<>();
     private final TypedConfigManager typedConfigManager;
     private final ObjectMapper languageMapper;
+    private final Map<String, Set<Consumer<String>>> reloadListeners = new ConcurrentHashMap<>();
     private final Map<String, xyz.wtje.mongoconfigs.core.ChangeStreamWatcher> changeStreamWatchers = new ConcurrentHashMap<>();
     public ConfigManagerImpl(MongoConfig config) {
         this.config = config;
@@ -62,9 +63,9 @@ public class ConfigManagerImpl implements ConfigManager {
         // Log every cache invalidation for visibility in console
         this.cacheManager.addInvalidationListener(coll -> {
             if ("*".equals(coll)) {
-                LOGGER.info("🧹 Cache: pełna inwalidacja wszystkich kolekcji");
+                LOGGER.info("🧹 CACHE: PEŁNA INWALIDACJA WSZYSTKICH KOLEKCJI (Timestamp: " + System.currentTimeMillis() + ")");
             } else if (coll != null) {
-                LOGGER.info("🧹 Cache: inwalidacja kolekcji -> " + coll);
+                LOGGER.info("🧹 CACHE: INWALIDACJA KOLEKCJI -> " + coll + " (Timestamp: " + System.currentTimeMillis() + ")");
             }
         });
 
@@ -149,11 +150,12 @@ public class ConfigManagerImpl implements ConfigManager {
     
     public CompletableFuture<Void> reloadCollection(String collection, boolean invalidateCache) {
         return CompletableFuture.runAsync(() -> {
-            LOGGER.info("🔁 Start reload kolekcji: " + collection + " (invalidateCache=" + invalidateCache + ")");
+            // Always use INFO level logging for better visibility in console
+            LOGGER.info("🔁 START RELOAD KOLEKCJI: " + collection + " (invalidateCache=" + invalidateCache + ")");
             
             // Only invalidate if not called from change stream (to avoid double invalidation)
             if (invalidateCache) {
-                LOGGER.info("🧹 Inwalidacja cache dla kolekcji: " + collection);
+                LOGGER.info("🧹 INWALIDACJA CACHE dla kolekcji: " + collection);
                 cacheManager.invalidateCollection(collection);
             }
         }, asyncExecutor)
@@ -261,9 +263,14 @@ public class ConfigManagerImpl implements ConfigManager {
                                     }
                                 }
 
-                                LOGGER.info("✅ Zakończono reload kolekcji: " + collection +
-                                            " | Config=" + (configDoc != null ? "loaded" : "missing") +
-                                            " | Languages=" + loadedLanguages + "/" + finalExpectedLanguages.size());
+                                // Always use INFO level logging regardless of debug settings
+                                LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI: " + collection +
+                                            " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
+                                            " | Languages=" + loadedLanguages + "/" + finalExpectedLanguages.size() +
+                                            " | Timestamp=" + System.currentTimeMillis());
+                                
+                                // Notify any registered listeners about the reload
+                                notifyReloadListeners(collection);
                             });
                     });
                 });
@@ -665,17 +672,21 @@ public class ConfigManagerImpl implements ConfigManager {
                 CompletableFuture.runAsync(() -> {
                     try {
                         // Always print clear info logs for visibility
-                        LOGGER.info("♻️ Odświeżam kolekcję po zmianie (Change Stream): " + changedCollection);
+                        LOGGER.info("♻️ ROZPOCZYNAM ODŚWIEŻANIE KOLEKCJI po wykryciu zmiany (Change Stream): " + changedCollection);
                         // Don't use .join() to avoid potential deadlocks
                         // Pass false to avoid double cache invalidation (change stream already invalidated)
                         reloadCollection(changedCollection, false)
-                            .thenRun(() -> LOGGER.info("✅ Odświeżono kolekcję (cache przeładowany): " + changedCollection))
+                            .thenRun(() -> {
+                                LOGGER.info("✅ ZAKOŃCZONO ODŚWIEŻANIE KOLEKCJI (cache przeładowany): " + changedCollection);
+                                // Notify any registered listeners about the reload
+                                notifyReloadListeners(changedCollection);
+                            })
                             .exceptionally(throwable -> {
-                                LOGGER.log(Level.WARNING, "❌ Błąd podczas odświeżania kolekcji po Change Stream: " + changedCollection, throwable);
+                                LOGGER.log(Level.WARNING, "❌ BŁĄD podczas odświeżania kolekcji po Change Stream: " + changedCollection, throwable);
                                 return null;
                             });
                     } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "❌ Błąd obsługi callbacku Change Stream dla: " + changedCollection, e);
+                        LOGGER.log(Level.WARNING, "❌ BŁĄD obsługi callbacku Change Stream dla: " + changedCollection, e);
                     }
                 }, asyncExecutor);
             });
@@ -1600,6 +1611,67 @@ public class ConfigManagerImpl implements ConfigManager {
             return hasNestedKey((Map<String, Object>) nested, remainingKey);
         }
         return false;
+    }
+    
+    /**
+     * Notify all reload listeners for a specific collection
+     */
+    private void notifyReloadListeners(String collection) {
+        // Notify collection-specific listeners
+        Set<Consumer<String>> listeners = reloadListeners.get(collection);
+        if (listeners != null && !listeners.isEmpty()) {
+            LOGGER.info("🔔 Powiadamianie " + listeners.size() + " słuchaczy o odświeżeniu kolekcji: " + collection);
+            for (Consumer<String> listener : listeners) {
+                try {
+                    listener.accept(collection);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "❌ Błąd podczas powiadamiania słuchacza o odświeżeniu kolekcji: " + collection, e);
+                }
+            }
+        }
+        
+        // Notify global listeners (listening to all collections)
+        Set<Consumer<String>> globalListeners = reloadListeners.get("*");
+        if (globalListeners != null && !globalListeners.isEmpty()) {
+            LOGGER.info("🔔 Powiadamianie " + globalListeners.size() + " globalnych słuchaczy o odświeżeniu kolekcji: " + collection);
+            for (Consumer<String> listener : globalListeners) {
+                try {
+                    listener.accept(collection);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "❌ Błąd podczas powiadamiania globalnego słuchacza o odświeżeniu kolekcji: " + collection, e);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Add a listener to be notified when a specific collection is reloaded
+     * 
+     * @param collection Collection name or "*" for all collections
+     * @param listener Listener to call when collection is reloaded
+     */
+    public void addReloadListener(String collection, Consumer<String> listener) {
+        if (collection == null || listener == null) return;
+        
+        reloadListeners.computeIfAbsent(collection, k -> ConcurrentHashMap.newKeySet())
+                       .add(listener);
+        LOGGER.info("➕ Dodano nowego słuchacza odświeżenia dla kolekcji: " + collection);
+    }
+    
+    /**
+     * Remove a reload listener for a specific collection
+     * 
+     * @param collection Collection name or "*" for all collections
+     * @param listener Listener to remove
+     */
+    public void removeReloadListener(String collection, Consumer<String> listener) {
+        if (collection == null || listener == null) return;
+        
+        Set<Consumer<String>> listeners = reloadListeners.get(collection);
+        if (listeners != null) {
+            listeners.remove(listener);
+            LOGGER.info("➖ Usunięto słuchacza odświeżenia dla kolekcji: " + collection);
+        }
     }
 }
 
