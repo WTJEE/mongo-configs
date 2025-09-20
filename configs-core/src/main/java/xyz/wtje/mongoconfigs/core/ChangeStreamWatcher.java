@@ -4,13 +4,14 @@ import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.FullDocument;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import org.bson.BsonDocument;
-import org.bson.BsonObjectId;
-import org.bson.BsonTimestamp;
 import org.bson.Document;
-import org.bson.types.ObjectId;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import xyz.wtje.mongoconfigs.core.cache.CacheManager;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -22,7 +23,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Date;
 
 public final class ChangeStreamWatcher {
     private static final Logger LOGGER = Logger.getLogger(ChangeStreamWatcher.class.getName());
@@ -39,7 +39,8 @@ public final class ChangeStreamWatcher {
     
     // Polling-based change detection (fallback for non-replica sets)
     private volatile boolean usePolling = false;
-    private volatile ObjectId lastPolledId;
+    private volatile long lastPollingCheck = 0; // Use timestamp instead of ObjectId
+    private volatile int lastKnownDocumentCount = 0; // Track document count
     private static final long POLLING_INTERVAL_MS = 3000; // 3 seconds - faster detection
 
     private volatile boolean running = false;
@@ -71,35 +72,8 @@ public final class ChangeStreamWatcher {
         if (running) return;
         running = true;
         
-        // Initialize lastPolledId for polling
-        try {
-            // Get the most recent document's ObjectId for polling baseline
-            collection.find()
-                    .sort(new Document("_id", -1))
-                    .limit(1)
-                    .subscribe(new Subscriber<Document>() {
-                        @Override
-                        public void onSubscribe(Subscription s) { s.request(1); }
-                        
-                        @Override
-                        public void onNext(Document doc) {
-                            Object id = doc.get("_id");
-                            if (id instanceof ObjectId) {
-                                lastPolledId = (ObjectId) id;
-                            }
-                        }
-                        
-                        @Override
-                        public void onError(Throwable t) {
-                            LOGGER.log(Level.WARNING, "Failed to get baseline ObjectId for polling", t);
-                        }
-                        
-                        @Override
-                        public void onComplete() {}
-                    });
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error initializing polling baseline", e);
-        }
+        // Initialize polling baseline
+        lastPollingCheck = System.currentTimeMillis();
 
         LOGGER.info("🚀 Starting ChangeStreamWatcher for collection: " + collectionName);
         
@@ -125,6 +99,28 @@ public final class ChangeStreamWatcher {
     }
 
     private void performInitialLoad() {
+        // Get initial document count
+        collection.countDocuments().subscribe(new Subscriber<Long>() {
+            @Override
+            public void onSubscribe(Subscription s) { s.request(1); }
+            
+            @Override
+            public void onNext(Long count) {
+                lastKnownDocumentCount = count.intValue();
+                LOGGER.info("📊 Initial document count for " + collectionName + ": " + count);
+            }
+            
+            @Override
+            public void onError(Throwable t) {
+                LOGGER.log(Level.WARNING, "Error getting initial document count", t);
+                lastKnownDocumentCount = 0;
+            }
+            
+            @Override
+            public void onComplete() {}
+        });
+        
+        // Load documents into cache
         collection.find().subscribe(new Subscriber<Document>() {
             @Override
             public void onSubscribe(Subscription s) {
@@ -133,20 +129,18 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onNext(Document doc) {
-                String id = doc.getString("_id");
-                if (id != null) {
-                    cache.put(id, doc);
-                }
+                String id = doc.get("_id") != null ? doc.get("_id").toString() : "unknown";
+                cache.put(id, doc);
             }
 
             @Override
             public void onError(Throwable t) {
-                t.printStackTrace();
+                LOGGER.log(Level.WARNING, "Error during initial load", t);
             }
 
             @Override
             public void onComplete() {
-                LOGGER.info("Initial load completed. Cached " + cache.size() + " documents for collection: " + collectionName);
+                LOGGER.info("✅ Initial load completed. Cached " + cache.size() + " documents for collection: " + collectionName);
             }
         });
     }
@@ -247,35 +241,103 @@ public final class ChangeStreamWatcher {
                 if (fullDocument != null && docId != null) {
                     cache.put(docId, fullDocument);
                 }
-                triggerCacheReload("📝 Document " + opType + " detected");
+                applyDocumentToCache(fullDocument, docId);
+                triggerCacheReload("Document " + opType + " detected");
                 break;
-                
-            case "delete":
-                if (docId != null) {
-                    cache.remove(docId);
-                }
-                triggerCacheReload("🗑️ Document deletion detected");
+
+            case "delete": {
+                Document removedDocument = docId != null ? cache.remove(docId) : null;
+                handleDocumentDeletion(removedDocument, docId);
+                triggerCacheReload("Document deletion detected");
                 break;
-                
+            }
+
             case "drop":
                 cache.clear();
-                triggerCacheReload("💥 Collection dropped");
+                triggerCacheReload("Collection dropped");
                 break;
-                
+
             case "rename":
                 cache.clear();
-                triggerCacheReload("📛 Collection renamed");
+                triggerCacheReload("Collection renamed");
                 break;
-                
+
             case "dropDatabase":
                 cache.clear();
-                triggerCacheReload("💀 Database dropped");
+                triggerCacheReload("Database dropped");
                 break;
-                
+
             default:
-                triggerCacheReload("🔄 Other operation: " + opType);
+                triggerCacheReload("Other operation: " + opType);
                 break;
         }
+    }
+
+    private void applyDocumentToCache(Document fullDocument, String docId) {
+        if (cacheManager == null || fullDocument == null) {
+            return;
+        }
+        try {
+            if (isConfigDocument(docId, fullDocument)) {
+                Map<String, Object> configData = copyDocumentExcluding(fullDocument, Set.of("_id", "updatedAt"));
+                cacheManager.replaceConfigData(collectionName, configData);
+                return;
+            }
+
+            String lang = fullDocument.getString("lang");
+            if (lang != null && !lang.isEmpty()) {
+                Map<String, Object> messageData = copyDocumentExcluding(fullDocument, Set.of("_id", "lang", "updatedAt"));
+                cacheManager.replaceLanguageData(collectionName, lang, messageData);
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error applying change stream document to cache for collection: " + collectionName, e);
+        }
+    }
+
+    private void handleDocumentDeletion(Document previousDocument, String docId) {
+        if (cacheManager == null) {
+            return;
+        }
+        try {
+            if (previousDocument != null) {
+                String lang = previousDocument.getString("lang");
+                if (lang != null && !lang.isEmpty()) {
+                    cacheManager.replaceLanguageData(collectionName, lang, null);
+                    return;
+                }
+                if (isConfigDocument(docId, previousDocument)) {
+                    cacheManager.replaceConfigData(collectionName, null);
+                    return;
+                }
+            }
+
+            if ("config".equals(docId)) {
+                cacheManager.replaceConfigData(collectionName, null);
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error applying cache removal for collection: " + collectionName, e);
+        }
+    }
+
+    private boolean isConfigDocument(String docId, Document document) {
+        if ("config".equals(docId)) {
+            return true;
+        }
+        if (document == null) {
+            return false;
+        }
+        Object idValue = document.get("_id");
+        return idValue != null && "config".equals(String.valueOf(idValue));
+    }
+
+    private Map<String, Object> copyDocumentExcluding(Document source, Set<String> keysToSkip) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if (!keysToSkip.contains(entry.getKey())) {
+                copy.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return copy;
     }
 
     /**
@@ -343,63 +405,102 @@ public final class ChangeStreamWatcher {
     }
     
     /**
-     * Check for changes using ObjectId timestamp comparison
-     * This is more reliable than checking non-existent updatedAt fields
+     * Check for changes using document count and content hash comparison
+     * This detects updates, inserts, and deletes without requiring updatedAt fields
      */
     private void checkForChanges() {
-        // Query for documents with _id greater than our last known ID
-        Document query = new Document();
-        if (lastPolledId != null) {
-            query.append("_id", new Document("$gt", lastPolledId));
-        }
+        long currentTime = System.currentTimeMillis();
         
-        // Find newest documents first
-        collection.find(query)
-                .sort(new Document("_id", -1))
-                .limit(100) // Limit to avoid overwhelming
+        // Get current document count
+        collection.countDocuments().subscribe(new Subscriber<Long>() {
+            @Override
+            public void onSubscribe(Subscription s) { s.request(1); }
+
+            @Override
+            public void onNext(Long currentCount) {
+                boolean countChanged = (currentCount.intValue() != lastKnownDocumentCount);
+                
+                if (countChanged) {
+                    // Document count changed - definitely a change
+                    lastKnownDocumentCount = currentCount.intValue();
+                    LOGGER.info("🔄 Document count changed in " + collectionName + 
+                               " (now: " + currentCount + ") - triggering reload");
+                    triggerCacheReload("📊 Document count changed: " + currentCount);
+                    lastPollingCheck = currentTime;
+                } else {
+                    // Count same - check for updates by comparing a sample of documents
+                    checkForDocumentUpdates(currentTime);
+                }
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                LOGGER.log(Level.WARNING, "🚨 Error checking document count for: " + collectionName, t);
+                // Fallback - trigger reload anyway in case of error
+                triggerCacheReload("🚨 Error checking count - forcing reload");
+                lastPollingCheck = currentTime;
+            }
+
+            @Override
+            public void onComplete() {}
+        });
+    }
+    
+    /**
+     * Check for document updates by comparing content
+     */
+    private void checkForDocumentUpdates(long currentTime) {
+        // Sample a few documents and compare with cache
+        collection.find()
+                .limit(20) // Check only first 20 docs for performance
                 .subscribe(new Subscriber<Document>() {
-                    private ObjectId newestId = lastPolledId;
-                    private int changesDetected = 0;
+                    private boolean changesDetected = false;
                     
                     @Override
-                    public void onSubscribe(Subscription s) {
-                        s.request(Long.MAX_VALUE);
-                    }
+                    public void onSubscribe(Subscription s) { s.request(Long.MAX_VALUE); }
 
                     @Override
                     public void onNext(Document doc) {
-                        Object idObj = doc.get("_id");
-                        if (idObj instanceof ObjectId) {
-                            ObjectId docId = (ObjectId) idObj;
-                            if (newestId == null || docId.compareTo(newestId) > 0) {
-                                newestId = docId;
-                            }
-                        }
+                        String docId = doc.get("_id") != null ? doc.get("_id").toString() : "unknown";
+                        Document cachedDoc = cache.get(docId);
                         
-                        String idStr = idObj != null ? idObj.toString() : "unknown";
-                        cache.put(idStr, doc);
-                        changesDetected++;
+                        // If document not in cache or content changed
+                        if (cachedDoc == null || !documentsEqual(doc, cachedDoc)) {
+                            cache.put(docId, doc);
+                            changesDetected = true;
+                        }
                     }
 
                     @Override
                     public void onError(Throwable t) {
-                        LOGGER.log(Level.WARNING, "🚨 Error during polling query for: " + collectionName, t);
+                        LOGGER.log(Level.WARNING, "🚨 Error during document update check for: " + collectionName, t);
                     }
 
                     @Override
                     public void onComplete() {
-                        // Update our polling baseline
-                        if (newestId != null) {
-                            lastPolledId = newestId;
+                        if (changesDetected) {
+                            LOGGER.info("🔄 Document updates detected in: " + collectionName);
+                            triggerCacheReload("📝 Document content updates detected");
                         }
-                        
-                        // Trigger reload if changes detected
-                        if (changesDetected > 0) {
-                            LOGGER.info("🔄 Polling detected " + changesDetected + " changes in: " + collectionName);
-                            triggerCacheReload("📊 Polling detected " + changesDetected + " changes");
-                        }
+                        lastPollingCheck = currentTime;
                     }
                 });
+    }
+    
+    /**
+     * Compare two documents for equality (ignoring _id field)
+     */
+    private boolean documentsEqual(Document doc1, Document doc2) {
+        if (doc1 == null && doc2 == null) return true;
+        if (doc1 == null || doc2 == null) return false;
+        
+        // Create copies without _id for comparison
+        Document copy1 = new Document(doc1);
+        Document copy2 = new Document(doc2);
+        copy1.remove("_id");
+        copy2.remove("_id");
+        
+        return copy1.equals(copy2);
     }
 
     public void triggerReload(String id) {

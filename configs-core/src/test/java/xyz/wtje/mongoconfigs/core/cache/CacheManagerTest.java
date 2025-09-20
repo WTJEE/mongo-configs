@@ -94,6 +94,41 @@ class CacheManagerTest {
     }
 
     @Test
+    void testReplaceLanguageData() {
+        String collection = "test-collection";
+        String language = "en";
+
+        cacheManager.putMessage(collection, language, "old.key", "old");
+        cacheManager.putMessage(collection, language, "stale.key", "stale");
+
+        Map<String, Object> newData = new HashMap<>();
+        newData.put("old.key", "updated");
+
+        cacheManager.replaceLanguageData(collection, language, newData);
+
+        assertEquals("updated", cacheManager.getMessage(collection, language, "old.key"));
+        assertNull(cacheManager.getMessage(collection, language, "stale.key"));
+    }
+
+    @Test
+    void testReplaceConfigData() {
+        String collection = "test-collection";
+
+        Map<String, Object> initial = new HashMap<>();
+        initial.put("alpha", "one");
+        initial.put("beta", "two");
+        cacheManager.putConfigData(collection, initial);
+
+        Map<String, Object> updated = new HashMap<>();
+        updated.put("alpha", "updated");
+
+        cacheManager.replaceConfigData(collection, updated);
+
+        assertEquals("updated", cacheManager.get(collection + ":alpha", null));
+        assertNull(cacheManager.get(collection + ":beta", null));
+    }
+
+    @Test
     void testPutMessageDataFlattensNestedMaps() {
         String collection = "test-collection";
         String language = "en";

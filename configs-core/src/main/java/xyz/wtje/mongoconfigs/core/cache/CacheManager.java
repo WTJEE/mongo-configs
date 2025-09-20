@@ -101,6 +101,18 @@ public class CacheManager {
         }
     }
 
+
+    public void replaceLanguageData(String collection, String language, Map<String, Object> data) {
+        if (collection == null || collection.isEmpty() || language == null || language.isEmpty()) {
+            return;
+        }
+        String prefix = collection + ":" + language + ":";
+        messageCache.keySet().removeIf(key -> key.startsWith(prefix));
+        if (data != null && !data.isEmpty()) {
+            putMessageData(collection, language, data);
+        }
+    }
+
     public CompletableFuture<Void> putMessageDataAsync(String collection, String language, Map<String, Object> data) {
         putMessageData(collection, language, data);
         return CompletableFuture.completedFuture(null);
@@ -160,6 +172,16 @@ public class CacheManager {
                 configCache.put(collection + ":" + entry.getKey(), entry.getValue());
             }
             enforceCapacity(configCache, "configs");
+        }
+    }
+
+    public void replaceConfigData(String collection, Map<String, Object> data) {
+        if (collection == null || collection.isEmpty()) {
+            return;
+        }
+        configCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
+        if (data != null && !data.isEmpty()) {
+            putConfigData(collection, data);
         }
     }
 
