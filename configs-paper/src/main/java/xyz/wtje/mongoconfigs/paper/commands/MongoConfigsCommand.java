@@ -73,6 +73,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             case "collections" -> handleCollections(sender);
             case "testcollections" -> handleTestCollections(sender);
             case "changestreams" -> handleChangeStreams(sender);
+            case "fixchangestreams" -> handleFixChangeStreams(sender);
             case "help" -> showHelp(sender);
             default -> {
                 String unknownSubcommandMessage = languageConfig.getMessage("commands.admin.unknown-subcommand", senderLanguage)
@@ -291,12 +292,14 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
         sender.sendMessage(Component.text("§f/mongoconfigs testcollections §7- Test MongoDB collections detection"));
         sender.sendMessage(Component.text("§f/mongoconfigs changestreams §7- Check Change Streams status"));
+        sender.sendMessage(Component.text("§f/mongoconfigs fixchangestreams §7- Force setup Change Streams"));
         sender.sendMessage(Component.text("§f/mongoconfigs help §7- Show this help"));
     }
 
     private void handleChangeStreams(CommandSender sender) {
-        sender.sendMessage(ColorHelper.parseComponent("&e📡 Change Streams Status..."));
-        sender.sendMessage(ColorHelper.parseComponent("&a✅ Change Streams: ALWAYS ENABLED"));
+        sender.sendMessage(ColorHelper.parseComponent("&e📡 Change Detection Status..."));
+        sender.sendMessage(ColorHelper.parseComponent("&a✅ Auto-Updates: ENABLED"));
+        sender.sendMessage(ColorHelper.parseComponent("&7🔍 Method: Change Streams + Polling Fallback"));
 
         try {
             // Check active watchers
@@ -316,11 +319,30 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking watchers: " + e.getMessage()));
             }
             
-            sender.sendMessage(ColorHelper.parseComponent("&e🧪 To test: Update a document in MongoDB and watch logs"));
+            sender.sendMessage(ColorHelper.parseComponent("&e🧪 To test: Update a document in MongoDB (auto-detected)"));
             
         } catch (Exception e) {
-            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking change streams: " + e.getMessage()));
+            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking change detection: " + e.getMessage()));
         }
+    }
+
+    private void handleFixChangeStreams(CommandSender sender) {
+        sender.sendMessage(ColorHelper.parseComponent("&e🔧 Force-setting up change detection for all collections..."));
+
+        configManager.getCollections().thenAccept(collections -> {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                for (String collection : collections) {
+                    try {
+                        // Force setup change detection for each collection
+                        configManager.enableChangeStreamForCollection(collection);
+                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Setup change detection for: " + collection));
+                    } catch (Exception e) {
+                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Failed for " + collection + ": " + e.getMessage()));
+                    }
+                }
+                sender.sendMessage(ColorHelper.parseComponent("&e✨ Change detection setup completed!"));
+            });
+        });
     }
 
     @Override
@@ -331,7 +353,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            return List.of("reload", "reloadall", "collections", "changestreams", "testcollections", "help")
+            return List.of("reload", "reloadall", "collections", "changestreams", "fixchangestreams", "testcollections", "help")
                     .stream()
                     .filter(sub -> sub.startsWith(partial))
                     .toList();

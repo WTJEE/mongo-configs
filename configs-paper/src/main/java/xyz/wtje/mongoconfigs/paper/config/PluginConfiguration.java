@@ -88,7 +88,7 @@ public class PluginConfiguration {
     }
 
     public boolean isChangeStreamsEnabled() {
-        return true; // Always enabled for optimal performance
+        return true; // Using polling-based change detection (works without Replica Set)
     }
 
     public int getChangeStreamResumeRetries() {

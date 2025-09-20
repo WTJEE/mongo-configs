@@ -134,7 +134,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         config.setChangeStreamResumeRetries(pluginConfig.getChangeStreamResumeRetries());
         config.setChangeStreamResumeDelayMs(pluginConfig.getChangeStreamResumeDelay());
 
-        getLogger().info("Change Streams enabled for real-time cache updates");
+        getLogger().info("Change detection enabled (Change Streams + Polling fallback)");
 
         config.setIoThreads(pluginConfig.getIoThreads());
         config.setWorkerThreads(pluginConfig.getWorkerThreads());

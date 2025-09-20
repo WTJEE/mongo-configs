@@ -73,10 +73,12 @@ public class ConfigManagerImpl implements ConfigManager {
                    ", Max size: " + maxSize);
     }
     public void initialize() {
-        preWarmCache();
-        setupChangeStreams();
-        logConfigurationStatus();
-        LOGGER.info("ConfigManager fully initialized and ready");
+        preWarmCache()
+            .thenRun(() -> {
+                setupChangeStreams();
+                logConfigurationStatus();
+                LOGGER.info("ConfigManager fully initialized and ready");
+            });
     }
 
     public TypedConfigManager getTypedConfigManager() {
@@ -284,6 +286,15 @@ public class ConfigManagerImpl implements ConfigManager {
                     if (config.isDebugLogging()) {
                         LOGGER.info("Successfully reloaded all " + allCollections.size() + " collections into cache!");
                     }
+                    
+                    // Setup Change Streams for newly discovered collections
+                    LOGGER.info("🔄 Setting up Change Streams for reloaded collections...");
+                    for (String collection : allCollections) {
+                        if (!changeStreamWatchers.containsKey(collection)) {
+                            setupChangeStreamForCollection(collection);
+                        }
+                    }
+                    LOGGER.info("✅ Change Streams setup completed after reload. Active watchers: " + changeStreamWatchers.size());
                 });
         })
         .exceptionally(throwable -> {
@@ -542,8 +553,8 @@ public class ConfigManagerImpl implements ConfigManager {
         Map<String, Object> nested = (Map<String, Object>) data.computeIfAbsent(currentKey, k -> new HashMap<>());
         setNestedValue(nested, remainingKey, value);
     }
-    private void preWarmCache() {
-        CompletableFuture.runAsync(() -> {
+    private CompletableFuture<Void> preWarmCache() {
+        return CompletableFuture.runAsync(() -> {
             if (config.isDebugLogging()) {
                 LOGGER.info("Pre-warming cache - discovering existing collections...");
             }
@@ -583,13 +594,23 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     
     private void setupChangeStreams() {
+        if (!config.isEnableChangeStreams()) {
+            LOGGER.info("Change Streams disabled - manual reload required for updates");
+            return;
+        }
+        
         CompletableFuture.runAsync(() -> {
-            if (config.isDebugLogging()) {
-                LOGGER.info("Setting up change streams for collections...");
-            }
+            LOGGER.info("📡 Setting up change streams for collections...");
             
             // Setup change streams for known collections
             Set<String> collections = new HashSet<>(knownCollections);
+            
+            if (collections.isEmpty()) {
+                LOGGER.warning("⚠️ No collections found for Change Streams! knownCollections is empty.");
+                return;
+            }
+            
+            LOGGER.info("📊 Found " + collections.size() + " collections for Change Streams: " + collections);
             
             for (String collection : collections) {
                 try {
@@ -599,16 +620,17 @@ public class ConfigManagerImpl implements ConfigManager {
                 }
             }
             
-            if (config.isDebugLogging()) {
-                LOGGER.info("Change streams setup completed for " + changeStreamWatchers.size() + " collections");
-            }
+            LOGGER.info("🎉 Change streams setup completed! Active watchers: " + changeStreamWatchers.size());
         }, asyncExecutor);
     }
     
     private void setupChangeStreamForCollection(String collectionName) {
         if (changeStreamWatchers.containsKey(collectionName)) {
+            LOGGER.info("🔄 Change stream already exists for collection: " + collectionName);
             return; // Already setup
         }
+        
+        LOGGER.info("🚀 Setting up new change stream for collection: " + collectionName);
         
         try {
             xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = 

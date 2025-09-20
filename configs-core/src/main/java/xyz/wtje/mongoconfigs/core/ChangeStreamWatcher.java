@@ -22,6 +22,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Date;
+import java.time.Instant;
 
 public final class ChangeStreamWatcher {
     private static final Logger LOGGER = Logger.getLogger(ChangeStreamWatcher.class.getName());
@@ -35,6 +37,11 @@ public final class ChangeStreamWatcher {
     // Integration with CacheManager
     private CacheManager cacheManager;
     private Consumer<String> reloadCallback;
+    
+    // Polling-based change detection (fallback for non-replica sets)
+    private volatile boolean usePolling = false;
+    private volatile Date lastCheckTime;
+    private static final long POLLING_INTERVAL_MS = 5000; // 5 seconds
 
     private volatile boolean running = false;
     private volatile Subscription changeStreamSubscription;
@@ -64,15 +71,25 @@ public final class ChangeStreamWatcher {
     public void start() {
         if (running) return;
         running = true;
+        lastCheckTime = new Date();
 
         LOGGER.info("Starting ChangeStreamWatcher for collection: " + collectionName);
         
         performInitialLoad();
-        startChangeStream();
+        
+        // Try Change Streams first, fallback to polling if it fails
+        try {
+            startChangeStream();
+        } catch (Exception e) {
+            LOGGER.info("Change Streams failed for " + collectionName + ", switching to polling mode");
+            usePolling = true;
+            startPolling();
+        }
     }
 
     public void stop() {
         running = false;
+        usePolling = false;
         if (changeStreamSubscription != null) {
             changeStreamSubscription.cancel();
         }
@@ -147,9 +164,17 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onError(Throwable t) {
-                LOGGER.log(Level.WARNING, "Error in change stream for collection: " + collectionName, t);
-                if (running) {
-                    scheduleReconnect();
+                String errorMsg = t.getMessage();
+                if (errorMsg != null && errorMsg.contains("only supported on replica sets")) {
+                    LOGGER.info("Change Streams not supported (no replica set), switching to polling for: " + collectionName);
+                    usePolling = true;
+                    lastCheckTime = new Date();
+                    startPolling();
+                } else {
+                    LOGGER.log(Level.WARNING, "Error in change stream for collection: " + collectionName, t);
+                    if (running) {
+                        scheduleReconnect();
+                    }
                 }
             }
 
@@ -243,6 +268,74 @@ public final class ChangeStreamWatcher {
         long exponentialDelay = BASE_DELAY_MS * (1L << Math.min(reconnectAttempts - 1, 10));
         long jitter = (long) (Math.random() * exponentialDelay * 0.1);
         return exponentialDelay + jitter;
+    }
+
+    /**
+     * Polling-based change detection for MongoDB without replica sets
+     */
+    private void startPolling() {
+        if (!running || !usePolling) return;
+        
+        scheduler.scheduleWithFixedDelay(() -> {
+            if (!running || !usePolling) return;
+            
+            try {
+                checkForChanges();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error during polling check for collection: " + collectionName, e);
+            }
+        }, POLLING_INTERVAL_MS, POLLING_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        
+        LOGGER.info("🔍 Started polling for changes in collection: " + collectionName + " (every " + (POLLING_INTERVAL_MS/1000) + "s)");
+    }
+    
+    private void checkForChanges() {
+        Date currentTime = new Date();
+        
+        // Query for documents modified since last check
+        var query = new org.bson.Document("updatedAt", 
+            new org.bson.Document("$gte", lastCheckTime));
+            
+        collection.find(query).subscribe(new org.reactivestreams.Subscriber<org.bson.Document>() {
+            @Override
+            public void onSubscribe(org.reactivestreams.Subscription s) {
+                s.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(org.bson.Document doc) {
+                String id = doc.getString("_id");
+                if (id != null) {
+                    cache.put(id, doc);
+                    
+                    // Trigger cache invalidation and reload (async)
+                    if (cacheManager != null && reloadCallback != null) {
+                        CompletableFuture.runAsync(() -> {
+                            try {
+                                if (LOGGER.isLoggable(Level.FINE)) {
+                                    LOGGER.fine("🔄 Detected change via polling in: " + collectionName + " (doc: " + id + ")");
+                                }
+                                cacheManager.invalidateCollection(collectionName);
+                                reloadCallback.accept(collectionName);
+                            } catch (Exception e) {
+                                LOGGER.log(Level.WARNING, "Error in polling callback for: " + collectionName, e);
+                            }
+                        });
+                    }
+                }
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                LOGGER.log(Level.WARNING, "Error during polling query for: " + collectionName, t);
+            }
+
+            @Override
+            public void onComplete() {
+                // Update last check time
+                lastCheckTime = currentTime;
+            }
+        });
     }
 
     public void triggerReload(String id) {
