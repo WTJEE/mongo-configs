@@ -634,9 +634,7 @@ public class ConfigManagerImpl implements ConfigManager {
             watcher.start();
             changeStreamWatchers.put(collectionName, watcher);
             
-            if (config.isDebugLogging()) {
-                LOGGER.info("Setup change stream watcher for collection: " + collectionName);
-            }
+            LOGGER.info("✅ Successfully setup change stream watcher for collection: " + collectionName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to setup change stream for collection: " + collectionName, e);
         }

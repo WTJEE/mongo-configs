@@ -72,6 +72,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             case "reloadall" -> handleReloadAll(sender, senderLanguage);
             case "collections" -> handleCollections(sender);
             case "testcollections" -> handleTestCollections(sender);
+            case "changestreams" -> handleChangeStreams(sender);
             case "help" -> showHelp(sender);
             default -> {
                 String unknownSubcommandMessage = languageConfig.getMessage("commands.admin.unknown-subcommand", senderLanguage)
@@ -289,7 +290,37 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("§f/mongoconfigs reloadall §7- Reload ALL collections from MongoDB"));
         sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
         sender.sendMessage(Component.text("§f/mongoconfigs testcollections §7- Test MongoDB collections detection"));
+        sender.sendMessage(Component.text("§f/mongoconfigs changestreams §7- Check Change Streams status"));
         sender.sendMessage(Component.text("§f/mongoconfigs help §7- Show this help"));
+    }
+
+    private void handleChangeStreams(CommandSender sender) {
+        sender.sendMessage(ColorHelper.parseComponent("&e📡 Change Streams Status..."));
+        sender.sendMessage(ColorHelper.parseComponent("&a✅ Change Streams: ALWAYS ENABLED"));
+
+        try {
+            // Check active watchers
+            int watcherCount = 0;
+            try {
+                java.lang.reflect.Field field = configManager.getClass().getDeclaredField("changeStreamWatchers");
+                field.setAccessible(true);
+                java.util.Map<?, ?> watchers = (java.util.Map<?, ?>) field.get(configManager);
+                watcherCount = watchers.size();
+                
+                sender.sendMessage(ColorHelper.parseComponent("&7📊 Active Watchers: &f" + watcherCount));
+                
+                for (Object collection : watchers.keySet()) {
+                    sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                }
+            } catch (Exception e) {
+                sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking watchers: " + e.getMessage()));
+            }
+            
+            sender.sendMessage(ColorHelper.parseComponent("&e🧪 To test: Update a document in MongoDB and watch logs"));
+            
+        } catch (Exception e) {
+            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking change streams: " + e.getMessage()));
+        }
     }
 
     @Override
@@ -300,7 +331,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            return List.of("reload", "reloadall", "collections", "create", "copy", "testcollections", "help")
+            return List.of("reload", "reloadall", "collections", "changestreams", "testcollections", "help")
                     .stream()
                     .filter(sub -> sub.startsWith(partial))
                     .toList();

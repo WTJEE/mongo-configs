@@ -88,15 +88,15 @@ public class PluginConfiguration {
     }
 
     public boolean isChangeStreamsEnabled() {
-        return false;
+        return true; // Always enabled for optimal performance
     }
 
     public int getChangeStreamResumeRetries() {
-        return 3;
+        return 3; // Optimal retry count
     }
 
     public long getChangeStreamResumeDelay() {
-        return 5000;
+        return 1000; // 1 second delay - fast but not aggressive
     }
 
     public boolean isDebugLogging() {

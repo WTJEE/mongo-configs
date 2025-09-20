@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -57,13 +58,15 @@ public final class ChangeStreamWatcher {
     }
     private volatile int reconnectAttempts = 0;
 
-    private static final int MAX_RECONNECT_ATTEMPTS = 10;
-    private static final int BASE_DELAY_MS = 1000;
+    private static final int MAX_RECONNECT_ATTEMPTS = 5; // Zmniejszone z 10
+    private static final int BASE_DELAY_MS = 500; // Zmniejszone z 1000
 
     public void start() {
         if (running) return;
         running = true;
 
+        LOGGER.info("Starting ChangeStreamWatcher for collection: " + collectionName);
+        
         performInitialLoad();
         startChangeStream();
     }
@@ -104,6 +107,8 @@ public final class ChangeStreamWatcher {
     }
 
     private void startChangeStream() {
+        LOGGER.info("Setting up change stream monitoring for collection: " + collectionName);
+        
         var pipeline = List.of(
                 Aggregates.match(
                         Filters.in("operationType", List.of("insert", "update", "replace", "delete"))
@@ -116,6 +121,7 @@ public final class ChangeStreamWatcher {
         BsonDocument token = resumeToken.get();
         if (token != null) {
             changeStream = changeStream.resumeAfter(token);
+            LOGGER.info("Resuming change stream from token for collection: " + collectionName);
         }
 
         changeStream.subscribe(new Subscriber<ChangeStreamDocument<Document>>() {
@@ -123,6 +129,7 @@ public final class ChangeStreamWatcher {
             public void onSubscribe(Subscription s) {
                 changeStreamSubscription = s;
                 s.request(Long.MAX_VALUE);
+                LOGGER.info("Successfully subscribed to change stream for collection: " + collectionName);
             }
 
             @Override
@@ -131,7 +138,10 @@ public final class ChangeStreamWatcher {
                     processChangeEvent(event);
                     reconnectAttempts = 0;
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    // Zmniejszone logowanie błędów żeby nie spamować
+                    if (LOGGER.isLoggable(Level.FINE)) {
+                        LOGGER.log(Level.FINE, "Error processing change event for " + collectionName, e);
+                    }
                 }
             }
 
@@ -177,40 +187,38 @@ public final class ChangeStreamWatcher {
                 if (fullDocument != null) {
                     cache.put(id, fullDocument);
                     
-                    // Invalidate and reload cache for this collection
-                    if (cacheManager != null) {
-                        LOGGER.info("Invalidating cache for collection due to change: " + collectionName);
-                        cacheManager.invalidateCollection(collectionName);
-                        
-                        // Trigger reload if callback is available
-                        if (reloadCallback != null) {
+                    // Invalidate and reload cache for this collection (async)
+                    if (cacheManager != null && reloadCallback != null) {
+                        CompletableFuture.runAsync(() -> {
                             try {
+                                if (LOGGER.isLoggable(Level.FINE)) {
+                                    LOGGER.fine("Invalidating cache for collection: " + collectionName);
+                                }
+                                cacheManager.invalidateCollection(collectionName);
                                 reloadCallback.accept(collectionName);
-                                LOGGER.info("Triggered reload for collection: " + collectionName);
                             } catch (Exception e) {
-                                LOGGER.log(Level.WARNING, "Error in reload callback for collection: " + collectionName, e);
+                                LOGGER.log(Level.WARNING, "Error in change stream callback for: " + collectionName, e);
                             }
-                        }
+                        });
                     }
                 }
                 break;
             case "delete":
                 cache.remove(id);
                 
-                // Invalidate cache for this collection
-                if (cacheManager != null) {
-                    LOGGER.info("Invalidating cache for collection due to deletion: " + collectionName);
-                    cacheManager.invalidateCollection(collectionName);
-                    
-                    // Trigger reload if callback is available
-                    if (reloadCallback != null) {
+                // Invalidate cache for this collection (async)
+                if (cacheManager != null && reloadCallback != null) {
+                    CompletableFuture.runAsync(() -> {
                         try {
+                            if (LOGGER.isLoggable(Level.FINE)) {
+                                LOGGER.fine("Invalidating cache after deletion: " + collectionName);
+                            }
+                            cacheManager.invalidateCollection(collectionName);
                             reloadCallback.accept(collectionName);
-                            LOGGER.info("Triggered reload for collection after deletion: " + collectionName);
                         } catch (Exception e) {
-                            LOGGER.log(Level.WARNING, "Error in reload callback for collection: " + collectionName, e);
+                            LOGGER.log(Level.WARNING, "Error in change stream callback for: " + collectionName, e);
                         }
-                    }
+                    });
                 }
                 break;
         }
