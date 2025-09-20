@@ -242,33 +242,33 @@ public final class ChangeStreamWatcher {
                     cache.put(docId, fullDocument);
                 }
                 applyDocumentToCache(fullDocument, docId);
-                triggerCacheReload("Document " + opType + " detected");
+                triggerCacheReload("Document " + opType + " detected", false);
                 break;
 
             case "delete": {
                 Document removedDocument = docId != null ? cache.remove(docId) : null;
                 handleDocumentDeletion(removedDocument, docId);
-                triggerCacheReload("Document deletion detected");
+                triggerCacheReload("Document deletion detected", true);
                 break;
             }
 
             case "drop":
                 cache.clear();
-                triggerCacheReload("Collection dropped");
+                triggerCacheReload("Collection dropped", true);
                 break;
 
             case "rename":
                 cache.clear();
-                triggerCacheReload("Collection renamed");
+                triggerCacheReload("Collection renamed", true);
                 break;
 
             case "dropDatabase":
                 cache.clear();
-                triggerCacheReload("Database dropped");
+                triggerCacheReload("Database dropped", true);
                 break;
 
             default:
-                triggerCacheReload("Other operation: " + opType);
+                triggerCacheReload("Other operation: " + opType, true);
                 break;
         }
     }
@@ -344,18 +344,24 @@ public final class ChangeStreamWatcher {
      * Trigger cache reload with consistent error handling
      */
     private void triggerCacheReload(String reason) {
+        triggerCacheReload(reason, true);
+    }
+
+    private void triggerCacheReload(String reason, boolean invalidateCache) {
         if (cacheManager != null && reloadCallback != null) {
             CompletableFuture.runAsync(() -> {
                 try {
-                    LOGGER.info("🎯 " + reason + " - refreshing cache for: " + collectionName);
-                    cacheManager.invalidateCollection(collectionName);
+                    LOGGER.info(reason + " - refreshing cache for: " + collectionName);
+                    if (invalidateCache) {
+                        cacheManager.invalidateCollection(collectionName);
+                    }
                     reloadCallback.accept(collectionName);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "💥 CRITICAL: Cache reload failed for " + collectionName, e);
+                    LOGGER.log(Level.SEVERE, "CRITICAL: Cache reload failed for " + collectionName, e);
                 }
             });
         } else {
-            LOGGER.warning("⚠️ No cache manager or reload callback set for collection: " + collectionName);
+            LOGGER.warning("No cache manager or reload callback set for collection: " + collectionName);
         }
     }
 
