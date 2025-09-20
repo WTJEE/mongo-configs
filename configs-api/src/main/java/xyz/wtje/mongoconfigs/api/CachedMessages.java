@@ -14,6 +14,7 @@ final class CachedMessages implements Messages {
     private final String defaultLanguage;
     private final Set<String> supportedLanguages;
     private final Map<String, Map<String, MessageValue>> values = new ConcurrentHashMap<>();
+    private volatile boolean needsRefresh = false;
 
     CachedMessages(String id, String defaultLanguage, String[] supportedLanguages) {
         this.defaultLanguage = defaultLanguage;
@@ -34,6 +35,7 @@ final class CachedMessages implements Messages {
                 return next;
             });
         }
+        needsRefresh = false;
     }
 
     void mergeLanguage(String language, Map<String, Object> rawValues) {
@@ -43,6 +45,29 @@ final class CachedMessages implements Messages {
             next.putAll(normalized);
             return next;
         });
+        needsRefresh = false;
+    }
+
+    /**
+     * Clear all cached values - used when cache needs to be refreshed
+     */
+    void invalidate() {
+        values.clear();
+        needsRefresh = true;
+    }
+
+    /**
+     * Check if this cached messages instance needs refreshing
+     */
+    boolean needsRefresh() {
+        return needsRefresh || values.isEmpty();
+    }
+
+    /**
+     * Mark as needing refresh without clearing values immediately
+     */
+    void markForRefresh() {
+        needsRefresh = true;
     }
 
     private Map<String, MessageValue> normalize(Map<String, Object> raw) {

@@ -11,6 +11,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.function.Consumer;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 public class CacheManager {
     private static final Logger LOGGER = Logger.getLogger(CacheManager.class.getName());
@@ -22,6 +25,9 @@ public class CacheManager {
     private final long maxSize;
     private final Duration ttl;
     private final boolean recordStats;
+    
+    // Cache invalidation callbacks
+    private final Set<Consumer<String>> invalidationListeners = new CopyOnWriteArraySet<>();
 
     public CacheManager() {
         this(0, null, true);
@@ -210,6 +216,15 @@ public class CacheManager {
     public void invalidateCollection(String collection) {
         configCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
         messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
+        
+        // Notify listeners about invalidation
+        for (Consumer<String> listener : invalidationListeners) {
+            try {
+                listener.accept(collection);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error in invalidation listener", e);
+            }
+        }
     }
 
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
@@ -220,6 +235,15 @@ public class CacheManager {
     public void invalidateAll() {
         configCache.clear();
         messageCache.clear();
+        
+        // Notify listeners about full invalidation
+        for (Consumer<String> listener : invalidationListeners) {
+            try {
+                listener.accept("*"); // Special marker for full invalidation
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error in invalidation listener", e);
+            }
+        }
     }
 
     public CompletableFuture<Void> invalidateAllAsync() {
@@ -229,10 +253,52 @@ public class CacheManager {
 
     public void invalidateMessages(String collection) {
         messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
+        
+        // Notify listeners about message invalidation
+        for (Consumer<String> listener : invalidationListeners) {
+            try {
+                listener.accept(collection + ":messages");
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error in invalidation listener", e);
+            }
+        }
     }
 
     public CompletableFuture<Void> invalidateMessagesAsync(String collection) {
         invalidateMessages(collection);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Add a listener that gets notified when cache is invalidated
+     * @param listener Consumer that receives collection name (or "*" for full invalidation)
+     */
+    public void addInvalidationListener(Consumer<String> listener) {
+        invalidationListeners.add(listener);
+    }
+
+    /**
+     * Remove an invalidation listener
+     */
+    public void removeInvalidationListener(Consumer<String> listener) {
+        invalidationListeners.remove(listener);
+    }
+
+    /**
+     * Refresh cache for a specific collection by reloading from source
+     * This should be implemented by the calling code
+     */
+    public void refresh(String collection) {
+        // Invalidate first
+        invalidateCollection(collection);
+        
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.fine("Cache refreshed for collection: " + collection);
+        }
+    }
+
+    public CompletableFuture<Void> refreshAsync(String collection) {
+        refresh(collection);
         return CompletableFuture.completedFuture(null);
     }
 

@@ -154,11 +154,19 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                     String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                         .replace("{error}", throwable.getMessage());
                     sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-                    sender.sendMessage(ColorHelper.parseComponent("&c??? Error reloading collections: " + throwable.getMessage()));
+                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collections: " + throwable.getMessage()));
                     return;
                 }
 
                 sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
+
+                // Refresh GUI messages cache after successful reload
+                try {
+                    plugin.refreshGUIMessages();
+                    sender.sendMessage(ColorHelper.parseComponent("&a✅ GUI messages cache refreshed!"));
+                } catch (Exception e) {
+                    sender.sendMessage(ColorHelper.parseComponent("&e⚠ Warning: GUI cache refresh failed: " + e.getMessage()));
+                }
 
                 if (collections != null) {
                     sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));

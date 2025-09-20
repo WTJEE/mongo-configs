@@ -43,6 +43,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         });
     }
 
+
     private MongoConfigManager(String configFile) {
         Map<String, Object> config = readConfigYml(configFile);
         Map<String, Object> mongoconfigs = (Map<String, Object>) config.get("mongoconfigs");
@@ -142,12 +143,42 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
     @Override
     public java.util.concurrent.CompletableFuture<Void> reloadAll() {
         return java.util.concurrent.CompletableFuture.runAsync(() -> {
-            messagesCache.clear();
+            System.out.println("Refreshing all cached messages and configs...");
+            // Instead of clearing cache completely, mark for refresh
+            for (String collection : new java.util.HashSet<>(messagesCache.keySet())) {
+                Messages messages = messagesCache.get(collection);
+                if (messages instanceof CachedMessages cachedMessages) {
+                    cachedMessages.markForRefresh();
+                }
+            }
+            
+            // Clear config cache to force reload
             configCache.clear();
             languageDocuments.clear();
-            registeredCollections.clear();
-            System.out.println("Cleared all cached messages and configs");
+            
+            // Re-register collections to trigger refresh
+            java.util.Set<String> collections = new java.util.HashSet<>(registeredCollections);
+            for (String collection : collections) {
+                refreshCollection(collection);
+            }
+            
+            System.out.println("Refreshed all cached messages and configs");
         });
+    }
+    
+    /**
+     * Refresh a specific collection by reloading its data
+     */
+    private void refreshCollection(String collection) {
+        System.out.println("Refreshing collection: " + collection);
+        
+        // Remove from cache to force reload
+        messagesCache.remove(collection);
+        languageDocuments.remove(collection);
+        
+        // Remove config entries for this collection
+        configCache.entrySet().removeIf(entry -> 
+            entry.getKey().equals(collection) || entry.getKey().startsWith(collection + "."));
     }
 
     @Override

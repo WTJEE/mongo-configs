@@ -9,6 +9,7 @@ import org.bson.BsonDocument;
 import org.bson.Document;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
+import xyz.wtje.mongoconfigs.core.cache.CacheManager;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,19 +18,42 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class ChangeStreamWatcher {
+    private static final Logger LOGGER = Logger.getLogger(ChangeStreamWatcher.class.getName());
 
     private final MongoCollection<Document> collection;
+    private final String collectionName;
     private final ConcurrentMap<String, Document> cache = new ConcurrentHashMap<>();
     private final AtomicReference<BsonDocument> resumeToken = new AtomicReference<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    
+    // Integration with CacheManager
+    private CacheManager cacheManager;
+    private Consumer<String> reloadCallback;
 
     private volatile boolean running = false;
     private volatile Subscription changeStreamSubscription;
 
     public ChangeStreamWatcher(MongoCollection<Document> collection) {
         this.collection = collection;
+        this.collectionName = collection.getNamespace().getCollectionName();
+    }
+    
+    public ChangeStreamWatcher(MongoCollection<Document> collection, CacheManager cacheManager) {
+        this.collection = collection;
+        this.collectionName = collection.getNamespace().getCollectionName();
+        this.cacheManager = cacheManager;
+    }
+    
+    /**
+     * Set callback for when collection needs reloading
+     */
+    public void setReloadCallback(Consumer<String> reloadCallback) {
+        this.reloadCallback = reloadCallback;
     }
     private volatile int reconnectAttempts = 0;
 
@@ -74,7 +98,7 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onComplete() {
-                System.out.println("Initial load completed. Cached " + cache.size() + " documents");
+                LOGGER.info("Initial load completed. Cached " + cache.size() + " documents for collection: " + collectionName);
             }
         });
     }
@@ -113,7 +137,7 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onError(Throwable t) {
-                t.printStackTrace();
+                LOGGER.log(Level.WARNING, "Error in change stream for collection: " + collectionName, t);
                 if (running) {
                     scheduleReconnect();
                 }
@@ -121,6 +145,7 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onComplete() {
+                LOGGER.info("Change stream completed for collection: " + collectionName);
                 if (running) {
                     scheduleReconnect();
                 }
@@ -142,6 +167,8 @@ public final class ChangeStreamWatcher {
         if (idValue == null || !idValue.isString()) return;
         String id = idValue.asString().getValue();
 
+        LOGGER.info("Processing change event: " + operationType + " for document: " + id + " in collection: " + collectionName);
+
         switch (operationType) {
             case "insert":
             case "update":
@@ -149,22 +176,57 @@ public final class ChangeStreamWatcher {
                 var fullDocument = event.getFullDocument();
                 if (fullDocument != null) {
                     cache.put(id, fullDocument);
+                    
+                    // Invalidate and reload cache for this collection
+                    if (cacheManager != null) {
+                        LOGGER.info("Invalidating cache for collection due to change: " + collectionName);
+                        cacheManager.invalidateCollection(collectionName);
+                        
+                        // Trigger reload if callback is available
+                        if (reloadCallback != null) {
+                            try {
+                                reloadCallback.accept(collectionName);
+                                LOGGER.info("Triggered reload for collection: " + collectionName);
+                            } catch (Exception e) {
+                                LOGGER.log(Level.WARNING, "Error in reload callback for collection: " + collectionName, e);
+                            }
+                        }
+                    }
                 }
                 break;
             case "delete":
                 cache.remove(id);
+                
+                // Invalidate cache for this collection
+                if (cacheManager != null) {
+                    LOGGER.info("Invalidating cache for collection due to deletion: " + collectionName);
+                    cacheManager.invalidateCollection(collectionName);
+                    
+                    // Trigger reload if callback is available
+                    if (reloadCallback != null) {
+                        try {
+                            reloadCallback.accept(collectionName);
+                            LOGGER.info("Triggered reload for collection after deletion: " + collectionName);
+                        } catch (Exception e) {
+                            LOGGER.log(Level.WARNING, "Error in reload callback for collection: " + collectionName, e);
+                        }
+                    }
+                }
                 break;
         }
     }
 
     private void scheduleReconnect() {
         if (!running || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            LOGGER.warning("Change stream reconnection failed for collection: " + collectionName + " after " + reconnectAttempts + " attempts");
             running = false;
             return;
         }
 
         reconnectAttempts++;
         long delay = calculateBackoffDelay();
+        
+        LOGGER.info("Scheduling reconnect attempt " + reconnectAttempts + " for collection: " + collectionName + " in " + delay + "ms");
 
         scheduler.schedule(this::startChangeStream, delay, TimeUnit.MILLISECONDS);
     }

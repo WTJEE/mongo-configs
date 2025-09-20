@@ -43,6 +43,7 @@ public class ConfigManagerImpl implements ConfigManager {
     private final Map<String, Set<String>> collectionLanguages = new ConcurrentHashMap<>();
     private final TypedConfigManager typedConfigManager;
     private final ObjectMapper languageMapper;
+    private final Map<String, xyz.wtje.mongoconfigs.core.ChangeStreamWatcher> changeStreamWatchers = new ConcurrentHashMap<>();
     public ConfigManagerImpl(MongoConfig config) {
         this.config = config;
         this.mongoManager = new MongoManager(config);
@@ -73,6 +74,7 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     public void initialize() {
         preWarmCache();
+        setupChangeStreams();
         logConfigurationStatus();
         LOGGER.info("ConfigManager fully initialized and ready");
     }
@@ -82,6 +84,16 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public void shutdown() {
+        // Stop all change stream watchers
+        for (xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher : changeStreamWatchers.values()) {
+            try {
+                watcher.stop();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error stopping change stream watcher", e);
+            }
+        }
+        changeStreamWatchers.clear();
+        
         mongoManager.close();
         LOGGER.info("ConfigManager shutdown complete");
     }
@@ -125,9 +137,16 @@ public class ConfigManagerImpl implements ConfigManager {
             if (config.isDebugLogging()) {
                 LOGGER.info("Reloading collection: " + collection);
             }
-            cacheManager.invalidateCollection(collection);
+            
+            // Don't invalidate cache here if called from change stream to avoid double invalidation
+            // Instead, refresh the cache with new data
         }, asyncExecutor)
         .thenCompose(v -> {
+            // Setup change stream if not already setup
+            if (!changeStreamWatchers.containsKey(collection)) {
+                setupChangeStreamForCollection(collection);
+            }
+            
             return mongoManager.getConfig(collection)
                 .thenCompose(configDoc -> {
                     if (configDoc == null) {
@@ -181,12 +200,18 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
 
                     return ensureLanguagesFuture.thenCompose(v2 -> {
-                        
+                        // Load all language documents
                         List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
                                 .map(lang -> mongoManager.getLanguage(collection, lang))
                                 .collect(Collectors.toList());
 
+                        // Clear and reload cache for this collection
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Refreshing cache for collection: " + collection);
+                        }
+                        cacheManager.invalidateCollection(collection);
                         
+                        // Load config data into cache
                         if (configDoc != null && configDoc.getData() != null) {
                             cacheManager.putConfigData(collection, configDoc.getData());
                             if (config.isDebugLogging()) {
@@ -198,7 +223,7 @@ public class ConfigManagerImpl implements ConfigManager {
                             }
                         }
 
-                        
+                        // Load language data into cache
                         return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
                             .thenRun(() -> {
                                 int loadedLanguages = 0;
@@ -234,11 +259,10 @@ public class ConfigManagerImpl implements ConfigManager {
     public CompletableFuture<Void> reloadAll() {
         return CompletableFuture.supplyAsync(() -> {
             if (config.isDebugLogging()) {
-                LOGGER.info("Starting reloadAll() - clearing cache first...");
+                LOGGER.info("Starting reloadAll() - getting collections to reload...");
             }
             return null;
         }, asyncExecutor)
-        .thenCompose(v -> cacheManager.invalidateAllAsync())
         .thenCompose(v -> getCollectionsAsync())
         .thenCompose(allCollections -> {
             if (allCollections.isEmpty()) {
@@ -250,11 +274,15 @@ public class ConfigManagerImpl implements ConfigManager {
                 LOGGER.info("Reloading " + allCollections.size() + " collections...");
             }
 
+            // First ensure all language documents exist
             return prepareCollectionsAsync(allCollections)
-                .thenCompose(prepared -> reloadCollectionsInParallel(allCollections))
+                .thenCompose(prepared -> {
+                    // Then reload each collection's data into cache
+                    return reloadCollectionsInParallel(allCollections);
+                })
                 .thenRun(() -> {
                     if (config.isDebugLogging()) {
-                        LOGGER.info("Successfully reloaded all " + allCollections.size() + " collections!");
+                        LOGGER.info("Successfully reloaded all " + allCollections.size() + " collections into cache!");
                     }
                 });
         })
@@ -553,6 +581,66 @@ public class ConfigManagerImpl implements ConfigManager {
             return null;
         });
     }
+    
+    private void setupChangeStreams() {
+        CompletableFuture.runAsync(() -> {
+            if (config.isDebugLogging()) {
+                LOGGER.info("Setting up change streams for collections...");
+            }
+            
+            // Setup change streams for known collections
+            Set<String> collections = new HashSet<>(knownCollections);
+            
+            for (String collection : collections) {
+                try {
+                    setupChangeStreamForCollection(collection);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Failed to setup change stream for collection: " + collection, e);
+                }
+            }
+            
+            if (config.isDebugLogging()) {
+                LOGGER.info("Change streams setup completed for " + changeStreamWatchers.size() + " collections");
+            }
+        }, asyncExecutor);
+    }
+    
+    private void setupChangeStreamForCollection(String collectionName) {
+        if (changeStreamWatchers.containsKey(collectionName)) {
+            return; // Already setup
+        }
+        
+        try {
+            xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = 
+                new xyz.wtje.mongoconfigs.core.ChangeStreamWatcher(
+                    mongoManager.getCollection(collectionName), 
+                    cacheManager
+                );
+            
+            // Set reload callback that reloads collection when changes detected
+            watcher.setReloadCallback(changedCollection -> {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        if (config.isDebugLogging()) {
+                            LOGGER.info("Reloading collection due to change stream event: " + changedCollection);
+                        }
+                        reloadCollection(changedCollection).join();
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Error reloading collection from change stream: " + changedCollection, e);
+                    }
+                }, asyncExecutor);
+            });
+            
+            watcher.start();
+            changeStreamWatchers.put(collectionName, watcher);
+            
+            if (config.isDebugLogging()) {
+                LOGGER.info("Setup change stream watcher for collection: " + collectionName);
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to setup change stream for collection: " + collectionName, e);
+        }
+    }
     private CompletableFuture<Void> loadCollectionIntoCache(String collection) {
         return CompletableFuture.supplyAsync(() -> {
             if (config.isVerboseLogging()) {
@@ -667,6 +755,37 @@ public class ConfigManagerImpl implements ConfigManager {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Enable change stream monitoring for a specific collection
+     */
+    public void enableChangeStreamForCollection(String collectionName) {
+        setupChangeStreamForCollection(collectionName);
+    }
+
+    /**
+     * Disable change stream monitoring for a specific collection
+     */
+    public void disableChangeStreamForCollection(String collectionName) {
+        xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = changeStreamWatchers.remove(collectionName);
+        if (watcher != null) {
+            try {
+                watcher.stop();
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Disabled change stream for collection: " + collectionName);
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error stopping change stream for collection: " + collectionName, e);
+            }
+        }
+    }
+
+    /**
+     * Check if change stream is enabled for a collection
+     */
+    public boolean isChangeStreamEnabled(String collectionName) {
+        return changeStreamWatchers.containsKey(collectionName);
     }
 
     public CompletableFuture<Boolean> hasMessagesAsync(String collection, String language) {

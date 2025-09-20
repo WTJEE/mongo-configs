@@ -190,6 +190,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
                 pluginConfig = new PluginConfiguration(this);
 
                 if (configManager != null) {
+                    // Reload all collections and refresh cache
                     configManager.reloadAll().join();
                 }
 
@@ -197,11 +198,43 @@ public class MongoConfigsPlugin extends JavaPlugin {
                     languageManager.reload();
                 }
 
+                // Refresh GUI cache to ensure updated messages are used
+                refreshGUIMessages();
+
                 getLogger().info("Plugin reloaded successfully");
             } catch (Exception e) {
                 getLogger().log(Level.SEVERE, "Error reloading plugin", e);
             }
         });
+    }
+
+    /**
+     * Refresh cached messages for GUI components
+     */
+    public void refreshGUIMessages() {
+        try {
+            // Force refresh the LanguageSelectionGUI cache
+            if (languageManager != null && languageConfig != null) {
+                LanguageSelectionGUI.preloadCache(languageManager, languageConfig);
+                getLogger().info("GUI messages cache refreshed");
+            }
+        } catch (Exception e) {
+            getLogger().log(Level.WARNING, "Error refreshing GUI messages", e);
+        }
+    }
+
+    /**
+     * Get the config manager instance
+     */
+    public ConfigManagerImpl getConfigManager() {
+        return configManager;
+    }
+
+    /**
+     * Get the language manager instance  
+     */
+    public LanguageManagerImpl getLanguageManager() {
+        return languageManager;
     }
 
 }
