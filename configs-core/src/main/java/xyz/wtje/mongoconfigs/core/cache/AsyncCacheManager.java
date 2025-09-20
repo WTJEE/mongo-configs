@@ -343,17 +343,17 @@ public class AsyncCacheManager {
     }
     
     /**
-     * Refresh specific entry
+     * Invalidate specific entry across all caches
      */
-    public CompletableFuture<Void> refreshAsync(String cacheKey) {
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        
-        // Try refreshing in all caches
-        futures.add(messageCache.synchronous().refresh(cacheKey));
-        futures.add(configCache.synchronous().refresh(cacheKey));
-        futures.add(documentCache.synchronous().refresh(cacheKey));
-        
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+    public CompletableFuture<Void> invalidateKeyAsync(String cacheKey) {
+        return CompletableFuture.runAsync(() -> {
+            // Invalidate the key in all caches
+            messageCache.synchronous().invalidate(cacheKey);
+            configCache.synchronous().invalidate(cacheKey);
+            documentCache.synchronous().invalidate(cacheKey);
+            
+            LOGGER.fine("Invalidated cache key: " + cacheKey);
+        }, executor);
     }
     
     /**
