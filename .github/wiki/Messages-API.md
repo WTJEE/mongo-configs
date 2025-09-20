@@ -1,5 +1,8 @@
 # Messages API
 
+## Overview
+The Messages API provides a powerful, async-first system for managing localized messages from MongoDB. All operations are fully asynchronous with instant cache updates and real-time synchronization via Change Streams.
+
 This page shows how to model your messages as plain Java objects (POJOs) so they can be synchronized with MongoConfigs. Following the pattern gives you type-safe defaults, lets writers work directly in MongoDB, and keeps lookups non-blocking. If you are unfamiliar with typed configs, skim [Creating Configs](Creating-Configs) first.
 
 ## Define the POJO

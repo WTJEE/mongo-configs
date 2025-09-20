@@ -186,7 +186,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
         // Register hotreload command
         if (getCommand("hotreload") != null) {
-            HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager());
+            HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager(), languageManager);
             getCommand("hotreload").setExecutor(hotReloadCommand);
             getLogger().info("✅ HotReload command registered");
         } else {
@@ -261,6 +261,13 @@ public class MongoConfigsPlugin extends JavaPlugin {
      */
     public LanguageManagerImpl getLanguageManager() {
         return languageManager;
+    }
+    
+    /**
+     * Get the language configuration
+     */
+    public LanguageConfiguration getLanguageConfiguration() {
+        return languageConfig;
     }
 
 }
