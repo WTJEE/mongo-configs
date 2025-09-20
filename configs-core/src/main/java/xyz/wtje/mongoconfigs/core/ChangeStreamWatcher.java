@@ -266,10 +266,10 @@ public final class ChangeStreamWatcher {
     }
     
     private void processDocumentChangeAsync(String opType, String docId, ChangeStreamDocument<Document> event) {
-        // Move processing to async thread to avoid blocking main thread
+        // Instant async processing - fire and forget for maximum speed
         CompletableFuture.runAsync(() -> {
             processDocumentChangeSync(opType, docId, event);
-        });
+        }, java.util.concurrent.ForkJoinPool.commonPool());
     }
     
     private void processDocumentChangeSync(String opType, String docId, ChangeStreamDocument<Document> event) {
@@ -285,13 +285,10 @@ public final class ChangeStreamWatcher {
                         LOGGER.fine("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
                     }
                     
-                    // Apply changes asynchronously for better performance
-                    CompletableFuture.runAsync(() -> {
-                        applyDocumentToCache(fullDocument, docId);
-                    }).thenRunAsync(() -> {
-                        // Then reload from MongoDB to ensure consistency
-                        reloadDocumentFromMongoDB(docId);
-                    });
+                    // Instant async cache update - apply immediately without waiting
+                    CompletableFuture.runAsync(() -> applyDocumentToCache(fullDocument, docId));
+                    // Parallel reload from MongoDB for consistency check
+                    CompletableFuture.runAsync(() -> reloadDocumentFromMongoDB(docId));
                 }
                 // Trigger plugin reload
                 triggerCacheReload("🔄 Document " + opType + " detected", true);

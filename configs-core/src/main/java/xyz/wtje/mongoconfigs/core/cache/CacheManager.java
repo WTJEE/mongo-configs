@@ -250,8 +250,8 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
-        invalidateCollection(collection);
-        return CompletableFuture.completedFuture(null);
+        // Instant async invalidation without blocking
+        return CompletableFuture.runAsync(() -> invalidateCollection(collection));
     }
 
     public void invalidateAll() {

@@ -34,7 +34,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
     private final LanguageManagerImpl languageManager;
     private final LanguageConfiguration config;
-    private final Inventory inventory;
+    private volatile Inventory inventory; // volatile for thread-safe lazy init
     private final Player player;
 
     private static final Map<String, ItemStack> CACHED_HEADS = new ConcurrentHashMap<>();
@@ -52,38 +52,42 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public CompletableFuture<Void> openAsync() {
-        // Check if heads are preloaded
-        CompletableFuture<Void> preloadFuture = CACHED_HEADS.isEmpty() 
-            ? CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages())
-            : CompletableFuture.completedFuture(null);
+        // Start building items immediately in parallel
+        CompletableFuture<Map<Integer, ItemStack>> itemsFuture = buildInventoryAsync();
         
-        return preloadFuture
-            .thenCompose(v -> buildInventoryAsync())
-            .thenAccept(itemsToSet -> {
-                Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                    try {
-                        // Create inventory on main thread if not exists
-                        if (inventory == null) {
-                            inventory = Bukkit.createInventory(this, config.getGuiSize(),
-                                ColorHelper.parseComponent(config.getGuiTitle()));
-                        }
-                        // Set items
-                        itemsToSet.forEach(inventory::setItem);
-                        // Open for player
-                        player.openInventory(inventory);
-                    } catch (Exception e) {
-                        player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
-                        e.printStackTrace();
+        // If heads not cached, preload them in parallel (don't wait)
+        if (CACHED_HEADS.isEmpty()) {
+            CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages());
+        }
+        
+        return itemsFuture.thenAccept(itemsToSet -> {
+            Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                try {
+                    // Fast inventory creation and opening on main thread
+                    if (inventory == null) {
+                        inventory = Bukkit.createInventory(this, config.getGuiSize(),
+                            ColorHelper.parseComponent(config.getGuiTitle()));
+                    } else {
+                        inventory.clear(); // Clear existing items for refresh
                     }
-                });
-            })
-            .exceptionally(throwable -> {
-                Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                    player.sendMessage("§c[ERROR] Failed to build GUI: " + throwable.getMessage());
-                    throwable.printStackTrace();
-                });
-                return null;
+                    
+                    // Batch set items for performance
+                    itemsToSet.forEach(inventory::setItem);
+                    
+                    // Open immediately
+                    player.openInventory(inventory);
+                } catch (Exception e) {
+                    player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
+                    e.printStackTrace();
+                }
             });
+        }).exceptionally(throwable -> {
+            Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                player.sendMessage("§c[ERROR] Failed to build GUI: " + throwable.getMessage());
+                throwable.printStackTrace();
+            });
+            return null;
+        });
     }
     
     public void open() {

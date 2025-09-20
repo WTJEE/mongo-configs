@@ -198,24 +198,22 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     }
 
     private void openLanguageGUIAsync(Player player, String playerLanguage) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
-                
-                // Open GUI async, fallback to simple mode if needed
-                gui.openAsync().exceptionally(throwable -> {
-                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                        player.sendMessage("§6[INFO] Using simplified GUI mode");
-                    });
-                    gui.openSimpleAsync();
-                    return null;
-                });
-            } catch (Exception e) {
-                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                    player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
-                });
-                showLanguageInfoAsync(player, player.getUniqueId().toString(), playerLanguage);
-            }
+        // Create GUI object immediately (lightweight operation)
+        LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
+        
+        // Open GUI instantly async
+        gui.openAsync().exceptionally(throwable -> {
+            // Log error but don't block
+            getPlugin().getLogger().warning("GUI open failed: " + throwable.getMessage());
+            
+            // Try simple mode as fallback
+            org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                player.sendMessage("§6[INFO] Using fallback display mode");
+            });
+            
+            // Show language info instead
+            showLanguageInfoAsync(player, player.getUniqueId().toString(), playerLanguage);
+            return null;
         });
     }
     
