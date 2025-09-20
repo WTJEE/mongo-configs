@@ -228,12 +228,29 @@ public final class ChangeStreamWatcher {
                 } else if (idValue.isObjectId()) {
                     docId = idValue.asObjectId().getValue().toString();
                 } else {
-                    docId = idValue.toString();
+                    // Async conversion to avoid BsonDocument.toJson() blocking
+                    CompletableFuture.supplyAsync(() -> idValue.toString())
+                        .thenAccept(convertedId -> {
+                            String finalDocId = convertedId;
+                            processDocumentChangeAsync(opType, finalDocId, event);
+                        });
+                    return; // Exit early for async processing
                 }
             }
         }
 
-        // Process all change types
+        // Process normally for simple cases
+        processDocumentChangeAsync(opType, docId, event);
+    }
+    
+    private void processDocumentChangeAsync(String opType, String docId, ChangeStreamDocument<Document> event) {
+        // Move processing to async thread to avoid blocking main thread
+        CompletableFuture.runAsync(() -> {
+            processDocumentChangeSync(opType, docId, event);
+        });
+    }
+    
+    private void processDocumentChangeSync(String opType, String docId, ChangeStreamDocument<Document> event) {
         switch (opType) {
             case "insert":
             case "update":

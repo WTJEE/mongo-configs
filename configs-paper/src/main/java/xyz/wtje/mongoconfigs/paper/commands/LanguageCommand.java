@@ -13,6 +13,7 @@ import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class LanguageCommand implements CommandExecutor, TabCompleter {
@@ -53,53 +54,66 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleCommand(Player player, String[] args, String playerLanguage) {
-
-        if (args.length == 0) {
-            try {
-                openLanguageGUI(player, playerLanguage);
-            } catch (Exception e) {
-                player.sendMessage("§c[ERROR] Failed to open GUI: " + e.getMessage());
-                showLanguageInfo(player, player.getUniqueId().toString(), playerLanguage);
+        // Immediately return from main thread and handle everything async
+        CompletableFuture.runAsync(() -> {
+            if (args.length == 0) {
+                // Open GUI completely asynchronously
+                openLanguageGUIAsync(player, playerLanguage);
+                return;
             }
-            return;
-        }
 
-        String requestedLanguage = args[0].toLowerCase();
-
+            String requestedLanguage = args[0].toLowerCase();
+            
+            // Handle language setting asynchronously
+            handleLanguageSettingAsync(player, requestedLanguage, playerLanguage);
+        }).exceptionally(throwable -> {
+            // Send error message on main thread
+            org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                player.sendMessage("§c[ERROR] Command processing failed: " + throwable.getMessage());
+            });
+            return null;
+        });
+    }
+    
+    private void handleLanguageSettingAsync(Player player, String requestedLanguage, String playerLanguage) {
         languageManager.getSupportedLanguages()
-            .whenComplete((supportedLanguages, error) -> {
+            .whenCompleteAsync((supportedLanguages, error) -> {
                 if (error != null) {
-                    player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    });
                     return;
                 }
                 
                 boolean isSupported = Arrays.asList(supportedLanguages).contains(requestedLanguage);
                 if (!isSupported) {
-                    String unsupportedMessage = config.getMessage("commands.language.unsupported", playerLanguage)
-                        .replace("{language}", requestedLanguage);
-                    player.sendMessage(ColorHelper.parseComponent(unsupportedMessage));
-                    showAvailableLanguages(player, playerLanguage);
+                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        String unsupportedMessage = config.getMessage("commands.language.unsupported", playerLanguage)
+                            .replace("{language}", requestedLanguage);
+                        player.sendMessage(ColorHelper.parseComponent(unsupportedMessage));
+                    });
+                    showAvailableLanguagesAsync(player, playerLanguage);
                     return;
                 }
                 
-                
-                setPlayerLanguage(player, requestedLanguage, playerLanguage);
+                setPlayerLanguageAsync(player, requestedLanguage, playerLanguage);
             });
     }
     
-    private void setPlayerLanguage(Player player, String requestedLanguage, String playerLanguage) {
-
+    private void setPlayerLanguageAsync(Player player, String requestedLanguage, String playerLanguage) {
         languageManager.setPlayerLanguage(player.getUniqueId(), requestedLanguage)
-            .whenComplete((result, error) -> {
-                if (error != null) {
-                    String errorMessage = config.getMessage("commands.language.error", playerLanguage);
-                    player.sendMessage(ColorHelper.parseComponent(errorMessage));
-                } else {
-                    String displayName = config.getMessage("language.names." + requestedLanguage, requestedLanguage);
-                    String successMessage = config.getMessage("commands.language.success", playerLanguage)
-                        .replace("{language}", displayName);
-                    player.sendMessage(ColorHelper.parseComponent(successMessage));
-                }
+            .whenCompleteAsync((result, error) -> {
+                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    if (error != null) {
+                        String errorMessage = config.getMessage("commands.language.error", playerLanguage);
+                        player.sendMessage(ColorHelper.parseComponent(errorMessage));
+                    } else {
+                        String displayName = config.getMessage("language.names." + requestedLanguage, requestedLanguage);
+                        String successMessage = config.getMessage("commands.language.success", playerLanguage)
+                            .replace("{language}", displayName);
+                        player.sendMessage(ColorHelper.parseComponent(successMessage));
+                    }
+                });
             });
     }
 
@@ -107,34 +121,43 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         return ColorHelper.colorize(text);
     }
 
-    private void showLanguageInfo(Player player, String playerId, String playerLanguage) {
+    private void showLanguageInfoAsync(Player player, String playerId, String playerLanguage) {
         languageManager.getPlayerLanguage(playerId)
-            .whenComplete((currentLanguage, error) -> {
+            .whenCompleteAsync((currentLanguage, error) -> {
                 if (error != null) {
-                    player.sendMessage("§c[ERROR] Failed to get language info: " + error.getMessage());
+                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        player.sendMessage("§c[ERROR] Failed to get language info: " + error.getMessage());
+                    });
                     return;
                 }
                 
-                String displayName = config.getMessage("language.names." + currentLanguage, currentLanguage);
-                String currentMessage = config.getMessage("commands.language.current", playerLanguage)
-                    .replace("{language}", displayName);
-                player.sendMessage(ColorHelper.parseComponent(currentMessage));
+                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    String displayName = config.getMessage("language.names." + currentLanguage, currentLanguage);
+                    String currentMessage = config.getMessage("commands.language.current", playerLanguage)
+                        .replace("{language}", displayName);
+                    player.sendMessage(ColorHelper.parseComponent(currentMessage));
+                });
 
-                showAvailableLanguages(player, playerLanguage);
+                showAvailableLanguagesAsync(player, playerLanguage);
             });
     }
 
-    private void showAvailableLanguages(Player player, String playerLanguage) {
-        String availableHeader = config.getMessage("commands.language.available-header", playerLanguage);
-        player.sendMessage(ColorHelper.parseComponent(availableHeader));
+    private void showAvailableLanguagesAsync(Player player, String playerLanguage) {
+        org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+            String availableHeader = config.getMessage("commands.language.available-header", playerLanguage);
+            player.sendMessage(ColorHelper.parseComponent(availableHeader));
+        });
 
         languageManager.getSupportedLanguages()
-            .whenComplete((supportedLanguages, error) -> {
+            .whenCompleteAsync((supportedLanguages, error) -> {
                 if (error != null) {
-                    player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        player.sendMessage("§c[ERROR] Failed to get supported languages: " + error.getMessage());
+                    });
                     return;
                 }
                 
+                // Build message async, send on main thread
                 StringBuilder languages = new StringBuilder();
                 for (int i = 0; i < supportedLanguages.length; i++) {
                     String lang = supportedLanguages[i];
@@ -151,10 +174,11 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
                     }
                 }
 
-                player.sendMessage(ColorHelper.parseComponent(languages.toString()));
-
-                String usageMessage = config.getMessage("commands.language.usage", playerLanguage);
-                player.sendMessage(ColorHelper.parseComponent(usageMessage));
+                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    player.sendMessage(ColorHelper.parseComponent(languages.toString()));
+                    String usageMessage = config.getMessage("commands.language.usage", playerLanguage);
+                    player.sendMessage(ColorHelper.parseComponent(usageMessage));
+                });
             });
     }
 
@@ -173,20 +197,30 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         return List.of();
     }
 
-    private void openLanguageGUI(Player player, String playerLanguage) {
-        try {
-            LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
-
+    private void openLanguageGUIAsync(Player player, String playerLanguage) {
+        CompletableFuture.runAsync(() -> {
             try {
-                gui.open();
-            } catch (Exception asyncError) {
-                player.sendMessage("§6[INFO] Using simplified GUI mode");
-                gui.openSimple();
+                LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
+                
+                // Open GUI async, fallback to simple mode if needed
+                gui.openAsync().exceptionally(throwable -> {
+                    org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        player.sendMessage("§6[INFO] Using simplified GUI mode");
+                    });
+                    gui.openSimpleAsync();
+                    return null;
+                });
+            } catch (Exception e) {
+                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
+                });
+                showLanguageInfoAsync(player, player.getUniqueId().toString(), playerLanguage);
             }
-        } catch (Exception e) {
-            player.sendMessage("§c[ERROR] Exception in openLanguageGUI: " + e.getMessage());
-            showLanguageInfo(player, player.getUniqueId().toString(), playerLanguage);
-        }
+        });
+    }
+    
+    private org.bukkit.plugin.Plugin getPlugin() {
+        return org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(LanguageCommand.class);
     }
 }
 

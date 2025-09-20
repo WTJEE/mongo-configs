@@ -246,28 +246,35 @@ public class ConfigManagerImpl implements ConfigManager {
                             }
                         }
 
-                        // Load language data into cache
+                        // Load language data into cache asynchronously
                         return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
-                            .thenRun(() -> {
-                                int loadedLanguages = 0;
+                            .thenCompose(unused -> {
+                                // Process results asynchronously instead of blocking with .join()
+                                List<CompletableFuture<Void>> cachingFutures = new ArrayList<>();
+                                
                                 for (CompletableFuture<LanguageDocument> future : languageFutures) {
-                                    try {
-                                        LanguageDocument langDoc = future.join(); 
-                                        if (langDoc != null && langDoc.getData() != null) {
-                                            cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
-                                            loadedLanguages++;
-                                        }
-                                    } catch (Exception e) {
-                                        if (config.isVerboseLogging()) {
-                                            LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, e);
-                                        }
-                                    }
+                                    CompletableFuture<Void> cachingFuture = future
+                                        .thenAcceptAsync(langDoc -> {
+                                            if (langDoc != null && langDoc.getData() != null) {
+                                                cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
+                                            }
+                                        }, asyncExecutor)
+                                        .exceptionally(throwable -> {
+                                            if (config.isVerboseLogging()) {
+                                                LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, throwable);
+                                            }
+                                            return null;
+                                        });
+                                    cachingFutures.add(cachingFuture);
                                 }
-
+                                
+                                return CompletableFuture.allOf(cachingFutures.toArray(new CompletableFuture[0]));
+                            })
+                            .thenRun(() -> {
                                 // Always use INFO level logging regardless of debug settings
                                 LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI: " + collection +
                                             " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
-                                            " | Languages=" + loadedLanguages + "/" + finalExpectedLanguages.size() +
+                                            " | Languages=" + finalExpectedLanguages.size() +
                                             " | Timestamp=" + System.currentTimeMillis());
                                 
                                 // Notify any registered listeners about the reload
@@ -391,7 +398,7 @@ public class ConfigManagerImpl implements ConfigManager {
                         if (config.isVerboseLogging()) {
                             LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
                         }
-                        ensureLanguageDocumentsExist(collection, expectedLanguages).join();
+                        ensureLanguageDocumentsExist(collection, expectedLanguages);
                     } else if (config.isVerboseLogging()) {
                         LOGGER.info("No expected languages found for collection: " + collection + ", skipping document check");
                     }
