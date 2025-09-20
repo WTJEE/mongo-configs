@@ -664,6 +664,11 @@ public class ConfigManagerImpl implements ConfigManager {
                         // Don't use .join() to avoid potential deadlocks
                         // Pass false to avoid double cache invalidation (change stream already invalidated)
                         reloadCollection(changedCollection, false)
+                            .thenRun(() -> {
+                                if (config.isDebugLogging()) {
+                                    LOGGER.info("✅ Collection reload completed for: " + changedCollection);
+                                }
+                            })
                             .exceptionally(throwable -> {
                                 LOGGER.log(Level.WARNING, "Error reloading collection from change stream: " + changedCollection, throwable);
                                 return null;

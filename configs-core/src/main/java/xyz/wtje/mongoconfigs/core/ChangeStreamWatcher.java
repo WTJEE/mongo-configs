@@ -239,36 +239,37 @@ public final class ChangeStreamWatcher {
             case "replace":
                 var fullDocument = event.getFullDocument();
                 if (fullDocument != null && docId != null) {
-                    cache.put(docId, fullDocument);
+                    // Simply reload the document from MongoDB and update cache
+                    reloadDocumentFromMongoDB(docId);
                 }
-                applyDocumentToCache(fullDocument, docId);
-                triggerCacheReload("Document " + opType + " detected", false);
+                // Trigger plugin reload
+                triggerCacheReload("🔄 Document " + opType + " detected", true);
                 break;
 
             case "delete": {
                 Document removedDocument = docId != null ? cache.remove(docId) : null;
                 handleDocumentDeletion(removedDocument, docId);
-                triggerCacheReload("Document deletion detected", true);
+                triggerCacheReload("🗑️ Document deletion detected", true);
                 break;
             }
 
             case "drop":
                 cache.clear();
-                triggerCacheReload("Collection dropped", true);
+                triggerCacheReload("💥 Collection dropped", true);
                 break;
 
             case "rename":
                 cache.clear();
-                triggerCacheReload("Collection renamed", true);
+                triggerCacheReload("📛 Collection renamed", true);
                 break;
 
             case "dropDatabase":
                 cache.clear();
-                triggerCacheReload("Database dropped", true);
+                triggerCacheReload("💀 Database dropped", true);
                 break;
 
             default:
-                triggerCacheReload("Other operation: " + opType, true);
+                triggerCacheReload("🔄 Other operation: " + opType, true);
                 break;
         }
     }
@@ -341,6 +342,68 @@ public final class ChangeStreamWatcher {
     }
 
     /**
+     * Force reload specific document from MongoDB and update cache
+     */
+    private void reloadDocumentFromMongoDB(String docId) {
+        if (docId == null || docId.isEmpty()) return;
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Convert string ID to proper BSON type
+                Object bsonId;
+                try {
+                    // Try ObjectId first
+                    bsonId = new org.bson.types.ObjectId(docId);
+                } catch (Exception e) {
+                    // Fallback to string ID
+                    bsonId = docId;
+                }
+                
+                Document filter = new Document("_id", bsonId);
+                collection.find(filter).first().subscribe(new Subscriber<Document>() {
+                    @Override
+                    public void onSubscribe(Subscription s) { s.request(1); }
+
+                    @Override
+                    public void onNext(Document freshDoc) {
+                        if (freshDoc != null) {
+                            // Update local cache
+                            cache.put(docId, freshDoc);
+                            
+                            // Update CacheManager cache directly
+                            if (cacheManager != null) {
+                                if (isConfigDocument(docId, freshDoc)) {
+                                    Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
+                                    cacheManager.putConfigData(collectionName, configData);
+                                    LOGGER.info("🔄 Reloaded CONFIG document " + docId + " from MongoDB to cache");
+                                } else {
+                                    String lang = freshDoc.getString("lang");
+                                    if (lang != null && !lang.isEmpty()) {
+                                        Map<String, Object> messageData = copyDocumentExcluding(freshDoc, Set.of("_id", "lang", "updatedAt"));
+                                        cacheManager.putMessageData(collectionName, lang, messageData);
+                                        LOGGER.info("🔄 Reloaded LANGUAGE document " + docId + " (lang: " + lang + ") from MongoDB to cache");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        LOGGER.log(Level.WARNING, "Failed to reload document " + docId + " from MongoDB", t);
+                    }
+
+                    @Override
+                    public void onComplete() {}
+                });
+                
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error reloading document " + docId + " from MongoDB", e);
+            }
+        });
+    }
+
+    /**
      * Trigger cache reload with consistent error handling
      */
     private void triggerCacheReload(String reason) {
@@ -351,17 +414,18 @@ public final class ChangeStreamWatcher {
         if (cacheManager != null && reloadCallback != null) {
             CompletableFuture.runAsync(() -> {
                 try {
-                    LOGGER.info(reason + " - refreshing cache for: " + collectionName);
+                    LOGGER.info("🎯 " + reason + " - refreshing cache for: " + collectionName + 
+                               " (invalidateCache: " + invalidateCache + ")");
                     if (invalidateCache) {
                         cacheManager.invalidateCollection(collectionName);
                     }
                     reloadCallback.accept(collectionName);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "CRITICAL: Cache reload failed for " + collectionName, e);
+                    LOGGER.log(Level.SEVERE, "💥 CRITICAL: Cache reload failed for " + collectionName, e);
                 }
             });
         } else {
-            LOGGER.warning("No cache manager or reload callback set for collection: " + collectionName);
+            LOGGER.warning("⚠️ No cache manager or reload callback set for collection: " + collectionName);
         }
     }
 
