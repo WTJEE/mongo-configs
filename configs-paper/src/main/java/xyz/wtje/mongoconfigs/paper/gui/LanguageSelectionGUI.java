@@ -57,15 +57,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
             // Preload heads first if not already done
             return CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages())
                 .thenCompose(v -> buildInventoryAsync())
-                .thenAccept(builtInventory -> {
+                .thenAccept(itemsToSet -> {
                     Bukkit.getScheduler().runTask(getPlugin(), () -> {
                         try {
-                            for (int i = 0; i < builtInventory.getSize(); i++) {
-                                ItemStack item = builtInventory.getItem(i);
-                                if (item != null) {
-                                    inventory.setItem(i, item);
-                                }
-                            }
+                            itemsToSet.forEach(inventory::setItem);
                             player.openInventory(inventory);
                         } catch (Exception e) {
                             player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
@@ -76,15 +71,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
         
         // Heads already cached, build directly
-        return buildInventoryAsync().thenAccept(builtInventory -> {
+        return buildInventoryAsync().thenAccept(itemsToSet -> {
             Bukkit.getScheduler().runTask(getPlugin(), () -> {
                 try {
-                    for (int i = 0; i < builtInventory.getSize(); i++) {
-                        ItemStack item = builtInventory.getItem(i);
-                        if (item != null) {
-                            inventory.setItem(i, item);
-                        }
-                    }
+                    itemsToSet.forEach(inventory::setItem);
                     player.openInventory(inventory);
                 } catch (Exception e) {
                     player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
@@ -104,40 +94,38 @@ public class LanguageSelectionGUI implements InventoryHolder {
         });
     }
 
-    private CompletableFuture<Inventory> buildInventoryAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            // Pre-create inventory structure on async thread
-            Inventory tempInventory = Bukkit.createInventory(null, config.getGuiSize(),
-                Component.text("Building...", NamedTextColor.GRAY));
-            
+    private CompletableFuture<Map<Integer, ItemStack>> buildInventoryAsync() {
+        // Build the item set asynchronously; create/open the Inventory on the main thread later
+        CompletableFuture<Map<Integer, ItemStack>> base = CompletableFuture.supplyAsync(() -> {
+            Map<Integer, ItemStack> items = new HashMap<>();
             ItemStack closeButton = createCloseButton();
-            tempInventory.setItem(config.getCloseButtonSlot(), closeButton);
-            
-            return tempInventory;
-        }).thenCombine(
+            items.put(config.getCloseButtonSlot(), closeButton);
+            return items;
+        });
+
+        return base.thenCombine(
             languageManager.getSupportedLanguages().thenCombine(
                 languageManager.getPlayerLanguage(player.getUniqueId().toString()),
                 (supportedLanguages, currentLanguage) -> {
-                    // Build all items async
-                    Map<Integer, ItemStack> itemsToSet = new HashMap<>();
+                    // Build language items async
+                    Map<Integer, ItemStack> langItems = new HashMap<>();
                     int slot = config.getGuiStartSlot();
 
                     for (String language : supportedLanguages) {
                         ItemStack item = buildLanguageItemCompleteAsync(language, language.equals(currentLanguage), currentLanguage);
-                        itemsToSet.put(slot, item);
+                        langItems.put(slot, item);
                         slot++;
 
                         if (slot % 9 == 8) {
                             slot += 2;
                         }
                     }
-                    return itemsToSet;
+                    return langItems;
                 }
             ),
-            (tempInventory, itemsToSet) -> {
-                // Apply items to inventory
-                itemsToSet.forEach(tempInventory::setItem);
-                return tempInventory;
+            (baseItems, langItems) -> {
+                baseItems.putAll(langItems);
+                return baseItems;
             }
         );
     }
