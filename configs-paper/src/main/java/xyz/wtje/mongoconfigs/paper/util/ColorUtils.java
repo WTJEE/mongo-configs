@@ -20,6 +20,18 @@ public final class ColorUtils {
             .recordStats()
             .build();
 
+    private static final Cache<String, Component> COMPONENT_CACHE = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(Duration.ofMinutes(30))
+            .recordStats()
+            .build();
+
+    private static final Cache<String, String> PREPROCESSED_MESSAGE_CACHE = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(Duration.ofMinutes(30))
+            .recordStats()
+            .build();
+
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
 
     private static final LegacyComponentSerializer LEGACY_SERIALIZER =
@@ -70,13 +82,20 @@ public final class ColorUtils {
 
     public static Component parseComponent(String message) {
         if (message == null || message.isEmpty()) return Component.empty();
+        Component cached = COMPONENT_CACHE.getIfPresent(message);
+        if (cached != null) {
+            return cached;
+        }
+        Component component;
         try {
             String processed = preprocessToMiniMessage(message);
-            return MINI_MESSAGE.deserialize(processed);
+            component = MINI_MESSAGE.deserialize(processed);
         } catch (Exception e) {
             String sanitized = removeAngleBrackets(message);
-            return Component.text(ChatColor.translateAlternateColorCodes('&', sanitized));
+            component = Component.text(ChatColor.translateAlternateColorCodes('&', sanitized));
         }
+        COMPONENT_CACHE.put(message, component);
+        return component;
     }
 
     public static String componentToLegacy(Component component) {
@@ -85,6 +104,8 @@ public final class ColorUtils {
 
     public static void clearCache() {
         COLOR_CACHE.invalidateAll();
+        COMPONENT_CACHE.invalidateAll();
+        PREPROCESSED_MESSAGE_CACHE.invalidateAll();
     }
 
     private static final Pattern RGB_FUNC = Pattern.compile("&\\{(\\d{1,3}),(\\d{1,3}),(\\d{1,3})}");
@@ -99,10 +120,19 @@ public final class ColorUtils {
 
     private static String preprocessToMiniMessage(String input) {
         if (input == null || input.isEmpty()) return input;
+        String cached = PREPROCESSED_MESSAGE_CACHE.getIfPresent(input);
+        if (cached != null) {
+            return cached;
+        }
+        String processed = preprocessToMiniMessageUncached(input);
+        PREPROCESSED_MESSAGE_CACHE.put(input, processed);
+        return processed;
+    }
 
-    String out = input;
+    private static String preprocessToMiniMessageUncached(String input) {
+        String out = input;
 
-        out = out.replace('§', '&');
+        out = out.replace((char) 0x00A7, '&');
 
         out = expandGradientAliases(out);
 

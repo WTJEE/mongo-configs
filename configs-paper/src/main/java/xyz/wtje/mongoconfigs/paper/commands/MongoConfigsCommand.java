@@ -16,11 +16,11 @@ import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
@@ -28,6 +28,8 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     private final LanguageManagerImpl languageManager;
     private final MongoConfigsPlugin plugin;
     private final LanguageConfiguration languageConfig;
+
+    private final ConcurrentMap<CommandSender, CompletableFuture<Void>> messageQueue = new ConcurrentHashMap<>();
 
     public MongoConfigsCommand(ConfigManagerImpl configManager, LanguageManagerImpl languageManager, 
                               MongoConfigsPlugin plugin, LanguageConfiguration languageConfig) {
@@ -56,7 +58,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
 
         if (!sender.hasPermission("mongoconfigs.admin")) {
             String noPermissionMessage = languageConfig.getMessage("commands.no-permission", senderLanguage);
-            sender.sendMessage(ColorHelper.parseComponent(noPermissionMessage));
+            sendMessagesAsync(sender, noPermissionMessage);
             return;
         }
 
@@ -78,7 +80,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             default -> {
                 String unknownSubcommandMessage = languageConfig.getMessage("commands.admin.unknown-subcommand", senderLanguage)
                     .replace("{subcommand}", subcommand);
-                sender.sendMessage(ColorHelper.parseComponent(unknownSubcommandMessage));
+                sendMessagesAsync(sender, unknownSubcommandMessage);
                 showHelp(sender);
             }
         }
@@ -97,49 +99,77 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         return CompletableFuture.completedFuture("en");
     }
 
+    private void sendMessagesAsync(CommandSender sender, String... messages) {
+        List<String> filtered = Arrays.stream(messages)
+            .filter(message -> message != null && !message.isEmpty())
+            .toList();
+        if (filtered.isEmpty()) {
+            return;
+        }
+
+        messageQueue.compute(sender, (key, current) -> {
+            CompletableFuture<Void> base = current == null ? CompletableFuture.completedFuture(null) : current;
+            CompletableFuture<Void> next = base.handle((ignored, error) -> null)
+                .thenCompose(ignored -> CompletableFuture.supplyAsync(() -> filtered.stream()
+                        .map(ColorHelper::parseComponent)
+                        .toList())
+                    .thenAccept(components -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        for (Component component : components) {
+                            sender.sendMessage(component);
+                        }
+                    }))
+                );
+
+            next.whenComplete((ignored, error) ->
+                messageQueue.compute(key, (innerKey, existing) -> existing == next ? null : existing)
+            );
+            return next;
+        });
+    }
+
     private void handleReload(CommandSender sender, String[] args, String senderLanguage) {
         String reloadingMessage = languageConfig.getMessage("commands.admin.reloading", senderLanguage);
-        sender.sendMessage(ColorHelper.parseComponent(reloadingMessage));
+        sendMessagesAsync(sender, reloadingMessage);
 
         if (args.length > 1) {
             String collection = args[1];
-            sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading collection: &f" + collection));
+            sendMessagesAsync(sender, "&e🔄 Reloading collection: &f" + collection);
 
             configManager.reloadCollection(collection)
                 .thenRun(() -> {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         String reloadedCollectionMessage = languageConfig.getMessage("commands.admin.reloaded-collection", senderLanguage)
                             .replace("{collection}", collection);
-                        sender.sendMessage(ColorHelper.parseComponent(reloadedCollectionMessage));
-                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Collection '" + collection + "' reloaded successfully!"));
+                        sendMessagesAsync(sender, reloadedCollectionMessage);
+                        sendMessagesAsync(sender, "&a✅ Collection '" + collection + "' reloaded successfully!");
                     });
                 })
                 .exceptionally(throwable -> {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                             .replace("{error}", throwable.getMessage());
-                        sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collection '" + collection + "': " + throwable.getMessage()));
+                        sendMessagesAsync(sender, reloadErrorMessage);
+                        sendMessagesAsync(sender, "&c❌ Error reloading collection '" + collection + "': " + throwable.getMessage());
                     });
                     return null;
                 });
         } else {
-            sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading plugin configuration..."));
+            sendMessagesAsync(sender, "&e🔄 Reloading plugin configuration...");
 
             CompletableFuture.runAsync(() -> {
                 try {
                     plugin.reloadPlugin();
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         String reloadSuccessMessage = languageConfig.getMessage("commands.admin.reload-success", senderLanguage);
-                        sender.sendMessage(ColorHelper.parseComponent(reloadSuccessMessage));
-                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Plugin configuration reloaded!"));
+                        sendMessagesAsync(sender, reloadSuccessMessage);
+                        sendMessagesAsync(sender, "&a✅ Plugin configuration reloaded!");
                     });
                 } catch (Exception e) {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                             .replace("{error}", e.getMessage());
-                        sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading plugin: " + e.getMessage()));
+                        sendMessagesAsync(sender, reloadErrorMessage);
+                        sendMessagesAsync(sender, "&c❌ Error reloading plugin: " + e.getMessage());
                     });
                 }
             });
@@ -147,7 +177,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleReloadAll(CommandSender sender, String senderLanguage) {
-        sender.sendMessage(ColorHelper.parseComponent("&e🔄 Reloading ALL collections from MongoDB..."));
+        sendMessagesAsync(sender, "&e🔄 Reloading ALL collections from MongoDB...");
 
         configManager.reloadAll()
             .thenCompose(ignored -> configManager.getCollections())
@@ -155,39 +185,39 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 if (throwable != null) {
                     String reloadErrorMessage = languageConfig.getMessage("commands.admin.reload-error", senderLanguage)
                         .replace("{error}", throwable.getMessage());
-                    sender.sendMessage(ColorHelper.parseComponent(reloadErrorMessage));
-                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading collections: " + throwable.getMessage()));
+                    sendMessagesAsync(sender, reloadErrorMessage);
+                    sendMessagesAsync(sender, "&c❌ Error reloading collections: " + throwable.getMessage());
                     return;
                 }
 
-                sender.sendMessage(ColorHelper.parseComponent("&a✅ All collections reloaded successfully from MongoDB!"));
+                sendMessagesAsync(sender, "&a✅ All collections reloaded successfully from MongoDB!");
 
                 // Refresh GUI messages cache after successful reload
                 try {
                     plugin.refreshGUIMessages();
-                    sender.sendMessage(ColorHelper.parseComponent("&a✅ GUI messages cache refreshed!"));
+                    sendMessagesAsync(sender, "&a✅ GUI messages cache refreshed!");
                 } catch (Exception e) {
-                    sender.sendMessage(ColorHelper.parseComponent("&e⚠ Warning: GUI cache refresh failed: " + e.getMessage()));
+                    sendMessagesAsync(sender, "&e⚠ Warning: GUI cache refresh failed: " + e.getMessage());
                 }
 
                 if (collections != null) {
-                    sender.sendMessage(ColorHelper.parseComponent("&7📋 Reloaded collections: &f" + collections.size()));
+                    sendMessagesAsync(sender, "&7📋 Reloaded collections: &f" + collections.size());
                     for (String collection : collections) {
-                        sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                        sendMessagesAsync(sender, "&7  - &a" + collection);
                     }
                 } else {
-                    sender.sendMessage(ColorHelper.parseComponent("&7Could not list collections: result unavailable."));
+                    sendMessagesAsync(sender, "&7Could not list collections: result unavailable.");
                 }
             }));
     }
 
     private void handleCollections(CommandSender sender) {
-        sender.sendMessage(ColorHelper.parseComponent("&e🔍 Loading collections from MongoDB..."));
+        sendMessagesAsync(sender, "&e🔍 Loading collections from MongoDB...");
 
         configManager.getCollections()
             .thenAccept(collections -> plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage(Component.text("§6=== Available Collections ===").color(NamedTextColor.GOLD));
-                sender.sendMessage(ColorHelper.parseComponent("&7📋 Collections: &f" + collections.size()));
+                sendMessagesAsync(sender, "&7📋 Collections: &f" + collections.size());
                 
                 
                 List<CompletableFuture<Void>> collectionFutures = collections.stream()
@@ -218,7 +248,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 CompletableFuture.allOf(collectionFutures.toArray(new CompletableFuture[0]))
                     .thenRun(() -> {
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            sender.sendMessage(ColorHelper.parseComponent("&a✅ Collections listing completed!"));
+                            sendMessagesAsync(sender, "&a✅ Collections listing completed!");
                         });
                     });
             }))
@@ -232,53 +262,53 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleTestCollections(CommandSender sender) {
-        sender.sendMessage(ColorHelper.parseComponent("&e🔬 Testing MongoDB collections detection..."));
+        sendMessagesAsync(sender, "&e🔬 Testing MongoDB collections detection...");
 
         try {
             var mongoManager = configManager.getMongoManager();
             var mongoCollections = mongoManager.getMongoCollections();
 
-            sender.sendMessage(ColorHelper.parseComponent("&7📋 Direct MongoDB collections: " + mongoCollections.size()));
+            sendMessagesAsync(sender, "&7📋 Direct MongoDB collections: " + mongoCollections.size());
             for (String collection : mongoCollections) {
-                sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                sendMessagesAsync(sender, "&7  - &a" + collection);
             }
 
         } catch (Exception e) {
-            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error accessing MongoDB directly: " + e.getMessage()));
+            sendMessagesAsync(sender, "&c❌ Error accessing MongoDB directly: " + e.getMessage());
         }
 
         configManager.getCollections()
             .thenAccept(collections -> {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(ColorHelper.parseComponent("&7📋 ConfigManager collections: " + collections.size()));
+                    sendMessagesAsync(sender, "&7📋 ConfigManager collections: " + collections.size());
                     for (String collection : collections) {
-                        sender.sendMessage(ColorHelper.parseComponent("&7  - &b" + collection));
+                        sendMessagesAsync(sender, "&7  - &b" + collection);
                     }
 
-                    sender.sendMessage(ColorHelper.parseComponent("&e🔄 Testing reload for each collection..."));
+                    sendMessagesAsync(sender, "&e🔄 Testing reload for each collection...");
                     for (String collection : collections) {
                         try {
                             configManager.reloadCollection(collection)
                                 .thenRun(() -> {
                                     plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Reloaded: " + collection));
+                                        sendMessagesAsync(sender, "&a✅ Reloaded: " + collection);
                                     });
                                 })
                                 .exceptionally(throwable -> {
                                     plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Error reloading " + collection + ": " + throwable.getMessage()));
+                                        sendMessagesAsync(sender, "&c❌ Error reloading " + collection + ": " + throwable.getMessage());
                                     });
                                     return null;
                                 });
                         } catch (Exception e) {
-                            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error queuing reload for " + collection + ": " + e.getMessage()));
+                            sendMessagesAsync(sender, "&c❌ Error queuing reload for " + collection + ": " + e.getMessage());
                         }
                     }
                 });
             })
             .exceptionally(throwable -> {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(ColorHelper.parseComponent("&c❌ Error getting collections from ConfigManager: " + throwable.getMessage()));
+                    sendMessagesAsync(sender, "&c❌ Error getting collections from ConfigManager: " + throwable.getMessage());
                 });
                 return null;
             });
@@ -297,9 +327,9 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleChangeStreams(CommandSender sender) {
-        sender.sendMessage(ColorHelper.parseComponent("&e📡 Change Detection Status..."));
-        sender.sendMessage(ColorHelper.parseComponent("&a✅ Auto-Updates: ENABLED"));
-        sender.sendMessage(ColorHelper.parseComponent("&7🔍 Method: Change Streams + Polling Fallback"));
+        sendMessagesAsync(sender, "&e📡 Change Detection Status...");
+        sendMessagesAsync(sender, "&a✅ Auto-Updates: ENABLED");
+        sendMessagesAsync(sender, "&7🔍 Method: Change Streams + Polling Fallback");
 
         try {
             // Check active watchers
@@ -310,24 +340,24 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                 java.util.Map<?, ?> watchers = (java.util.Map<?, ?>) field.get(configManager);
                 watcherCount = watchers.size();
                 
-                sender.sendMessage(ColorHelper.parseComponent("&7📊 Active Watchers: &f" + watcherCount));
+                sendMessagesAsync(sender, "&7📊 Active Watchers: &f" + watcherCount);
                 
                 for (Object collection : watchers.keySet()) {
-                    sender.sendMessage(ColorHelper.parseComponent("&7  - &a" + collection));
+                    sendMessagesAsync(sender, "&7  - &a" + collection);
                 }
             } catch (Exception e) {
-                sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking watchers: " + e.getMessage()));
+                sendMessagesAsync(sender, "&c❌ Error checking watchers: " + e.getMessage());
             }
             
-            sender.sendMessage(ColorHelper.parseComponent("&e🧪 To test: Update a document in MongoDB (auto-detected)"));
+            sendMessagesAsync(sender, "&e🧪 To test: Update a document in MongoDB (auto-detected)");
             
         } catch (Exception e) {
-            sender.sendMessage(ColorHelper.parseComponent("&c❌ Error checking change detection: " + e.getMessage()));
+            sendMessagesAsync(sender, "&c❌ Error checking change detection: " + e.getMessage());
         }
     }
 
     private void handleFixChangeStreams(CommandSender sender) {
-        sender.sendMessage(ColorHelper.parseComponent("&e🔧 Force-setting up change detection for all collections..."));
+        sendMessagesAsync(sender, "&e🔧 Force-setting up change detection for all collections...");
 
         configManager.getCollections().thenAccept(collections -> {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -335,12 +365,12 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
                     try {
                         // Force setup change detection for each collection
                         configManager.enableChangeStreamForCollection(collection);
-                        sender.sendMessage(ColorHelper.parseComponent("&a✅ Setup change detection for: " + collection));
+                        sendMessagesAsync(sender, "&a✅ Setup change detection for: " + collection);
                     } catch (Exception e) {
-                        sender.sendMessage(ColorHelper.parseComponent("&c❌ Failed for " + collection + ": " + e.getMessage()));
+                        sendMessagesAsync(sender, "&c❌ Failed for " + collection + ": " + e.getMessage());
                     }
                 }
-                sender.sendMessage(ColorHelper.parseComponent("&e✨ Change detection setup completed!"));
+                sendMessagesAsync(sender, "&e✨ Change detection setup completed!");
             });
         });
     }
