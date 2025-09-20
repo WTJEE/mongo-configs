@@ -47,41 +47,43 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.languageManager = languageManager;
         this.config = config;
 
-        this.inventory = Bukkit.createInventory(this, config.getGuiSize(),
-            ColorHelper.parseComponent(config.getGuiTitle()));
+        // Create inventory only when needed (on main thread)
+        this.inventory = null;
     }
 
     public CompletableFuture<Void> openAsync() {
         // Check if heads are preloaded
-        if (CACHED_HEADS.isEmpty()) {
-            // Preload heads first if not already done
-            return CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages())
-                .thenCompose(v -> buildInventoryAsync())
-                .thenAccept(itemsToSet -> {
-                    Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                        try {
-                            itemsToSet.forEach(inventory::setItem);
-                            player.openInventory(inventory);
-                        } catch (Exception e) {
-                            player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
-                            openSimpleAsync();
-                        }
-                    });
-                });
-        }
+        CompletableFuture<Void> preloadFuture = CACHED_HEADS.isEmpty() 
+            ? CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages())
+            : CompletableFuture.completedFuture(null);
         
-        // Heads already cached, build directly
-        return buildInventoryAsync().thenAccept(itemsToSet -> {
-            Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                try {
-                    itemsToSet.forEach(inventory::setItem);
-                    player.openInventory(inventory);
-                } catch (Exception e) {
-                    player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
-                    openSimpleAsync();
-                }
+        return preloadFuture
+            .thenCompose(v -> buildInventoryAsync())
+            .thenAccept(itemsToSet -> {
+                Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    try {
+                        // Create inventory on main thread if not exists
+                        if (inventory == null) {
+                            inventory = Bukkit.createInventory(this, config.getGuiSize(),
+                                ColorHelper.parseComponent(config.getGuiTitle()));
+                        }
+                        // Set items
+                        itemsToSet.forEach(inventory::setItem);
+                        // Open for player
+                        player.openInventory(inventory);
+                    } catch (Exception e) {
+                        player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                });
+            })
+            .exceptionally(throwable -> {
+                Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    player.sendMessage("§c[ERROR] Failed to build GUI: " + throwable.getMessage());
+                    throwable.printStackTrace();
+                });
+                return null;
             });
-        });
     }
     
     public void open() {
@@ -395,7 +397,9 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     
                     // Update inventory on main thread
                     Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                        itemsToUpdate.forEach(inventory::setItem);
+                        if (inventory != null) {
+                            itemsToUpdate.forEach(inventory::setItem);
+                        }
                     });
                     
                     return null;
@@ -424,6 +428,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
     @Override
     public Inventory getInventory() {
+        // Create inventory on-demand if needed (should only happen on main thread)
+        if (inventory == null) {
+            inventory = Bukkit.createInventory(this, config.getGuiSize(),
+                ColorHelper.parseComponent(config.getGuiTitle()));
+        }
         return inventory;
     }
 
@@ -531,6 +540,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
                     // Apply to inventory and open on main thread
                     Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        // Create inventory on main thread if not exists
+                        if (inventory == null) {
+                            inventory = Bukkit.createInventory(LanguageSelectionGUI.this, config.getGuiSize(),
+                                ColorHelper.parseComponent(config.getGuiTitle()));
+                        }
                         itemsToSet.forEach(inventory::setItem);
                         player.openInventory(inventory);
                     });

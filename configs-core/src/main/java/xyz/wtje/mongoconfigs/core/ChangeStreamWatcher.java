@@ -285,11 +285,13 @@ public final class ChangeStreamWatcher {
                         LOGGER.fine("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
                     }
                     
-                    // Direct update to CacheManager for immediate effect
-                    applyDocumentToCache(fullDocument, docId);
-                    
-                    // Also reload from MongoDB to ensure consistency
-                    reloadDocumentFromMongoDB(docId);
+                    // Apply changes asynchronously for better performance
+                    CompletableFuture.runAsync(() -> {
+                        applyDocumentToCache(fullDocument, docId);
+                    }).thenRunAsync(() -> {
+                        // Then reload from MongoDB to ensure consistency
+                        reloadDocumentFromMongoDB(docId);
+                    });
                 }
                 // Trigger plugin reload
                 triggerCacheReload("🔄 Document " + opType + " detected", true);
@@ -431,11 +433,11 @@ public final class ChangeStreamWatcher {
                             // Update local cache
                             cache.put(docId, freshDoc);
                             
-                            // Update CacheManager cache directly
+                            // Update CacheManager cache directly - use replace to ensure proper cache update
                             if (cacheManager != null) {
                                 if (isConfigDocument(docId, freshDoc)) {
                                     Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
-                                    cacheManager.putConfigData(collectionName, configData);
+                                    cacheManager.replaceConfigData(collectionName, configData);
                                     if (LOGGER.isLoggable(Level.FINE)) {
                                         LOGGER.fine("⭐ ZAKTUALIZOWANO CACHE CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
                                     }
@@ -443,7 +445,7 @@ public final class ChangeStreamWatcher {
                                     String lang = freshDoc.getString("lang");
                                     if (lang != null && !lang.isEmpty()) {
                                         Map<String, Object> messageData = copyDocumentExcluding(freshDoc, Set.of("_id", "lang", "updatedAt"));
-                                        cacheManager.putMessageData(collectionName, lang, messageData);
+                                        cacheManager.replaceLanguageData(collectionName, lang, messageData);
                                         if (LOGGER.isLoggable(Level.FINE)) {
                                             LOGGER.fine("⭐ ZAKTUALIZOWANO CACHE LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
                                         }
@@ -480,22 +482,36 @@ public final class ChangeStreamWatcher {
     }
 
     private void triggerCacheReload(String reason, boolean invalidateCache) {
-        if (cacheManager != null && reloadCallback != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    LOGGER.info("🎯 INWALIDACJA I PRZEŁADOWANIE CACHE: " + reason + " - odświeżam cache dla: " + collectionName + 
-                               " (invalidateCache: " + invalidateCache + ")");
-                    if (invalidateCache) {
+        if (cacheManager == null || reloadCallback == null) {
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine("⚠️ No cacheManager or reloadCallback for collection: " + collectionName);
+            }
+            return;
+        }
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                if (LOGGER.isLoggable(Level.FINE)) {
+                    LOGGER.fine("🎯 Cache invalidation/reload: " + reason + " for: " + collectionName);
+                }
+                
+                if (invalidateCache) {
+                    // Invalidate async and wait for completion
+                    CompletableFuture<Void> invalidateFuture = cacheManager.invalidateCollectionAsync(collectionName);
+                    if (invalidateFuture != null) {
+                        invalidateFuture.join(); // Wait for invalidation to complete
+                    } else {
                         cacheManager.invalidateCollection(collectionName);
                     }
-                    reloadCallback.accept(collectionName);
-                } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "💥 KRYTYCZNY: Inwalidacja/odświeżenie cache nie powiodło się dla kolekcji: " + collectionName, e);
                 }
-            });
-        } else {
-            LOGGER.warning("⚠️ BŁĄD: Brak cacheManager lub reloadCallback dla kolekcji: " + collectionName);
-        }
+                
+                // Then reload
+                reloadCallback.accept(collectionName);
+                
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Cache invalidation/reload failed for collection: " + collectionName, e);
+            }
+        }, java.util.concurrent.ForkJoinPool.commonPool());
     }
 
     private void scheduleReconnect() {
