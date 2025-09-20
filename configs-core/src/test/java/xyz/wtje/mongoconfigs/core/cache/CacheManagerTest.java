@@ -93,6 +93,24 @@ class CacheManagerTest {
     }
 
     @Test
+    void testPutMessageDataFlattensNestedMaps() {
+        String collection = "test-collection";
+        String language = "en";
+
+        Map<String, Object> data = new HashMap<>();
+        Map<String, Object> gui = new HashMap<>();
+        gui.put("title", "Select Language");
+        gui.put("description", List.of("Line 1", "Line 2"));
+        data.put("commands", Map.of("gui", gui));
+
+        cacheManager.putMessageData(collection, language, data);
+
+        assertEquals("Select Language", cacheManager.getMessage(collection, language, "commands.gui.title"));
+        List<String> description = cacheManager.getMessage(collection, language, "commands.gui.description", List.of());
+        assertEquals(List.of("Line 1", "Line 2"), description);
+    }
+
+    @Test
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void testPutMessageDataAsync() {
         String collection = "test-collection";
@@ -271,4 +289,5 @@ class CacheManagerTest {
         assertDoesNotThrow(() -> cacheManager.putConfigDataAsync("col", emptyData).join());
     }
 }
+
 

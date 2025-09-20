@@ -5,7 +5,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.FullDocument;
 import com.mongodb.reactivestreams.client.MongoCollection;
-import org.bson.BsonTimestamp;
+import org.bson.BsonDocument;
 import org.bson.Document;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
@@ -22,7 +22,7 @@ public final class ChangeStreamWatcher {
 
     private final MongoCollection<Document> collection;
     private final ConcurrentMap<String, Document> cache = new ConcurrentHashMap<>();
-    private final AtomicReference<BsonTimestamp> resumeToken = new AtomicReference<>();
+    private final AtomicReference<BsonDocument> resumeToken = new AtomicReference<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     private volatile boolean running = false;
@@ -89,9 +89,9 @@ public final class ChangeStreamWatcher {
         var changeStream = collection.watch(pipeline)
                 .fullDocument(FullDocument.UPDATE_LOOKUP);
 
-        var token = resumeToken.get();
+        BsonDocument token = resumeToken.get();
         if (token != null) {
-            changeStream = changeStream.resumeAfter(org.bson.BsonDocument.parse("{\"_data\": \"" + token.toString() + "\"}"));
+            changeStream = changeStream.resumeAfter(token);
         }
 
         changeStream.subscribe(new Subscriber<ChangeStreamDocument<Document>>() {
@@ -129,10 +129,10 @@ public final class ChangeStreamWatcher {
     }
 
     private void processChangeEvent(ChangeStreamDocument<Document> event) {
-        if (event.getResumeToken() != null) {
-            resumeToken.set(event.getResumeToken().asTimestamp());
+        BsonDocument token = event.getResumeToken();
+        if (token != null) {
+            resumeToken.set(token);
         }
-
         var operationType = event.getOperationType().getValue();
         var documentKey = event.getDocumentKey();
 
@@ -194,4 +194,3 @@ public final class ChangeStreamWatcher {
         return cache.size();
     }
 }
-

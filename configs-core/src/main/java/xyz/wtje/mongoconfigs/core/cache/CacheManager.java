@@ -78,12 +78,18 @@ public class CacheManager {
     }
 
     public void putMessage(String collection, String language, String key, Object value) {
+        if (key == null || key.isEmpty() || value == null) {
+            return;
+        }
         String cacheKey = collection + ":" + language + ":" + key;
         messageCache.put(cacheKey, value);
         asyncMessageCache.put(cacheKey, CompletableFuture.completedFuture(value));
     }
 
     public CompletableFuture<Void> putMessageAsync(String collection, String language, String key, Object value) {
+        if (key == null || key.isEmpty() || value == null) {
+            return CompletableFuture.completedFuture(null);
+        }
         String cacheKey = collection + ":" + language + ":" + key;
         return CompletableFuture.runAsync(() -> {
             messageCache.put(cacheKey, value);
@@ -92,10 +98,15 @@ public class CacheManager {
     }
 
     public void putMessageData(String collection, String language, Map<String, Object> data) {
-        if (data != null) {
-            for (Map.Entry<String, Object> entry : data.entrySet()) {
-                putMessage(collection, language, entry.getKey(), entry.getValue());
+        if (data == null || data.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || key.isEmpty()) {
+                continue;
             }
+            flattenMessageValue(collection, language, key, entry.getValue());
         }
     }
 
@@ -104,13 +115,27 @@ public class CacheManager {
             return CompletableFuture.completedFuture(null);
         }
 
-        return CompletableFuture.runAsync(() -> {
-            for (Map.Entry<String, Object> entry : data.entrySet()) {
-                putMessage(collection, language, entry.getKey(), entry.getValue());
-            }
-        });
+        return CompletableFuture.runAsync(() -> putMessageData(collection, language, data));
     }
 
+    @SuppressWarnings("unchecked")
+    private void flattenMessageValue(String collection, String language, String key, Object value) {
+        if (value instanceof Map<?, ?> mapValue) {
+            mapValue.forEach((nestedKey, nestedValue) -> {
+                if (nestedKey != null) {
+                    String nestedPath = key == null || key.isEmpty()
+                            ? nestedKey.toString()
+                            : key + "." + nestedKey;
+                    flattenMessageValue(collection, language, nestedPath, nestedValue);
+                }
+            });
+            return;
+        }
+
+        if (value != null) {
+            putMessage(collection, language, key, value);
+        }
+    }
     public void putConfigData(String collection, Map<String, Object> data) {
         configRequests.incrementAndGet();
         if (data != null) {
@@ -239,4 +264,6 @@ public class CacheManager {
         return CompletableFuture.runAsync(this::cleanUp);
     }
 }
+
+
 
