@@ -130,7 +130,21 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onNext(Document doc) {
-                String id = doc.get("_id") != null ? doc.get("_id").toString() : "unknown";
+                // Optimize ID extraction to avoid toString() on complex objects
+                Object idObj = doc.get("_id");
+                String id;
+                if (idObj == null) {
+                    id = "unknown";
+                } else if (idObj instanceof String) {
+                    id = (String) idObj;
+                } else if (idObj instanceof org.bson.types.ObjectId) {
+                    id = ((org.bson.types.ObjectId) idObj).toHexString();
+                } else if (idObj instanceof Number) {
+                    id = idObj.toString();
+                } else {
+                    // For complex types, generate a unique ID instead of converting
+                    id = "doc-" + System.identityHashCode(doc);
+                }
                 cache.put(id, doc);
             }
 
@@ -216,7 +230,9 @@ public final class ChangeStreamWatcher {
         String opType = operationType.getValue();
         var documentKey = event.getDocumentKey();
 
-        LOGGER.info("🔄 Processing change event: " + opType + " in collection: " + collectionName);
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.fine("🔄 Processing change event: " + opType + " in collection: " + collectionName);
+        }
 
         // Handle document key extraction (support different ID types)
         String docId = null;
@@ -265,7 +281,9 @@ public final class ChangeStreamWatcher {
                 if (fullDocument != null && docId != null) {
                     // Update our local cache first
                     cache.put(docId, fullDocument);
-                    LOGGER.info("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
+                    if (LOGGER.isLoggable(Level.FINE)) {
+                        LOGGER.fine("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
+                    }
                     
                     // Direct update to CacheManager for immediate effect
                     applyDocumentToCache(fullDocument, docId);
@@ -359,7 +377,15 @@ public final class ChangeStreamWatcher {
             return false;
         }
         Object idValue = document.get("_id");
-        return idValue != null && "config".equals(String.valueOf(idValue));
+        if (idValue == null) {
+            return false;
+        }
+        // Avoid String.valueOf() on complex objects
+        if (idValue instanceof String) {
+            return "config".equals(idValue);
+        }
+        // For non-string IDs, config document is unlikely
+        return false;
     }
 
     private Map<String, Object> copyDocumentExcluding(Document source, Set<String> keysToSkip) {
@@ -378,7 +404,9 @@ public final class ChangeStreamWatcher {
     private void reloadDocumentFromMongoDB(String docId) {
         if (docId == null || docId.isEmpty()) return;
         
-        LOGGER.info("🔄 ROZPOCZYNAM RELOAD DOKUMENTU z MongoDB: " + docId + " w kolekcji: " + collectionName);
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.fine("🔄 ROZPOCZYNAM RELOAD DOKUMENTU z MongoDB: " + docId + " w kolekcji: " + collectionName);
+        }
         
         CompletableFuture.runAsync(() -> {
             try {
@@ -408,13 +436,17 @@ public final class ChangeStreamWatcher {
                                 if (isConfigDocument(docId, freshDoc)) {
                                     Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
                                     cacheManager.putConfigData(collectionName, configData);
-                                    LOGGER.info("⭐ ZAKTUALIZOWANO CACHE CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
+                                    if (LOGGER.isLoggable(Level.FINE)) {
+                                        LOGGER.fine("⭐ ZAKTUALIZOWANO CACHE CONFIG (docId=" + docId + ") dla kolekcji: " + collectionName);
+                                    }
                                 } else {
                                     String lang = freshDoc.getString("lang");
                                     if (lang != null && !lang.isEmpty()) {
                                         Map<String, Object> messageData = copyDocumentExcluding(freshDoc, Set.of("_id", "lang", "updatedAt"));
                                         cacheManager.putMessageData(collectionName, lang, messageData);
-                                        LOGGER.info("⭐ ZAKTUALIZOWANO CACHE LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
+                                        if (LOGGER.isLoggable(Level.FINE)) {
+                                            LOGGER.fine("⭐ ZAKTUALIZOWANO CACHE LANGUAGE (lang=" + lang + ", docId=" + docId + ") dla kolekcji: " + collectionName);
+                                        }
                                     }
                                 }
                             }
