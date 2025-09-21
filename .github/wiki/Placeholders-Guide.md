@@ -229,6 +229,19 @@ CompletableFuture.allOf(
 
 ## PlaceholderAPI Integration
 
+Message sending (MessageHelper) and GUI both resolve PlaceholderAPI tokens when the PAPI plugin is present. That means any `%...%` used in your MongoDB messages or GUI texts is evaluated per-player asynchronously.
+
+Examples:
+```yaml
+# Works in GUI titles/names/lores and in messages sent via MessageHelper
+Welcome: "%player_name%, your balance is %vault_eco_balance%"
+```
+
+Under the hood:
+- First we apply your own placeholders (e.g., {player}, {amount})
+- Then we pass the result through PlaceholderAPI for dynamic tokens
+- Everything runs async; only the final send to the player happens on the main thread
+
 For external plugins using PlaceholderAPI:
 - `%mongoconfigs_message_<collection>_<key>%` - Gets message with auto placeholders
 - `%mongoconfigs_config_<collection>_<key>%` - Gets config value

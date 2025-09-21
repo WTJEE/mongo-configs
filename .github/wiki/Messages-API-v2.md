@@ -48,6 +48,43 @@ CompletableFuture.allOf(welcomeFuture, motdFuture, tipFuture)
     });
 ```
 
+## Class-based (typed) messages
+
+You can model your language messages as a typed Java class and store it in MongoDB using the typed config pipeline. This keeps your keys strongly-typed and easy to evolve.
+
+```java
+import xyz.wtje.mongoconfigs.api.annotations.ConfigsFileProperties;
+import xyz.wtje.mongoconfigs.api.annotations.ConfigsCollection;
+
+@ConfigsFileProperties(name = "messages_en") // _id of the document
+@ConfigsCollection("messages")               // collection for messages
+public class MessagesEN {
+  public String welcome = "Welcome {player}!";
+  public Shop shop = new Shop();
+  public static class Shop {
+    public String buy = "You bought {item} for ${price}";
+    public String sell = "You sold {item} for ${price}";
+  }
+}
+```
+
+Load or generate it asynchronously (first call seeds defaults):
+
+```java
+MongoConfigsAPI.getConfigManager()
+  .getConfigOrGenerate(MessagesEN.class, MessagesEN::new)
+  .thenAccept(messages -> {
+    // Use with placeholders (also supports PlaceholderAPI %...%)
+    messageHelper.sendMessage(player, "messages", "welcome",
+        "player", player.getName());
+  });
+```
+
+Notes:
+- Store per-language classes (e.g., MessagesPL, MessagesEN) by using different `name` values.
+- You can still call `ConfigManager.getMessageAsync(collection, lang, key)` for fine-grained access.
+- MessageHelper will resolve both your placeholders and PlaceholderAPI tokens.
+
 ## Language Management
 
 ### Player Language (Async)
