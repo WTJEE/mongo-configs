@@ -250,40 +250,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
     }
     
-    private ItemStack createLanguageItem(String language, boolean isSelected) {
-        ItemStack item;
-        
-        // Try to create head with texture
-        String texture = config.getLanguageHeadTextures().get(language);
-        if (texture != null && CACHED_HEADS.containsKey(language)) {
-            item = CACHED_HEADS.get(language).clone();
-        } else if (texture != null) {
-            item = createHeadWithTexture(language);
-            CACHED_HEADS.put(language, item.clone());
-        } else {
-            // Use fallback material
-            Material fallbackMaterial = config.getFallbackMaterials().get(language);
-            if (fallbackMaterial == null) {
-                fallbackMaterial = getLanguageMaterial(language);
-            }
-            item = new ItemStack(fallbackMaterial);
-        }
-        
-        // Update item display
-        ItemMeta meta = item.getItemMeta();
-        
-        // Set display name from config
-        String displayName = config.getDisplayName(language);
-        meta.displayName(ColorHelper.parseComponent(displayName));
-        
-        // Set lore from config
-        List<Component> lore = buildLanguageItemLore(language, isSelected, "en");
-        meta.lore(lore);
-        
-        item.setItemMeta(meta);
-        return item;
-    }
-
     private ItemStack createCloseButton() {
         // Return cached close button if available
         if (CACHED_CLOSE_BUTTON != null) {
@@ -428,91 +394,37 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
     }
 
-        try {
-            ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-            SkullMeta meta = (SkullMeta) item.getItemMeta();
 
-            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
-            PlayerTextures textures = profile.getTextures();
 
-            // Use cached URL if available to avoid Base64 decoding
-            String url = TEXTURE_URL_CACHE.computeIfAbsent(texture, t -> {
-                try {
-                    String decoded = new String(Base64.getDecoder().decode(t));
-                    return decoded.split("\"url\":\"")[1].split("\"")[0];
-                } catch (Exception e) {
-                    LOGGER.warning("Failed to decode texture for " + language + ": " + e.getMessage());
-                    return null;
+
+
+
+    private ItemStack buildLanguageItemCompleteAsync(String language, boolean isSelected, String playerLanguage) {
+        return createLanguageItem(language, isSelected);
+    }
+
+    private CompletableFuture<Map<Integer, ItemStack>> buildInventoryAsync() {
+        return languageManager.getSupportedLanguages().thenCombine(
+            languageManager.getPlayerLanguage(player.getUniqueId().toString()),
+            (supportedLanguages, currentLanguage) -> {
+                Map<Integer, ItemStack> itemsToSet = new HashMap<>();
+                int slot = config.getGuiStartSlot();
+
+                for (String language : supportedLanguages) {
+                    ItemStack item = createLanguageItem(language, language.equals(currentLanguage));
+                    itemsToSet.put(slot, item);
+                    slot++;
+
+                    if (slot % 9 == 8) {
+                        slot += 2;
+                    }
                 }
+
+                ItemStack closeButton = createCloseButton();
+                itemsToSet.put(config.getCloseButtonSlot(), closeButton);
+
+                return itemsToSet;
             });
-            
-            if (url == null) {
-                throw new IllegalStateException("Failed to decode texture URL");
-            }
-
-            textures.setSkin(new URL(url));
-            profile.setTextures(textures);
-            meta.setOwnerProfile(profile);
-            item.setItemMeta(meta);
-
-            return item;
-        } catch (Exception e) {
-            Material fallbackMaterial = config.getFallbackMaterials().get(language);
-            if (fallbackMaterial != null) {
-                return new ItemStack(fallbackMaterial);
-            }
-            return new ItemStack(getLanguageMaterial(language));
-        }
-    }
-    
-    private ItemStack createHeadWithTexture(String language) {
-        return createHeadWithTextureAsync(language);
-    }
-
-    private ItemStack updateItemDisplayAsync(ItemStack item, String language, boolean isSelected, String playerLanguage) {
-        ItemMeta meta = item.getItemMeta();
-
-        // Use cached display name if available, otherwise get async
-        String displayName;
-        try {
-            displayName = languageManager.getLanguageDisplayName(language).getNow(language);
-        } catch (Exception e) {
-            displayName = language; // fallback
-        }
-        
-        String resolvedName = resolvePlaceholders(displayName, playerLanguage);
-        Component nameComponent = ColorHelper.parseComponent(resolvedName);
-        meta.displayName(nameComponent);
-
-        List<Component> lore = buildLanguageItemLoreAsync(language, isSelected, playerLanguage);
-        meta.lore(lore);
-
-        item.setItemMeta(meta);
-        return item;
-    }
-    
-    private ItemStack updateItemDisplay(ItemStack item, String language, boolean isSelected, String playerLanguage) {
-        return updateItemDisplayAsync(item, language, isSelected, playerLanguage);
-    }
-
-    private List<Component> buildLanguageItemLoreAsync(String language, boolean isSelected, String playerLanguage) {
-        List<String> configLore = config.getLanguageItemLore(language);
-        String selectedMessage = isSelected ?
-            config.getSelectedMessage(playerLanguage) :
-            config.getNotSelectedMessage(playerLanguage);
-
-        return configLore.stream()
-            .map(line -> {
-                String processedLine = line
-                    .replace("{selection_status}", selectedMessage);
-                processedLine = resolvePlaceholders(processedLine, playerLanguage);
-                return ColorHelper.parseComponent(processedLine);
-            })
-            .toList();
-    }
-    
-    private List<Component> buildLanguageItemLore(String language, boolean isSelected, String playerLanguage) {
-        return buildLanguageItemLoreAsync(language, isSelected, playerLanguage);
     }
 
     private org.bukkit.plugin.Plugin getPlugin() {
@@ -1029,57 +941,6 @@ public class LanguageSelectionGUI implements InventoryHolder {
         } catch (Exception e) {
             LOGGER.warning("Failed to preload heads: " + e.getMessage());
         }
-    }
-
-    private Material getLanguageMaterial(String language) {
-        return switch (language) {
-            case "en" -> Material.WHITE_WOOL;
-            case "pl" -> Material.RED_WOOL;
-            case "de" -> Material.YELLOW_WOOL;
-            case "fr" -> Material.BLUE_WOOL;
-            case "es" -> Material.ORANGE_WOOL;
-            default -> Material.GRAY_WOOL;
-        };
-    }
-
-    private boolean isLanguageItem(ItemStack item) {
-        Material type = item.getType();
-        return type == Material.PLAYER_HEAD ||
-               type == Material.WHITE_WOOL ||
-               type == Material.RED_WOOL ||
-               type == Material.YELLOW_WOOL ||
-               type == Material.BLUE_WOOL ||
-               type == Material.ORANGE_WOOL ||
-               type == Material.GRAY_WOOL;
-    }
-
-    private String getLanguageFromSlot(int slot, String[] languages) {
-        // Calculate based on actual GUI layout
-        int startSlot = config.getGuiStartSlot();
-        int currentSlot = startSlot;
-        
-        for (String lang : languages) {
-            if (currentSlot == slot) {
-                return lang;
-            }
-            currentSlot++;
-            // Handle row wrapping
-            if (currentSlot % 9 == 8) {
-                currentSlot += 2;
-            }
-        }
-        return null;
-    }
-
-    @Override
-    public Inventory getInventory() {
-        // Create inventory on-demand if needed (should only happen on main thread)
-        if (inventory == null) {
-            int size = safeSize(config.getGuiSize());
-            inventory = Bukkit.createInventory(this, size,
-                ColorHelper.parseComponent(config.getGuiTitle()));
-        }
-        return inventory;
     }
 }
 
