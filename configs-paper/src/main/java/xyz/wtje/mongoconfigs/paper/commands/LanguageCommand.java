@@ -43,13 +43,13 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) {
             // Check for existing GUI first
             LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
-            if (existingGui != null) {
+            if (existingGui != null && existingGui.isOpen()) {
                 // Re-open or refresh the existing GUI
                 existingGui.openAsync();
                 return true;
             }
             
-            // Create new GUI
+            // Create new GUI - always create a new GUI if none exists or previous was closed
             LanguageSelectionGUI newGui = new LanguageSelectionGUI(player, languageManager, config);
             newGui.openAsync().exceptionally(throwable -> {
                 player.sendMessage("§c[ERROR] Failed to open language GUI: " + throwable.getMessage());
@@ -75,7 +75,15 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         // Immediately return from main thread and handle everything async
         CompletableFuture.runAsync(() -> {
             if (args.length == 0) {
-                // GUI opening already handled above
+                // We already handled GUI opening in onCommand, but just in case, 
+                // check if we need to open it here as well
+                org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                    // Only open if the player doesn't already have a GUI open
+                    LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
+                    if (existingGui == null || !existingGui.isOpen()) {
+                        openLanguageGUIAsync(player, playerLanguage);
+                    }
+                });
                 return;
             }
 
@@ -217,7 +225,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     private void openLanguageGUIAsync(Player player, String playerLanguage) {
         // Check for existing GUI first
         LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
-        if (existingGui != null) {
+        if (existingGui != null && existingGui.isOpen()) {
             // Re-open or refresh the existing GUI
             existingGui.openAsync();
             return;

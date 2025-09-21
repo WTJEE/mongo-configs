@@ -44,6 +44,14 @@ public class LanguageSelectionGUI implements InventoryHolder {
     private volatile Inventory inventory; // volatile for thread-safe lazy init
     private final Player player;
     private volatile boolean isOpen = false;
+    
+    /**
+     * Check if this GUI is currently open
+     * @return true if this GUI is open, false otherwise
+     */
+    public boolean isOpen() {
+        return isOpen;
+    }
 
     private static final Map<String, ItemStack> CACHED_HEADS = new ConcurrentHashMap<>();
     private static final Map<String, CompletableFuture<ItemStack>> LOADING_HEADS = new ConcurrentHashMap<>();
@@ -65,6 +73,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
     
     // Get existing GUI for player or null
     public static LanguageSelectionGUI getOpenGUI(Player player) {
+        if (player == null) {
+            return null;
+        }
+        
         LanguageSelectionGUI gui = OPEN_GUIS.get(player.getUniqueId());
         if (gui == null) {
             return null;
@@ -74,16 +86,19 @@ public class LanguageSelectionGUI implements InventoryHolder {
             InventoryView view = player.getOpenInventory();
             if (view == null) {
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
+                gui.isOpen = false;
                 return null;
             }
 
             Inventory top = view.getTopInventory();
             if (top == null || top.getHolder() != gui) {
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
+                gui.isOpen = false;
                 return null;
             }
         } catch (Throwable ignored) {
             OPEN_GUIS.remove(player.getUniqueId(), gui);
+            gui.isOpen = false;
             return null;
         }
 
