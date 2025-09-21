@@ -159,78 +159,98 @@ public class LanguageSelectionGUI implements InventoryHolder {
         return text.contains("{countdown}") || text.contains("%");
     }
 
-    public CompletableFuture<Void> openAsync() {
-        LOGGER.info("[DEBUG-GUI] openAsync called for player: " + player.getName() + ", isOpen=" + isOpen + ", inventory=" + (inventory != null ? "exists" : "null"));
+    /**
+     * Simple synchronous method to open the GUI on main thread
+     */
+    public void open() {
+        getPlugin().getLogger().info("[DEBUG-GUI] Opening GUI synchronously for player: " + player.getName());
         
-        // Check if already opening
-        if (isOpen && inventory != null) {
-            LOGGER.info("[DEBUG-GUI] GUI already open for player: " + player.getName() + ", refreshing instead");
-            // Just refresh existing GUI
-            return refreshAsync();
+        try {
+            // Create inventory
+            String title = resolvePlaceholders(config.getGuiTitle(), null);
+            int size = safeSize(config.getGuiSize());
+            inventory = Bukkit.createInventory(this, size, ColorHelper.parseComponent(title));
+            
+            // Add close button
+            ItemStack closeButton = createCloseButton();
+            inventory.setItem(config.getCloseButtonSlot(), closeButton);
+            
+            // Add language items synchronously
+            addLanguageItems();
+            
+            // Open inventory
+            player.openInventory(inventory);
+            isOpen = true;
+            OPEN_GUIS.put(player.getUniqueId(), this);
+            
+            getPlugin().getLogger().info("[DEBUG-GUI] GUI opened successfully for player: " + player.getName());
+            
+        } catch (Exception e) {
+            getPlugin().getLogger().severe("[DEBUG-GUI] Failed to open GUI for " + player.getName() + ": " + e.getMessage());
+            player.sendMessage("§c[ERROR] Failed to open language GUI: " + e.getMessage());
         }
-        
-        LOGGER.info("[DEBUG-GUI] Building new GUI for player: " + player.getName());
-        // Start building items immediately in parallel
-        CompletableFuture<Map<Integer, ItemStack>> itemsFuture = buildInventoryAsync();
-        
-        // If heads not cached, preload them in parallel (don't wait)
-        if (CACHED_HEADS.isEmpty()) {
-            LOGGER.info("[DEBUG-GUI] Preloading heads for future use");
-            CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages());
-        }
-        
-        return itemsFuture.thenAccept(itemsToSet -> {
-            LOGGER.info("[DEBUG-GUI] Items built, scheduling GUI creation on main thread for player: " + player.getName());
-            Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                try {
-                    // Fast inventory creation and opening on main thread
-                    if (inventory == null) {
-                        LOGGER.info("[DEBUG-GUI] Creating new inventory for player: " + player.getName());
-                        String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
-                        int size = safeSize(config.getGuiSize());
-                        inventory = Bukkit.createInventory(this, size,
-                            ColorHelper.parseComponent(titleResolved));
-                    } else {
-                        LOGGER.info("[DEBUG-GUI] Clearing existing inventory for player: " + player.getName());
-                        inventory.clear(); // Clear existing items for refresh
-                    }
-                    
-                    // Batch set items for performance
-                    int invSize = inventory.getSize();
-                    itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
-                    
-                    // Open immediately
-                    LOGGER.info("[DEBUG-GUI] Opening inventory for player: " + player.getName());
-                    player.openInventory(inventory);
-                    isOpen = true;
-                    LOGGER.info("[DEBUG-GUI] Set isOpen=true for player: " + player.getName());
-                    OPEN_GUIS.put(player.getUniqueId(), this);
-                    LOGGER.info("[DEBUG-GUI] Added to OPEN_GUIS map for player: " + player.getName());
-                    startAutoRefreshIfNeeded();
-                } catch (Exception e) {
-                    LOGGER.severe("[DEBUG-GUI] Error opening inventory for player: " + player.getName() + ", error: " + e.getMessage());
-                    player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            });
-        }).exceptionally(throwable -> {
-            LOGGER.severe("[DEBUG-GUI] Error building GUI for player: " + player.getName() + ", error: " + throwable.getMessage());
-            Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                player.sendMessage("§c[ERROR] Failed to build GUI: " + throwable.getMessage());
-                throwable.printStackTrace();
-            });
-            return null;
-        });
     }
     
-    public void open() {
-        openAsync().exceptionally(throwable -> {
-            Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                player.sendMessage("§6[INFO] Using simplified GUI mode");
-                openSimpleAsync();
-            });
-            return null;
-        });
+    private void addLanguageItems() {
+        // Get supported languages synchronously (this might block briefly but it's necessary)
+        try {
+            String[] supportedLanguages = languageManager.getSupportedLanguages().get(2, java.util.concurrent.TimeUnit.SECONDS);
+            String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString()).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            
+            int slot = config.getGuiStartSlot();
+            for (String language : supportedLanguages) {
+                ItemStack item = createLanguageItem(language, language.equals(currentLanguage));
+                inventory.setItem(slot, item);
+                slot++;
+                
+                // Handle row wrapping
+                if (slot % 9 == 8) {
+                    slot += 2;
+                }
+            }
+        } catch (Exception e) {
+            getPlugin().getLogger().warning("[DEBUG-GUI] Failed to load language data: " + e.getMessage());
+            // Add a fallback message item
+            ItemStack errorItem = new ItemStack(Material.BARRIER);
+            ItemMeta meta = errorItem.getItemMeta();
+            meta.displayName(Component.text("§cError loading languages"));
+            errorItem.setItemMeta(meta);
+            inventory.setItem(config.getGuiStartSlot(), errorItem);
+        }
+    }
+    
+    private ItemStack createLanguageItem(String language, boolean isSelected) {
+        ItemStack item;
+        
+        // Try to create head with texture
+        String texture = config.getLanguageHeadTextures().get(language);
+        if (texture != null && CACHED_HEADS.containsKey(language)) {
+            item = CACHED_HEADS.get(language).clone();
+        } else if (texture != null) {
+            item = createHeadWithTexture(language);
+            CACHED_HEADS.put(language, item.clone());
+        } else {
+            // Use fallback material
+            Material fallbackMaterial = config.getFallbackMaterials().get(language);
+            if (fallbackMaterial == null) {
+                fallbackMaterial = getLanguageMaterial(language);
+            }
+            item = new ItemStack(fallbackMaterial);
+        }
+        
+        // Update item display
+        ItemMeta meta = item.getItemMeta();
+        
+        // Set display name
+        String displayName = config.getMessage("language.names." + language, language);
+        meta.displayName(ColorHelper.parseComponent(displayName));
+        
+        // Set lore
+        List<Component> lore = buildLanguageItemLore(language, isSelected, "en"); // Use default language for now
+        meta.lore(lore);
+        
+        item.setItemMeta(meta);
+        return item;
     }
 
     private CompletableFuture<Map<Integer, ItemStack>> buildInventoryAsync() {
