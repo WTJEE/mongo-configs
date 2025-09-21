@@ -8,33 +8,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.    private List<Component> buildLanguageItemLore(String language, boolean isSelected, String playerLanguage) {
-        List<String> configLore = config.getLanguageItemLore(language);
-        
-        // If no config lore found, create default lore
-        if (configLore == null || configLore.isEmpty()) {
-            configLore = List.of(
-                "&7Language: &e" + language.toUpperCase(),
-                "",
-                "{selection_status}",
-                "",
-                "&7Click to select this language"
-            );
-        }
-        
-        String selectedMessage = isSelected ?
-            config.getSelectedMessage(playerLanguage) :
-            config.getNotSelectedMessage(playerLanguage);
-
-        return configLore.stream()
-            .map(line -> {
-                String processedLine = line
-                    .replace("{selection_status}", selectedMessage);
-                processedLine = resolvePlaceholders(processedLine, playerLanguage);
-                return ColorHelper.parseComponent(processedLine);
-            })
-            .toList();
-    }y.Inventory;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -341,30 +315,73 @@ public class LanguageSelectionGUI implements InventoryHolder {
         return closeButton;
     }
 
+    private ItemStack createLanguageItem(String language, boolean isSelected) {
+        ItemStack item;
+        
+        // Try to create head with texture
+        String texture = config.getLanguageHeadTextures().get(language);
+        if (texture != null && CACHED_HEADS.containsKey(language)) {
+            item = CACHED_HEADS.get(language).clone();
+        } else if (texture != null) {
+            item = createHeadWithTexture(language);
+            CACHED_HEADS.put(language, item.clone());
+        } else {
+            // Use fallback material
+            Material fallbackMaterial = config.getFallbackMaterials().get(language);
+            if (fallbackMaterial == null) {
+                fallbackMaterial = getLanguageMaterial(language);
+            }
+            item = new ItemStack(fallbackMaterial);
+        }
+        
+        // Update item display
+        ItemMeta meta = item.getItemMeta();
+        
+        // Set display name from config
+        String displayName = config.getDisplayName(language);
+        meta.displayName(ColorHelper.parseComponent(displayName));
+        
+        // Set lore from config
+        List<Component> lore = buildLanguageItemLore(language, isSelected, "en");
+        meta.lore(lore);
+        
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private List<Component> buildLanguageItemLore(String language, boolean isSelected, String playerLanguage) {
+        List<String> configLore = config.getLanguageItemLore(language);
+        
+        // If no config lore found, create default lore
+        if (configLore == null || configLore.isEmpty()) {
+            configLore = List.of(
+                "&7Language: &e" + language.toUpperCase(),
+                "",
+                "{selection_status}",
+                "",
+                "&7Click to select this language"
+            );
+        }
+        
+        String selectedMessage = isSelected ?
+            config.getSelectedMessage(playerLanguage) :
+            config.getNotSelectedMessage(playerLanguage);
+
+        return configLore.stream()
+            .map(line -> {
+                String processedLine = line
+                    .replace("{selection_status}", selectedMessage);
+                processedLine = resolvePlaceholders(processedLine, playerLanguage);
+                return ColorHelper.parseComponent(processedLine);
+            })
+            .toList();
+    }
+
     private String translateColors(String text) {
         return ColorHelper.colorize(text);
     }
 
-    private ItemStack buildLanguageItemCompleteAsync(String language, boolean isSelected, String playerLanguage) {
-        ItemStack cachedHead = CACHED_HEADS.get(language);
-        ItemStack baseItem;
-
-        if (cachedHead != null) {
-            baseItem = cachedHead.clone();
-        } else {
-            // Create head async and cache it
-            baseItem = createHeadWithTextureAsync(language);
-            CACHED_HEADS.put(language, baseItem.clone());
-        }
-
-        return updateItemDisplayAsync(baseItem, language, isSelected, playerLanguage);
-    }
-    
-    private ItemStack buildLanguageItemComplete(String language, boolean isSelected, String playerLanguage) {
-        return buildLanguageItemCompleteAsync(language, isSelected, playerLanguage);
-    }
-
-    private ItemStack createHeadWithTextureAsync(String language) {
+    private ItemStack createHeadWithTexture(String language) {
         String texture = config.getLanguageHeadTextures().get(language);
         if (texture == null) {
             Material fallbackMaterial = config.getFallbackMaterials().get(language);
@@ -373,6 +390,43 @@ public class LanguageSelectionGUI implements InventoryHolder {
             }
             return new ItemStack(getLanguageMaterial(language));
         }
+
+        try {
+            ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta meta = (SkullMeta) item.getItemMeta();
+
+            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
+            PlayerTextures textures = profile.getTextures();
+
+            // Use cached URL if available to avoid Base64 decoding
+            String url = TEXTURE_URL_CACHE.computeIfAbsent(texture, t -> {
+                try {
+                    String decoded = new String(Base64.getDecoder().decode(t));
+                    return decoded.split("\"url\":\"")[1].split("\"")[0];
+                } catch (Exception e) {
+                    LOGGER.warning("Failed to decode texture for " + language + ": " + e.getMessage());
+                    return null;
+                }
+            });
+            
+            if (url == null) {
+                throw new IllegalStateException("Failed to decode texture URL");
+            }
+
+            textures.setSkin(new URL(url));
+            profile.setTextures(textures);
+            meta.setOwnerProfile(profile);
+            item.setItemMeta(meta);
+
+            return item;
+        } catch (Exception e) {
+            Material fallbackMaterial = config.getFallbackMaterials().get(language);
+            if (fallbackMaterial != null) {
+                return new ItemStack(fallbackMaterial);
+            }
+            return new ItemStack(getLanguageMaterial(language));
+        }
+    }
 
         try {
             ItemStack item = new ItemStack(Material.PLAYER_HEAD);
@@ -968,13 +1022,64 @@ public class LanguageSelectionGUI implements InventoryHolder {
             String[] languages = languageManager.getSupportedLanguages().get(1, TimeUnit.SECONDS);
             for (String language : languages) {
                 if (!CACHED_HEADS.containsKey(language)) {
-                    ItemStack head = createHeadWithTextureAsync(language);
+                    ItemStack head = createHeadWithTexture(language);
                     CACHED_HEADS.put(language, head);
                 }
             }
         } catch (Exception e) {
             LOGGER.warning("Failed to preload heads: " + e.getMessage());
         }
+    }
+
+    private Material getLanguageMaterial(String language) {
+        return switch (language) {
+            case "en" -> Material.WHITE_WOOL;
+            case "pl" -> Material.RED_WOOL;
+            case "de" -> Material.YELLOW_WOOL;
+            case "fr" -> Material.BLUE_WOOL;
+            case "es" -> Material.ORANGE_WOOL;
+            default -> Material.GRAY_WOOL;
+        };
+    }
+
+    private boolean isLanguageItem(ItemStack item) {
+        Material type = item.getType();
+        return type == Material.PLAYER_HEAD ||
+               type == Material.WHITE_WOOL ||
+               type == Material.RED_WOOL ||
+               type == Material.YELLOW_WOOL ||
+               type == Material.BLUE_WOOL ||
+               type == Material.ORANGE_WOOL ||
+               type == Material.GRAY_WOOL;
+    }
+
+    private String getLanguageFromSlot(int slot, String[] languages) {
+        // Calculate based on actual GUI layout
+        int startSlot = config.getGuiStartSlot();
+        int currentSlot = startSlot;
+        
+        for (String lang : languages) {
+            if (currentSlot == slot) {
+                return lang;
+            }
+            currentSlot++;
+            // Handle row wrapping
+            if (currentSlot % 9 == 8) {
+                currentSlot += 2;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public Inventory getInventory() {
+        // Create inventory on-demand if needed (should only happen on main thread)
+        if (inventory == null) {
+            int size = safeSize(config.getGuiSize());
+            inventory = Bukkit.createInventory(this, size,
+                ColorHelper.parseComponent(config.getGuiTitle()));
+        }
+        return inventory;
     }
 }
 
