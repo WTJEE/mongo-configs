@@ -42,6 +42,6 @@ commands:
     aliases: [cfgmgr, cm]
   hotreload:
     description: Hot-reload management commands
-usage: /<command> [gui|cache|all|status]
+    usage: /<command> [gui|cache|all|status]
     permission: mongoconfigs.hotreload
     aliases: [hr]
