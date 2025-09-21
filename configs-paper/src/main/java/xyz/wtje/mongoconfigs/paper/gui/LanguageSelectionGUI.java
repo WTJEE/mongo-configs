@@ -120,7 +120,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     
                     // Batch set items for performance
                     int invSize = inventory.getSize();
-                    itemsToSet.forEach((slot, stack) -> inventory.setItem(clampSlot(slot, invSize), stack));
+                    itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
                     
                     // Open immediately
                     player.openInventory(inventory);
@@ -642,7 +642,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                                 ColorHelper.parseComponent(titleResolved));
                         }
                         int invSize = inventory.getSize();
-                        itemsToSet.forEach((slot, stack) -> inventory.setItem(clampSlot(slot, invSize), stack));
+                        itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
                         player.openInventory(inventory);
                         startAutoRefreshIfNeeded();
                     });
