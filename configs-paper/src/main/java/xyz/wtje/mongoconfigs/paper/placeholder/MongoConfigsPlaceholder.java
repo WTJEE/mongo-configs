@@ -160,9 +160,13 @@ public class MongoConfigsPlaceholder extends PlaceholderExpansion {
             }
         });
         
-        // Try sync get with timeout
-        String result = configManager.getMessage(collection, lang, key);
-        return result != null ? result : "";
+        // Try fast cache get
+        try {
+            String result = configManager.getCacheManager().getMessage(collection, lang, key);
+            return result != null ? result : "";
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     private String getConfig(String collection, String key) {
@@ -176,7 +180,7 @@ public class MongoConfigsPlaceholder extends PlaceholderExpansion {
         // Start async load
         CompletableFuture.supplyAsync(() -> {
             try {
-                Object value = configManager.getAsync(collection + ":" + key)
+                Object value = configManager.getConfigAsync(collection, key, null)
                     .get(100, TimeUnit.MILLISECONDS);
                 return value != null ? value.toString() : "";
             } catch (Exception e) {
@@ -184,9 +188,13 @@ public class MongoConfigsPlaceholder extends PlaceholderExpansion {
             }
         }).thenAccept(cfg -> cache.put(cacheKey, new CachedValue(cfg)));
         
-        // Try sync get
-        Object result = configManager.get(collection + ":" + key, null);
-        return result != null ? result.toString() : "";
+        // Try fast cache get
+        try {
+            Object result = configManager.getCacheManager().get(collection + ":" + key, null);
+            return result != null ? result.toString() : "";
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     private CachedValue getCached(String key) {

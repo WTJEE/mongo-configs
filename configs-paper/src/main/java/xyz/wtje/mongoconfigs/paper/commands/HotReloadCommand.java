@@ -97,7 +97,7 @@ public class HotReloadCommand implements CommandExecutor {
         
         CompletableFuture.runAsync(() -> {
             // Clear config manager cache
-            plugin.getConfigManager().invalidateAll();
+            plugin.getConfigManager().invalidateCache();
             
             // Clear language manager cache
             if (languageManager != null) {
@@ -124,7 +124,7 @@ public class HotReloadCommand implements CommandExecutor {
             }
             
             // Clear config cache
-            plugin.getConfigManager().invalidateAll();
+            plugin.getConfigManager().invalidateCache();
             
             // Clear GUI cache
             LanguageSelectionGUI.clearCache();
