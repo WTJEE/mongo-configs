@@ -218,6 +218,12 @@ public class MongoConfigsPlugin extends JavaPlugin {
         getLogger().info("[DEBUG] GUIListener registered with plugin instance");
 
         getLogger().info("✅ Event listeners registered successfully");
+        
+        // Preload GUI elements for better performance
+        if (languageManager != null && languageConfig != null) {
+            xyz.wtje.mongoconfigs.paper.gui.LanguageSelectionGUI.preloadGUIElements(languageManager, languageConfig);
+            getLogger().info("🚀 GUI elements preloaded for optimal performance");
+        }
     }
 
 

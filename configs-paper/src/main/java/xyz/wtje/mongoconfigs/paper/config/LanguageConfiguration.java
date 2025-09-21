@@ -156,6 +156,10 @@ public class LanguageConfiguration {
         return getMessage("selection-status.not-selected", language);
     }
 
+    public String getDisplayName(String language) {
+        return config.getString("display-names." + language, language);
+    }
+
     public String getPlayerLanguagesCollection() {
         return config.getString("player-languages.collection", "player_languages");
     }

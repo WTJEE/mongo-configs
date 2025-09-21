@@ -200,6 +200,13 @@ messages:
         fr: "gradient:#00FF00:#00AA00Langue changée vers: &#FFFFFF{language}&#00FF00!"
         es: "gradient:#00FF00:#00AA00Idioma cambiado a: &#FFFFFF{language}&#00FF00!"
       
+      already_selected:
+        en: "&#FFAA00You already have this language selected!"
+        pl: "&#FFAA00Masz już ten język wybrany!"
+        de: "&#FFAA00Sie haben diese Sprache bereits ausgewählt!"
+        fr: "&#FFAA00Vous avez déjà cette langue sélectionnée!"
+        es: "&#FFAA00Ya tienes este idioma seleccionado!"
+      
       unsupported:
         en: "&cUnsupported language: &f{language}"
         pl: "&cNieobsługiwany język: &f{language}"
