@@ -14,7 +14,6 @@ import xyz.wtje.mongoconfigs.paper.gui.LanguageSelectionGUI;
 import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 import xyz.wtje.mongoconfigs.paper.listeners.GUIListener;
 import xyz.wtje.mongoconfigs.paper.listeners.PlayerJoinListener;
-import xyz.wtje.mongoconfigs.paper.placeholder.MongoConfigsPlaceholder;
 import xyz.wtje.mongoconfigs.paper.util.BukkitColorProcessor;
 
 import java.util.concurrent.CompletableFuture;
@@ -26,7 +25,6 @@ public class MongoConfigsPlugin extends JavaPlugin {
     private LanguageConfiguration languageConfig;
     private ConfigManagerImpl configManager;
     private LanguageManagerImpl languageManager;
-    private MongoConfigsPlaceholder placeholderExpansion;
 
     @Override
     public void onEnable() {
@@ -79,10 +77,6 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
             registerListeners();
             
-            // Register PlaceholderAPI expansion after everything is initialized
-            getServer().getScheduler().runTaskLater(this, this::registerPlaceholders, 20L);
-
-
             getLogger().info("MongoDB Configs plugin enabled successfully");
 
         } catch (Exception e) {
@@ -104,11 +98,6 @@ public class MongoConfigsPlugin extends JavaPlugin {
                 languageManager.shutdown();
             }
             
-            // Unregister PlaceholderAPI expansion
-            if (placeholderExpansion != null) {
-                placeholderExpansion.unregister();
-            }
-
             getLogger().info("MongoDB Configs plugin disabled successfully");
 
         } catch (Exception e) {
@@ -289,31 +278,5 @@ public class MongoConfigsPlugin extends JavaPlugin {
     public LanguageConfiguration getLanguageConfiguration() {
         return languageConfig;
     }
-    
-    /**
-     * Register PlaceholderAPI expansion if available
-     */
-    private void registerPlaceholders() {
-        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            try {
-                placeholderExpansion = new MongoConfigsPlaceholder(this);
-                if (placeholderExpansion.register()) {
-                    getLogger().info("✅ PlaceholderAPI expansion registered successfully");
-                    getLogger().info("   Available placeholders:");
-                    getLogger().info("   - %mongoconfigs_language% - Player's language code");
-                    getLogger().info("   - %mongoconfigs_langname% - Language display name");
-                    getLogger().info("   - %mongoconfigs_message_<collection>_<key>%");
-                    getLogger().info("   - %mongoconfigs_config_<collection>_<key>%");
-                } else {
-                    getLogger().warning("⚠️ PlaceholderAPI expansion failed to register");
-                }
-            } catch (Exception e) {
-                getLogger().warning("⚠️ Failed to register PlaceholderAPI expansion: " + e.getMessage());
-            }
-        } else {
-            getLogger().info("PlaceholderAPI not found - placeholder support disabled");
-        }
-    }
-
 }
 

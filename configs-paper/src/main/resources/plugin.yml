@@ -6,7 +6,7 @@ author: aiikk
 website: https://github.com/aiikk/mongo-configs
 description: Advanced MongoDB configuration and translation management library
 
-softdepend: [PlaceholderAPI]
+
 
 permissions:
   mongoconfigs.admin:

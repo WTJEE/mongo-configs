@@ -57,25 +57,15 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         
     private void openLanguageGUI(Player player) {
         getPlugin().getLogger().info("[DEBUG] Creating and opening GUI for " + player.getName());
-
-        LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
-        if (existingGui != null) {
-            org.bukkit.inventory.InventoryView view = player.getOpenInventory();
-            org.bukkit.inventory.Inventory top = view != null ? view.getTopInventory() : null;
-            if (top != null && top.getHolder() == existingGui) {
-                getPlugin().getLogger().info("[DEBUG] Refreshing existing GUI for " + player.getName());
-                existingGui.refreshAsync();
-                return;
-            }
-
-            getPlugin().getLogger().info("[DEBUG] Cleaning stale GUI reference for " + player.getName());
-            LanguageSelectionGUI.forceCleanupForPlayer(player);
-        }
-
+        
+        // Clean up any existing GUI first
+        LanguageSelectionGUI.forceCleanupForPlayer(player);
+        
+        // Create and open new GUI on main thread
         LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
         gui.open();
     }
-
+    
     private void handleLanguageSetting(Player player, String requestedLanguage) {
         getPlugin().getLogger().info("[DEBUG] Handling language setting for " + player.getName() + ": " + requestedLanguage);
         
@@ -163,3 +153,4 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         return org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(LanguageCommand.class);
     }
 }
+

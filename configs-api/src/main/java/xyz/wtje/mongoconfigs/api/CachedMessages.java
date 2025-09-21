@@ -143,6 +143,18 @@ final class CachedMessages implements Messages {
         return CompletableFuture.completedFuture(list);
     }
 
+    @Override
+    public CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders) {
+        MessageValue value = resolve(language, path);
+        String template = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
+        return CompletableFuture.completedFuture(applyMapPlaceholders(template, placeholders));
+    }
+
+    @Override
+    public CompletableFuture<String> get(String path, Map<String, Object> placeholders) {
+        return get(path, defaultLanguage, placeholders);
+    }
+
     private String applyPlaceholders(String template, Object... placeholders) {
         if (template == null || template.isEmpty() || placeholders == null || placeholders.length == 0) {
             return template;
@@ -151,6 +163,19 @@ final class CachedMessages implements Messages {
         for (int i = 0; i < placeholders.length; i++) {
             Object placeholder = placeholders[i];
             result = result.replace("{" + i + "}", placeholder == null ? "null" : placeholder.toString());
+        }
+        return result;
+    }
+
+    private String applyMapPlaceholders(String template, Map<String, Object> placeholders) {
+        if (template == null || template.isEmpty() || placeholders == null || placeholders.isEmpty()) {
+            return template;
+        }
+        String result = template;
+        for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            result = result.replace("{" + key + "}", value == null ? "null" : value.toString());
         }
         return result;
     }

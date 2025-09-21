@@ -5,6 +5,7 @@
 * Runtime Guides
 * [Messages API v2](Messages-API-v2)
 * [Placeholders Guide](Placeholders-Guide)
+* [Placeholders API](Placeholders-API)
 * [Legacy Messages API](Messages-API)
   * [Best Practices](Best-Practices)
 * Examples

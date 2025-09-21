@@ -131,6 +131,29 @@ class MessagesTest {
             public java.util.concurrent.CompletableFuture<java.util.List<String>> getList(String path, String language) {
                 return java.util.concurrent.CompletableFuture.completedFuture(java.util.Collections.emptyList());
             }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders) {
+                String template = data.getOrDefault(language, Map.of()).getOrDefault(path, path);
+                String res = template;
+                if (placeholders != null) {
+                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                        res = res.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+                    }
+                }
+                return java.util.concurrent.CompletableFuture.completedFuture(res);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, Map<String, Object> placeholders) {
+                String res = path;
+                if (placeholders != null) {
+                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                        res = res.replace("{" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+                    }
+                }
+                return java.util.concurrent.CompletableFuture.completedFuture(res);
+            }
         };
 
         assertEquals("Hello", concreteMessages.get("greeting", "en").join());

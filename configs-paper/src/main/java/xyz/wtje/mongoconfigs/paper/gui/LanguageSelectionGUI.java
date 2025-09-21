@@ -20,7 +20,6 @@ import org.bukkit.scheduler.BukkitTask;
 import xyz.wtje.mongoconfigs.paper.config.LanguageConfiguration;
 import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
-import me.clip.placeholderapi.PlaceholderAPI;
 
 import java.net.URL;
 import java.util.Base64;
@@ -143,7 +142,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
         return slot;
     }
 
-    // Resolve internal and PlaceholderAPI placeholders
+    // Resolve internal placeholders
     private String resolvePlaceholders(String text, String currentLanguage) {
         if (text == null) return null;
         String out = text
@@ -152,17 +151,12 @@ public class LanguageSelectionGUI implements InventoryHolder {
             .replace("{uuid}", player.getUniqueId().toString())
             .replace("{lang}", currentLanguage == null ? "" : currentLanguage)
             .replace("{countdown}", countdownSeconds >= 0 ? String.valueOf(countdownSeconds) : "");
-        try {
-            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-                out = PlaceholderAPI.setPlaceholders(player, out);
-            }
-        } catch (Throwable ignored) {}
         return out;
     }
 
     private boolean containsDynamicTokens(String text) {
         if (text == null) return false;
-        return text.contains("{countdown}") || text.contains("%");
+        return text.contains("{countdown}");
     }
 
     /**

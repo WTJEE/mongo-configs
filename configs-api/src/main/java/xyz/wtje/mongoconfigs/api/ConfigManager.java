@@ -27,6 +27,46 @@ public interface ConfigManager {
     
     Messages findById(String id);
     
+    // Message API with placeholders
+    /**
+     * Get message asynchronously
+     * @param collection Message collection
+     * @param language Language code
+     * @param key Message key
+     * @return CompletableFuture with message
+     */
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key);
+    
+    /**
+     * Get message asynchronously with default value
+     * @param collection Message collection
+     * @param language Language code
+     * @param key Message key
+     * @param defaultValue Default value if message not found
+     * @return CompletableFuture with message or default
+     */
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, String defaultValue);
+    
+    /**
+     * Get message asynchronously with placeholders (varargs)
+     * @param collection Message collection
+     * @param language Language code
+     * @param key Message key
+     * @param placeholders Placeholders in key-value pairs: "key1", value1, "key2", value2, ...
+     * @return CompletableFuture with formatted message
+     */
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders);
+    
+    /**
+     * Get message asynchronously with placeholders (Map)
+     * @param collection Message collection
+     * @param language Language code
+     * @param key Message key
+     * @param placeholders Map of placeholders
+     * @return CompletableFuture with formatted message
+     */
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders);
+    
     
     
     default <T> CompletableFuture<T> getLanguageClass(Class<T> type, String language) {

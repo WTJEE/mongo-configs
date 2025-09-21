@@ -235,6 +235,26 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
             }
 
             @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, java.util.Map<String, Object> placeholders) {
+                return get(path, defaultLanguage, placeholders);
+            }
+
+            @Override
+            public java.util.concurrent.CompletableFuture<String> get(String path, String language, java.util.Map<String, Object> placeholders) {
+                return get(path, language).thenApply(message -> {
+                    String result = message;
+                    if (placeholders != null) {
+                        for (java.util.Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                            String placeholder = "{" + entry.getKey() + "}";
+                            String value = String.valueOf(entry.getValue());
+                            result = result.replace(placeholder, value);
+                        }
+                    }
+                    return result;
+                });
+            }
+
+            @Override
             public java.util.concurrent.CompletableFuture<java.util.List<String>> getList(String path) {
                 return getList(path, defaultLanguage);
             }
@@ -576,6 +596,28 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
             configCache.put("player." + playerId + ".language", language);
             saveConfigToMongoDB("player." + playerId + ".language", language);
         });
+    }
+
+    // Message API implementations
+    @Override
+    public java.util.concurrent.CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
+        return findById(collection).get(key, language);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<String> getMessageAsync(String collection, String language, String key, String defaultValue) {
+        return getMessageAsync(collection, language, key)
+            .thenApply(message -> message != null ? message : defaultValue);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders) {
+        return findById(collection).get(key, language, placeholders);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<String> getMessageAsync(String collection, String language, String key, java.util.Map<String, Object> placeholders) {
+        return findById(collection).get(key, language, placeholders);
     }
 
     @Override

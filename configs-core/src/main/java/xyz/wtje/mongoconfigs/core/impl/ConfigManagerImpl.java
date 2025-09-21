@@ -1172,6 +1172,36 @@ public class ConfigManagerImpl implements ConfigManager {
         return cacheManager.getMessageAsync(collection, language, key, defaultValue);
     }
 
+    /**
+     * Get message asynchronously with placeholders (varargs)
+     */
+    public CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders) {
+        return getMessageAsync(collection, language, key)
+            .thenApply(message -> {
+                if (message == null) return key;
+                return messageFormatter.format(message, placeholders);
+            });
+    }
+
+    /**
+     * Get message asynchronously with placeholders (Map)
+     */
+    public CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders) {
+        return getMessageAsync(collection, language, key)
+            .thenApply(message -> {
+                if (message == null) return key;
+                if (placeholders == null || placeholders.isEmpty()) return message;
+                
+                String result = message;
+                for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                    String placeholder = "{" + entry.getKey() + "}";
+                    String value = String.valueOf(entry.getValue());
+                    result = result.replace(placeholder, value);
+                }
+                return result;
+            });
+    }
+
     @Override
     public <T> CompletableFuture<Void> set(String id, T value) {
         return typedConfigManager.setObject(id, value);
@@ -1249,6 +1279,35 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
                     String formatted = messageFormatter.format(message, placeholders);
                     return CompletableFuture.completedFuture(formatted);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
+                    return CompletableFuture.completedFuture(path);
+                }
+            }
+
+            @Override
+            public CompletableFuture<String> get(String path, Map<String, Object> placeholders) {
+                return get(path, config.getDefaultLanguage(), placeholders);
+            }
+
+            @Override
+            public CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders) {
+                try {
+                    String message = cacheManager.getMessage(id, language, path, (String) null);
+                    if (message == null) {
+                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
+                    }
+                    if (placeholders == null || placeholders.isEmpty()) {
+                        return CompletableFuture.completedFuture(message);
+                    }
+                    
+                    String result = message;
+                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                        String placeholder = "{" + entry.getKey() + "}";
+                        String value = String.valueOf(entry.getValue());
+                        result = result.replace(placeholder, value);
+                    }
+                    return CompletableFuture.completedFuture(result);
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
                     return CompletableFuture.completedFuture(path);
