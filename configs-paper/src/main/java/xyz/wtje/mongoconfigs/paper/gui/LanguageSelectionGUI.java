@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
@@ -14,9 +15,11 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.profile.PlayerProfile;
 import org.bukkit.profile.PlayerTextures;
+import org.bukkit.scheduler.BukkitTask;
 import xyz.wtje.mongoconfigs.paper.config.LanguageConfiguration;
 import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
+import me.clip.placeholderapi.PlaceholderAPI;
 
 import java.net.URL;
 import java.util.Base64;
@@ -42,6 +45,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
     private static final Map<String, String> TEXTURE_URL_CACHE = new ConcurrentHashMap<>(); // Cache decoded URLs
     private static volatile boolean isPreloading = false;
 
+    // Auto-refresh
+    private BukkitTask refreshTask;
+    private volatile int countdownSeconds = -1;
+
     public LanguageSelectionGUI(Player player, LanguageManagerImpl languageManager, LanguageConfiguration config) {
         this.player = player;
         this.languageManager = languageManager;
@@ -49,6 +56,28 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
         // Create inventory only when needed (on main thread)
         this.inventory = null;
+    }
+
+    // Resolve internal and PlaceholderAPI placeholders
+    private String resolvePlaceholders(String text, String currentLanguage) {
+        if (text == null) return null;
+        String out = text
+            .replace("{player}", player.getName())
+            .replace("{displayname}", player.getDisplayName())
+            .replace("{uuid}", player.getUniqueId().toString())
+            .replace("{lang}", currentLanguage == null ? "" : currentLanguage)
+            .replace("{countdown}", countdownSeconds >= 0 ? String.valueOf(countdownSeconds) : "");
+        try {
+            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                out = PlaceholderAPI.setPlaceholders(player, out);
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
+    private boolean containsDynamicTokens(String text) {
+        if (text == null) return false;
+        return text.contains("{countdown}") || text.contains("%");
     }
 
     public CompletableFuture<Void> openAsync() {
@@ -65,8 +94,9 @@ public class LanguageSelectionGUI implements InventoryHolder {
                 try {
                     // Fast inventory creation and opening on main thread
                     if (inventory == null) {
+                        String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
                         inventory = Bukkit.createInventory(this, config.getGuiSize(),
-                            ColorHelper.parseComponent(config.getGuiTitle()));
+                            ColorHelper.parseComponent(titleResolved));
                     } else {
                         inventory.clear(); // Clear existing items for refresh
                     }
@@ -76,6 +106,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     
                     // Open immediately
                     player.openInventory(inventory);
+                    startAutoRefreshIfNeeded();
                 } catch (Exception e) {
                     player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
                     e.printStackTrace();
@@ -146,10 +177,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
         ItemStack closeButton = new ItemStack(material);
         ItemMeta closeMeta = closeButton.getItemMeta();
-        closeMeta.displayName(ColorHelper.parseComponent(config.getCloseButtonName()));
+        String resolvedName = resolvePlaceholders(config.getCloseButtonName(), null);
+        closeMeta.displayName(ColorHelper.parseComponent(resolvedName));
 
         List<Component> lore = config.getCloseButtonLore().stream()
-            .map(ColorHelper::parseComponent)
+            .map(line -> ColorHelper.parseComponent(resolvePlaceholders(line, null)))
             .toList();
         closeMeta.lore(lore);
 
@@ -242,7 +274,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
             displayName = language; // fallback
         }
         
-        Component nameComponent = ColorHelper.parseComponent(displayName);
+        String resolvedName = resolvePlaceholders(displayName, playerLanguage);
+        Component nameComponent = ColorHelper.parseComponent(resolvedName);
         meta.displayName(nameComponent);
 
         List<Component> lore = buildLanguageItemLoreAsync(language, isSelected, playerLanguage);
@@ -266,6 +299,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
             .map(line -> {
                 String processedLine = line
                     .replace("{selection_status}", selectedMessage);
+                processedLine = resolvePlaceholders(processedLine, playerLanguage);
                 return ColorHelper.parseComponent(processedLine);
             })
             .toList();
@@ -401,7 +435,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     
                     // Update inventory on main thread
                     Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                        if (inventory != null) {
+                        if (inventory != null && player.getOpenInventory().getTopInventory().getHolder() == this) {
                             itemsToUpdate.forEach(inventory::setItem);
                         }
                     });
@@ -413,6 +447,43 @@ public class LanguageSelectionGUI implements InventoryHolder {
     
     private void refreshInventory(Player player) {
         refreshInventoryAsync(player);
+    }
+
+    private void startAutoRefreshIfNeeded() {
+        boolean dynamic = containsDynamicTokens(config.getGuiTitle()) ||
+                config.getCloseButtonLore().stream().anyMatch(this::containsDynamicTokens) ||
+                containsDynamicTokens(config.getCloseButtonName());
+        if (!dynamic) {
+            try {
+                String current = languageManager.getPlayerLanguage(player.getUniqueId().toString()).getNow("");
+                List<String> lore = config.getLanguageItemLore(current);
+                dynamic = lore != null && lore.stream().anyMatch(this::containsDynamicTokens);
+            } catch (Throwable ignored) {}
+        }
+        if (!dynamic) return;
+
+        if (config.getGuiTitle().contains("{countdown}")) {
+            countdownSeconds = 60;
+        }
+        if (refreshTask != null) refreshTask.cancel();
+        refreshTask = Bukkit.getScheduler().runTaskTimer(getPlugin(), () -> {
+            if (countdownSeconds >= 0) countdownSeconds = Math.max(0, countdownSeconds - 1);
+            if (player.getOpenInventory().getTopInventory().getHolder() != this) {
+                if (refreshTask != null) refreshTask.cancel();
+                refreshTask = null;
+                countdownSeconds = -1;
+                return;
+            }
+            refreshInventoryAsync(player);
+        }, 20L, 20L);
+    }
+
+    public void onClose(InventoryCloseEvent event) {
+        if (refreshTask != null) {
+            refreshTask.cancel();
+            refreshTask = null;
+        }
+        countdownSeconds = -1;
     }
 
     private String getLanguageFromSlot(int slot, String[] languages) {
@@ -546,11 +617,13 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     Bukkit.getScheduler().runTask(getPlugin(), () -> {
                         // Create inventory on main thread if not exists
                         if (inventory == null) {
+                            String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
                             inventory = Bukkit.createInventory(LanguageSelectionGUI.this, config.getGuiSize(),
-                                ColorHelper.parseComponent(config.getGuiTitle()));
+                                ColorHelper.parseComponent(titleResolved));
                         }
                         itemsToSet.forEach(inventory::setItem);
                         player.openInventory(inventory);
+                        startAutoRefreshIfNeeded();
                     });
                     return null;
                 });

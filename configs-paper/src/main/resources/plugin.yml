@@ -6,7 +6,7 @@ author: aiikk
 website: https://github.com/aiikk/mongo-configs
 description: Advanced MongoDB configuration and translation management library
 
-softdepend: []
+softdepend: [PlaceholderAPI]
 
 permissions:
   mongoconfigs.admin:
@@ -42,6 +42,6 @@ commands:
     aliases: [cfgmgr, cm]
   hotreload:
     description: Hot-reload management commands
-    usage: /<command> [test|clear|status]
+usage: /<command> [gui|cache|all|status]
     permission: mongoconfigs.hotreload
     aliases: [hr]
