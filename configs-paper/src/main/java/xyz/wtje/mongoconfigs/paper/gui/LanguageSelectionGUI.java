@@ -10,6 +10,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -64,7 +65,29 @@ public class LanguageSelectionGUI implements InventoryHolder {
     
     // Get existing GUI for player or null
     public static LanguageSelectionGUI getOpenGUI(Player player) {
-        return OPEN_GUIS.get(player.getUniqueId());
+        LanguageSelectionGUI gui = OPEN_GUIS.get(player.getUniqueId());
+        if (gui == null) {
+            return null;
+        }
+
+        try {
+            InventoryView view = player.getOpenInventory();
+            if (view == null) {
+                OPEN_GUIS.remove(player.getUniqueId(), gui);
+                return null;
+            }
+
+            Inventory top = view.getTopInventory();
+            if (top == null || top.getHolder() != gui) {
+                OPEN_GUIS.remove(player.getUniqueId(), gui);
+                return null;
+            }
+        } catch (Throwable ignored) {
+            OPEN_GUIS.remove(player.getUniqueId(), gui);
+            return null;
+        }
+
+        return gui;
     }
 
     // --- Safety helpers -----------------------------------------------------

@@ -44,8 +44,8 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             // Check for existing GUI first
             LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
             if (existingGui != null) {
-                // Refresh the existing GUI
-                existingGui.refreshAsync();
+                // Re-open or refresh the existing GUI
+                existingGui.openAsync();
                 return true;
             }
             
@@ -218,8 +218,8 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         // Check for existing GUI first
         LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
         if (existingGui != null) {
-            // Refresh the existing GUI
-            existingGui.refreshAsync();
+            // Re-open or refresh the existing GUI
+            existingGui.openAsync();
             return;
         }
         
