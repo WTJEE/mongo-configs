@@ -221,5 +221,12 @@ public class LanguageManagerImpl implements LanguageManager {
             return false;
         }
     }
+    
+    /**
+     * Get the language configuration
+     */
+    public LanguageConfiguration getLanguageConfiguration() {
+        return config;
+    }
 }
 
