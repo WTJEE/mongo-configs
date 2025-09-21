@@ -369,10 +369,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
             return;
         }
 
-        // Handle close button immediately
-        ItemMeta meta = clickedItem.getItemMeta();
-        if (meta != null && meta.hasDisplayName() &&
-            meta.displayName().equals(ColorHelper.parseComponent(config.getCloseButtonName()))) {
+        // Handle close button by slot for robustness
+        if (event.getSlot() == config.getCloseButtonSlot()) {
             clickingPlayer.closeInventory();
             
             // Send close message async
@@ -380,7 +378,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                 languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString())
                     .thenAccept(currentPlayerLanguage -> {
                         String closeMessage = config.getMessage("gui.closed", currentPlayerLanguage);
-                        if (!closeMessage.isEmpty()) {
+                        if (closeMessage != null && !closeMessage.isEmpty()) {
                             Bukkit.getScheduler().runTask(getPlugin(), () -> {
                                 clickingPlayer.sendMessage(ColorHelper.parseComponent(closeMessage));
                             });

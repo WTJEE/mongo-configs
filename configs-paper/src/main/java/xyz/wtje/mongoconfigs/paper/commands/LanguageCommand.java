@@ -43,7 +43,13 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         if (args.length == 0) {
             // Try to open quickly with default language; async update will refresh items later
             try {
-                new LanguageSelectionGUI(player, languageManager, config).openAsync();
+                // If already open, just refresh instead of opening a new instance
+                var top = player.getOpenInventory().getTopInventory();
+                if (top != null && top.getHolder() instanceof LanguageSelectionGUI existing) {
+                    existing.openSimpleAsync();
+                } else {
+                    new LanguageSelectionGUI(player, languageManager, config).openAsync();
+                }
             } catch (Throwable t) {
                 getPlugin().getLogger().warning("/language quick-open failed: " + t.getMessage());
             }
