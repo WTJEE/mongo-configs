@@ -58,6 +58,22 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.inventory = null;
     }
 
+    // --- Safety helpers -----------------------------------------------------
+    private int safeSize(int requested) {
+        int size = requested <= 0 ? 9 : requested;
+        if (size < 9) size = 9;
+        if (size > 54) size = 54;
+        // round up to nearest multiple of 9
+        if (size % 9 != 0) size = ((size / 9) + 1) * 9;
+        return size;
+    }
+
+    private int clampSlot(int slot, int invSize) {
+        if (slot < 0) return 0;
+        if (slot >= invSize) return invSize - 1;
+        return slot;
+    }
+
     // Resolve internal and PlaceholderAPI placeholders
     private String resolvePlaceholders(String text, String currentLanguage) {
         if (text == null) return null;
@@ -95,14 +111,16 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     // Fast inventory creation and opening on main thread
                     if (inventory == null) {
                         String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
-                        inventory = Bukkit.createInventory(this, config.getGuiSize(),
+                        int size = safeSize(config.getGuiSize());
+                        inventory = Bukkit.createInventory(this, size,
                             ColorHelper.parseComponent(titleResolved));
                     } else {
                         inventory.clear(); // Clear existing items for refresh
                     }
                     
                     // Batch set items for performance
-                    itemsToSet.forEach(inventory::setItem);
+                    int invSize = inventory.getSize();
+                    itemsToSet.forEach((slot, stack) -> inventory.setItem(clampSlot(slot, invSize), stack));
                     
                     // Open immediately
                     player.openInventory(inventory);
@@ -505,7 +523,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
     public Inventory getInventory() {
         // Create inventory on-demand if needed (should only happen on main thread)
         if (inventory == null) {
-            inventory = Bukkit.createInventory(this, config.getGuiSize(),
+            int size = safeSize(config.getGuiSize());
+            inventory = Bukkit.createInventory(this, size,
                 ColorHelper.parseComponent(config.getGuiTitle()));
         }
         return inventory;
@@ -618,10 +637,12 @@ public class LanguageSelectionGUI implements InventoryHolder {
                         // Create inventory on main thread if not exists
                         if (inventory == null) {
                             String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
-                            inventory = Bukkit.createInventory(LanguageSelectionGUI.this, config.getGuiSize(),
+                            int size = safeSize(config.getGuiSize());
+                            inventory = Bukkit.createInventory(LanguageSelectionGUI.this, size,
                                 ColorHelper.parseComponent(titleResolved));
                         }
-                        itemsToSet.forEach(inventory::setItem);
+                        int invSize = inventory.getSize();
+                        itemsToSet.forEach((slot, stack) -> inventory.setItem(clampSlot(slot, invSize), stack));
                         player.openInventory(inventory);
                         startAutoRefreshIfNeeded();
                     });

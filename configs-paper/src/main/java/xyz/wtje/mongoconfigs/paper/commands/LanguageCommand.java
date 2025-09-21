@@ -39,12 +39,21 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // Open GUI immediately if no args, to ensure fast UX. We'll resolve language async.
+        if (args.length == 0) {
+            // Try to open quickly with default language; async update will refresh items later
+            try {
+                new LanguageSelectionGUI(player, languageManager, config).openAsync();
+            } catch (Throwable t) {
+                getPlugin().getLogger().warning("/language quick-open failed: " + t.getMessage());
+            }
+        }
         
         languageManager.getPlayerLanguage(player.getUniqueId().toString())
             .whenComplete((playerLanguage, error) -> {
                 if (error != null) {
                     player.sendMessage("§c[ERROR] Failed to get player language: " + error.getMessage());
-                    handleCommand(player, args, "en"); 
+                    handleCommand(player, args, config.getDefaultLanguage()); 
                 } else {
                     handleCommand(player, args, playerLanguage);
                 }
