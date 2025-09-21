@@ -161,8 +161,10 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }, asyncExecutor)
         .thenCompose(v -> {
-            // Setup change stream if not already setup
-            if (!changeStreamWatchers.containsKey(collection)) {
+            // Setup change stream if not already setup (skip for player_languages)
+            if (!changeStreamWatchers.containsKey(collection) && 
+                !collection.equals("player_languages") && 
+                !collection.equals(config.getPlayerLanguagesCollection())) {
                 setupChangeStreamForCollection(collection);
             }
             
@@ -646,7 +648,15 @@ public class ConfigManagerImpl implements ConfigManager {
             LOGGER.info("📊 Found " + collections.size() + " collections for Change Streams: " + collections);
             
             int successCount = 0;
+            int skippedCount = 0;
             for (String collection : collections) {
+                // Skip player_languages collection
+                if (collection.equals("player_languages") || 
+                    collection.equals(config.getPlayerLanguagesCollection())) {
+                    skippedCount++;
+                    continue;
+                }
+                
                 try {
                     setupChangeStreamForCollection(collection);
                     successCount++;
@@ -656,11 +666,18 @@ public class ConfigManagerImpl implements ConfigManager {
             }
             
             LOGGER.info("🎉 Change streams setup completed! Active watchers: " + changeStreamWatchers.size() + 
-                       "/" + successCount + " (total collections: " + collections.size() + ")");
+                       "/" + successCount + " (skipped: " + skippedCount + ", total collections: " + collections.size() + ")");
         }, asyncExecutor);
     }
     
     private void setupChangeStreamForCollection(String collectionName) {
+        // Skip player_languages collection - it doesn't need change streams
+        if (collectionName.equals("player_languages") || 
+            collectionName.equals(config.getPlayerLanguagesCollection())) {
+            LOGGER.info("⏭️ Skipping change stream for player_languages collection");
+            return;
+        }
+        
         if (changeStreamWatchers.containsKey(collectionName)) {
             LOGGER.info("🔄 Change stream already exists for collection: " + collectionName);
             return; // Already setup

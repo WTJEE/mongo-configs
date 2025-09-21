@@ -107,24 +107,20 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        messageQueue.compute(sender, (key, current) -> {
-            CompletableFuture<Void> base = current == null ? CompletableFuture.completedFuture(null) : current;
-            CompletableFuture<Void> next = base.handle((ignored, error) -> null)
-                .thenCompose(ignored -> CompletableFuture.supplyAsync(() -> filtered.stream()
-                        .map(ColorHelper::parseComponent)
-                        .toList())
-                    .thenAccept(components -> plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        for (Component component : components) {
-                            sender.sendMessage(component);
-                        }
-                    }))
-                );
-
-            next.whenComplete((ignored, error) ->
-                messageQueue.compute(key, (innerKey, existing) -> existing == next ? null : existing)
-            );
-            return next;
-        });
+        // Simplify - just send messages directly on main thread
+        if (Bukkit.isPrimaryThread()) {
+            // Already on main thread, send directly
+            for (String msg : filtered) {
+                sender.sendMessage(ColorHelper.parseComponent(msg));
+            }
+        } else {
+            // Schedule on main thread
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                for (String msg : filtered) {
+                    sender.sendMessage(ColorHelper.parseComponent(msg));
+                }
+            });
+        }
     }
 
     private void handleReload(CommandSender sender, String[] args, String senderLanguage) {

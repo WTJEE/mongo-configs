@@ -544,7 +544,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
         countdownSeconds = -1;
         isOpen = false;
+        // Clear the GUI reference to allow reopening
         OPEN_GUIS.remove(player.getUniqueId());
+        // Reset inventory reference to allow fresh creation next time
+        inventory = null;
     }
 
     private String getLanguageFromSlot(int slot, String[] languages) {
