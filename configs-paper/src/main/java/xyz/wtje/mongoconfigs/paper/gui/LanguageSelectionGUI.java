@@ -74,34 +74,50 @@ public class LanguageSelectionGUI implements InventoryHolder {
     // Get existing GUI for player or null
     public static LanguageSelectionGUI getOpenGUI(Player player) {
         if (player == null) {
+            LOGGER.info("[DEBUG-GUI] getOpenGUI called with null player");
             return null;
         }
         
+        LOGGER.info("[DEBUG-GUI] getOpenGUI checking for player: " + player.getName());
         LanguageSelectionGUI gui = OPEN_GUIS.get(player.getUniqueId());
         if (gui == null) {
+            LOGGER.info("[DEBUG-GUI] No GUI found in OPEN_GUIS map for player: " + player.getName());
             return null;
         }
 
+        LOGGER.info("[DEBUG-GUI] Found GUI in map for player: " + player.getName() + ", gui.isOpen=" + gui.isOpen);
         try {
             InventoryView view = player.getOpenInventory();
             if (view == null) {
+                LOGGER.info("[DEBUG-GUI] Player's open inventory view is null for: " + player.getName());
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
                 gui.isOpen = false;
                 return null;
             }
 
             Inventory top = view.getTopInventory();
-            if (top == null || top.getHolder() != gui) {
+            if (top == null) {
+                LOGGER.info("[DEBUG-GUI] Top inventory is null for player: " + player.getName());
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
                 gui.isOpen = false;
                 return null;
             }
-        } catch (Throwable ignored) {
+            
+            LOGGER.info("[DEBUG-GUI] Top inventory holder check: current=" + top.getHolder() + ", expected=" + gui + ", matches=" + (top.getHolder() == gui));
+            if (top.getHolder() != gui) {
+                LOGGER.info("[DEBUG-GUI] Top inventory holder mismatch for player: " + player.getName());
+                OPEN_GUIS.remove(player.getUniqueId(), gui);
+                gui.isOpen = false;
+                return null;
+            }
+        } catch (Throwable t) {
+            LOGGER.info("[DEBUG-GUI] Exception checking inventory: " + t.getMessage());
             OPEN_GUIS.remove(player.getUniqueId(), gui);
             gui.isOpen = false;
             return null;
         }
 
+        LOGGER.info("[DEBUG-GUI] Returning valid GUI for player: " + player.getName());
         return gui;
     }
 
@@ -144,30 +160,38 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public CompletableFuture<Void> openAsync() {
+        LOGGER.info("[DEBUG-GUI] openAsync called for player: " + player.getName() + ", isOpen=" + isOpen + ", inventory=" + (inventory != null ? "exists" : "null"));
+        
         // Check if already opening
         if (isOpen && inventory != null) {
+            LOGGER.info("[DEBUG-GUI] GUI already open for player: " + player.getName() + ", refreshing instead");
             // Just refresh existing GUI
             return refreshAsync();
         }
         
+        LOGGER.info("[DEBUG-GUI] Building new GUI for player: " + player.getName());
         // Start building items immediately in parallel
         CompletableFuture<Map<Integer, ItemStack>> itemsFuture = buildInventoryAsync();
         
         // If heads not cached, preload them in parallel (don't wait)
         if (CACHED_HEADS.isEmpty()) {
+            LOGGER.info("[DEBUG-GUI] Preloading heads for future use");
             CompletableFuture.runAsync(() -> preloadHeadsForCurrentLanguages());
         }
         
         return itemsFuture.thenAccept(itemsToSet -> {
+            LOGGER.info("[DEBUG-GUI] Items built, scheduling GUI creation on main thread for player: " + player.getName());
             Bukkit.getScheduler().runTask(getPlugin(), () -> {
                 try {
                     // Fast inventory creation and opening on main thread
                     if (inventory == null) {
+                        LOGGER.info("[DEBUG-GUI] Creating new inventory for player: " + player.getName());
                         String titleResolved = resolvePlaceholders(config.getGuiTitle(), null);
                         int size = safeSize(config.getGuiSize());
                         inventory = Bukkit.createInventory(this, size,
                             ColorHelper.parseComponent(titleResolved));
                     } else {
+                        LOGGER.info("[DEBUG-GUI] Clearing existing inventory for player: " + player.getName());
                         inventory.clear(); // Clear existing items for refresh
                     }
                     
@@ -176,16 +200,21 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
                     
                     // Open immediately
+                    LOGGER.info("[DEBUG-GUI] Opening inventory for player: " + player.getName());
                     player.openInventory(inventory);
                     isOpen = true;
+                    LOGGER.info("[DEBUG-GUI] Set isOpen=true for player: " + player.getName());
                     OPEN_GUIS.put(player.getUniqueId(), this);
+                    LOGGER.info("[DEBUG-GUI] Added to OPEN_GUIS map for player: " + player.getName());
                     startAutoRefreshIfNeeded();
                 } catch (Exception e) {
+                    LOGGER.severe("[DEBUG-GUI] Error opening inventory for player: " + player.getName() + ", error: " + e.getMessage());
                     player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
                     e.printStackTrace();
                 }
             });
         }).exceptionally(throwable -> {
+            LOGGER.severe("[DEBUG-GUI] Error building GUI for player: " + player.getName() + ", error: " + throwable.getMessage());
             Bukkit.getScheduler().runTask(getPlugin(), () -> {
                 player.sendMessage("§c[ERROR] Failed to build GUI: " + throwable.getMessage());
                 throwable.printStackTrace();
@@ -576,16 +605,32 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public void onClose(InventoryCloseEvent event) {
+        LOGGER.info("[DEBUG-GUI] onClose event triggered for player: " + player.getName());
         if (refreshTask != null) {
             refreshTask.cancel();
             refreshTask = null;
+            LOGGER.info("[DEBUG-GUI] Cancelled refresh task for player: " + player.getName());
         }
         countdownSeconds = -1;
         isOpen = false;
+        LOGGER.info("[DEBUG-GUI] Set isOpen=false for player: " + player.getName());
+        
         // Clear the GUI reference to allow reopening
         OPEN_GUIS.remove(player.getUniqueId());
+        LOGGER.info("[DEBUG-GUI] Removed from OPEN_GUIS map for player: " + player.getName());
+        
         // Reset inventory reference to allow fresh creation next time
         inventory = null;
+        LOGGER.info("[DEBUG-GUI] Reset inventory to null for player: " + player.getName());
+        
+        // Force a cleanup task to run later to ensure proper removal
+        Bukkit.getScheduler().runTaskLater(getPlugin(), () -> {
+            LOGGER.info("[DEBUG-GUI] Running delayed cleanup for player: " + player.getName());
+            if (OPEN_GUIS.containsKey(player.getUniqueId())) {
+                OPEN_GUIS.remove(player.getUniqueId());
+                LOGGER.info("[DEBUG-GUI] Removed lingering reference from OPEN_GUIS map for player: " + player.getName());
+            }
+        }, 5L); // Run 5 ticks later (0.25 seconds)
     }
 
     private String getLanguageFromSlot(int slot, String[] languages) {
@@ -751,10 +796,38 @@ public class LanguageSelectionGUI implements InventoryHolder {
         openSimpleAsync();
     }
 
+    /**
+     * Force clean any existing GUI for the given player
+     * @param player Player to clean GUI for
+     */
+    public static void forceCleanupForPlayer(Player player) {
+        if (player == null) {
+            return;
+        }
+        
+        LOGGER.info("[DEBUG-GUI] Force cleaning any existing GUI for player: " + player.getName());
+        LanguageSelectionGUI existing = OPEN_GUIS.remove(player.getUniqueId());
+        if (existing != null) {
+            existing.isOpen = false;
+            existing.inventory = null;
+            if (existing.refreshTask != null) {
+                existing.refreshTask.cancel();
+                existing.refreshTask = null;
+            }
+            LOGGER.info("[DEBUG-GUI] Forcibly cleaned existing GUI for player: " + player.getName());
+        }
+    }
+    
+    /**
+     * Clear all cached GUI data - use during reload
+     */
     public static void clearCache() {
         CACHED_HEADS.clear();
         LOADING_HEADS.clear();
+        TEXTURE_URL_CACHE.clear();
+        OPEN_GUIS.clear();
         isPreloading = false;
+        LOGGER.info("[DEBUG-GUI] Cleared all GUI caches");
     }
     
     private void preloadHeadsForCurrentLanguages() {

@@ -207,13 +207,17 @@ public class MongoConfigsPlugin extends JavaPlugin {
     }
 
     private void registerListeners() {
+        getLogger().info("[DEBUG] Registering event listeners...");
+        
         getServer().getPluginManager().registerEvents(
                 new PlayerJoinListener(languageManager), this);
+        getLogger().info("[DEBUG] PlayerJoinListener registered");
 
         getServer().getPluginManager().registerEvents(
-                new GUIListener(), this);
+                new GUIListener(this), this);
+        getLogger().info("[DEBUG] GUIListener registered with plugin instance");
 
-        getLogger().info("Event listeners registered successfully");
+        getLogger().info("✅ Event listeners registered successfully");
     }
 
 

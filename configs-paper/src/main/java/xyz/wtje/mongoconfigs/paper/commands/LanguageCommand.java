@@ -28,6 +28,8 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        getPlugin().getLogger().info("[DEBUG] Language command executed by " + sender.getName());
+        
         if (!(sender instanceof Player player)) {
             String playersOnlyMessage = config.getMessage("commands.players-only", "en");
             sender.sendMessage(ColorHelper.parseComponent(playersOnlyMessage));
@@ -36,22 +38,23 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
 
         if (languageManager == null) {
             player.sendMessage("§c[ERROR] LanguageManager is not initialized!");
+            getPlugin().getLogger().severe("[DEBUG] LanguageManager is null for player " + player.getName());
             return true;
         }
 
         // Open GUI immediately if no args, to ensure fast UX. We'll resolve language async.
         if (args.length == 0) {
-            // Check for existing GUI first
-            LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
-            if (existingGui != null && existingGui.isOpen()) {
-                // Re-open or refresh the existing GUI
-                existingGui.openAsync();
-                return true;
-            }
+            getPlugin().getLogger().info("[DEBUG] No args provided, attempting to open GUI for " + player.getName());
             
-            // Create new GUI - always create a new GUI if none exists or previous was closed
+            // Force cleanup any existing GUI to ensure fresh start
+            LanguageSelectionGUI.forceCleanupForPlayer(player);
+            getPlugin().getLogger().info("[DEBUG] Forced cleanup of any existing GUI for " + player.getName());
+            
+            // Create new GUI since we forced cleanup
+            getPlugin().getLogger().info("[DEBUG] Creating new GUI for " + player.getName());
             LanguageSelectionGUI newGui = new LanguageSelectionGUI(player, languageManager, config);
             newGui.openAsync().exceptionally(throwable -> {
+                getPlugin().getLogger().severe("[DEBUG] Failed to open GUI: " + throwable.getMessage());
                 player.sendMessage("§c[ERROR] Failed to open language GUI: " + throwable.getMessage());
                 return null;
             });
@@ -62,11 +65,29 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             .whenComplete((playerLanguage, error) -> {
                 if (error != null) {
                     player.sendMessage("§c[ERROR] Failed to get player language: " + error.getMessage());
+                    getPlugin().getLogger().severe("[DEBUG] Error getting player language: " + error.getMessage());
                     handleCommand(player, args, config.getDefaultLanguage()); 
                 } else {
+                    getPlugin().getLogger().info("[DEBUG] Got player language: " + playerLanguage + " for " + player.getName());
                     handleCommand(player, args, playerLanguage);
                 }
             });
+
+        // As a fallback, ensure GUI opens even if async completion fails
+        if (args.length == 0) {
+            getPlugin().getLogger().info("[DEBUG] Scheduling fallback GUI check in 10 ticks");
+            org.bukkit.Bukkit.getScheduler().runTaskLater(getPlugin(), () -> {
+                // Double-check if player still has an open inventory that matches our GUI
+                LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
+                if (existingGui == null) {
+                    getPlugin().getLogger().info("[DEBUG] FALLBACK: No GUI found after 10 ticks for " + player.getName() + ", creating new one");
+                    LanguageSelectionGUI newGui = new LanguageSelectionGUI(player, languageManager, config);
+                    newGui.openAsync();
+                } else {
+                    getPlugin().getLogger().info("[DEBUG] FALLBACK: GUI already exists for " + player.getName());
+                }
+            }, 10L); // 10 ticks = 0.5 seconds
+        }
 
         return true;
     }
