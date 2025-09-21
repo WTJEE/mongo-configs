@@ -41,18 +41,21 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
 
         // Open GUI immediately if no args, to ensure fast UX. We'll resolve language async.
         if (args.length == 0) {
-            // Try to open quickly with default language; async update will refresh items later
-            try {
-                // If already open, just refresh instead of opening a new instance
-                var top = player.getOpenInventory().getTopInventory();
-                if (top != null && top.getHolder() instanceof LanguageSelectionGUI existing) {
-                    existing.openSimpleAsync();
-                } else {
-                    new LanguageSelectionGUI(player, languageManager, config).openAsync();
-                }
-            } catch (Throwable t) {
-                getPlugin().getLogger().warning("/language quick-open failed: " + t.getMessage());
+            // Check for existing GUI first
+            LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
+            if (existingGui != null) {
+                // Refresh the existing GUI
+                existingGui.refreshAsync();
+                return true;
             }
+            
+            // Create new GUI
+            LanguageSelectionGUI newGui = new LanguageSelectionGUI(player, languageManager, config);
+            newGui.openAsync().exceptionally(throwable -> {
+                player.sendMessage("§c[ERROR] Failed to open language GUI: " + throwable.getMessage());
+                return null;
+            });
+            return true;
         }
         
         languageManager.getPlayerLanguage(player.getUniqueId().toString())
@@ -72,8 +75,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
         // Immediately return from main thread and handle everything async
         CompletableFuture.runAsync(() -> {
             if (args.length == 0) {
-                // Open GUI completely asynchronously
-                openLanguageGUIAsync(player, playerLanguage);
+                // GUI opening already handled above
                 return;
             }
 
@@ -213,6 +215,14 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     }
 
     private void openLanguageGUIAsync(Player player, String playerLanguage) {
+        // Check for existing GUI first
+        LanguageSelectionGUI existingGui = LanguageSelectionGUI.getOpenGUI(player);
+        if (existingGui != null) {
+            // Refresh the existing GUI
+            existingGui.refreshAsync();
+            return;
+        }
+        
         // Create GUI object immediately (lightweight operation)
         LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
         

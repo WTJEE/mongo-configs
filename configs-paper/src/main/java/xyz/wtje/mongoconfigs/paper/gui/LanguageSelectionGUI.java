@@ -34,11 +34,15 @@ import java.util.logging.Logger;
 
 public class LanguageSelectionGUI implements InventoryHolder {
     private static final Logger LOGGER = Logger.getLogger(LanguageSelectionGUI.class.getName());
+    
+    // Track open GUIs per player
+    private static final Map<UUID, LanguageSelectionGUI> OPEN_GUIS = new ConcurrentHashMap<>();
 
     private final LanguageManagerImpl languageManager;
     private final LanguageConfiguration config;
     private volatile Inventory inventory; // volatile for thread-safe lazy init
     private final Player player;
+    private volatile boolean isOpen = false;
 
     private static final Map<String, ItemStack> CACHED_HEADS = new ConcurrentHashMap<>();
     private static final Map<String, CompletableFuture<ItemStack>> LOADING_HEADS = new ConcurrentHashMap<>();
@@ -56,6 +60,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
         // Create inventory only when needed (on main thread)
         this.inventory = null;
+    }
+    
+    // Get existing GUI for player or null
+    public static LanguageSelectionGUI getOpenGUI(Player player) {
+        return OPEN_GUIS.get(player.getUniqueId());
     }
 
     // --- Safety helpers -----------------------------------------------------
@@ -97,6 +106,12 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public CompletableFuture<Void> openAsync() {
+        // Check if already opening
+        if (isOpen && inventory != null) {
+            // Just refresh existing GUI
+            return refreshAsync();
+        }
+        
         // Start building items immediately in parallel
         CompletableFuture<Map<Integer, ItemStack>> itemsFuture = buildInventoryAsync();
         
@@ -124,6 +139,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     
                     // Open immediately
                     player.openInventory(inventory);
+                    isOpen = true;
+                    OPEN_GUIS.put(player.getUniqueId(), this);
                     startAutoRefreshIfNeeded();
                 } catch (Exception e) {
                     player.sendMessage("§c[ERROR] Failed to open inventory: " + e.getMessage());
@@ -402,6 +419,18 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     String selectedLanguage = getLanguageFromSlot(slot, supportedLanguages);
 
                     if (selectedLanguage != null) {
+                        // Check if already selected
+                        if (selectedLanguage.equals(currentPlayerLanguage)) {
+                            Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                                String alreadySelectedMessage = config.getMessage("commands.language.already_selected", currentPlayerLanguage);
+                                if (alreadySelectedMessage == null || alreadySelectedMessage.isEmpty()) {
+                                    alreadySelectedMessage = "§eYou already have this language selected!";
+                                }
+                                clickingPlayer.sendMessage(ColorHelper.parseComponent(alreadySelectedMessage));
+                            });
+                            return null;
+                        }
+                        
                         languageManager.setPlayerLanguage(clickingPlayer.getUniqueId(), selectedLanguage)
                             .whenCompleteAsync((result, error) -> {
                                 Bukkit.getScheduler().runTask(getPlugin(), () -> {
@@ -417,7 +446,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
                                                 .replace("{language}", displayName);
                                             clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
                                             
-                                            refreshInventoryAsync(clickingPlayer);
+                                            // Force refresh the GUI immediately
+                                            refreshAsync();
                                         } catch (Exception e) {
                                             getPlugin().getLogger().warning("Error updating GUI after language change: " + e.getMessage());
                                         }
@@ -464,6 +494,19 @@ public class LanguageSelectionGUI implements InventoryHolder {
     private void refreshInventory(Player player) {
         refreshInventoryAsync(player);
     }
+    
+    // New method for easier refresh
+    public CompletableFuture<Void> refreshAsync() {
+        return buildInventoryAsync().thenAccept(itemsToSet -> {
+            Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                if (inventory != null && isOpen) {
+                    inventory.clear();
+                    int invSize = inventory.getSize();
+                    itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
+                }
+            });
+        });
+    }
 
     private void startAutoRefreshIfNeeded() {
         boolean dynamic = containsDynamicTokens(config.getGuiTitle()) ||
@@ -500,19 +543,26 @@ public class LanguageSelectionGUI implements InventoryHolder {
             refreshTask = null;
         }
         countdownSeconds = -1;
+        isOpen = false;
+        OPEN_GUIS.remove(player.getUniqueId());
     }
 
     private String getLanguageFromSlot(int slot, String[] languages) {
-        if (slot >= 10 && slot <= 16) {
-            int index = slot - 10;
-            if (index < languages.length) {
-                return languages[index];
+        // Calculate based on actual GUI layout
+        int startSlot = config.getGuiStartSlot();
+        int langIndex = 0;
+        int currentSlot = startSlot;
+        
+        for (String lang : languages) {
+            if (currentSlot == slot) {
+                return lang;
             }
-        } else if (slot >= 19 && slot <= 25) {
-            int index = slot - 19 + 7;
-            if (index < languages.length) {
-                return languages[index];
+            currentSlot++;
+            // Handle row wrapping
+            if (currentSlot % 9 == 8) {
+                currentSlot += 2;
             }
+            langIndex++;
         }
         return null;
     }
@@ -642,6 +692,8 @@ public class LanguageSelectionGUI implements InventoryHolder {
                         int invSize = inventory.getSize();
                         itemsToSet.forEach((pos, stack) -> inventory.setItem(clampSlot(pos, invSize), stack));
                         player.openInventory(inventory);
+                        isOpen = true;
+                        OPEN_GUIS.put(player.getUniqueId(), this);
                         startAutoRefreshIfNeeded();
                     });
                     return null;
