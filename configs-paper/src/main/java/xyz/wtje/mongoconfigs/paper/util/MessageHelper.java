@@ -4,6 +4,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import xyz.wtje.mongoconfigs.core.impl.ConfigManagerImpl;
 import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
+import me.clip.placeholderapi.PlaceholderAPI;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +37,12 @@ public class MessageHelper {
             .thenAccept(message -> {
                 if (message != null) {
                     String formatted = replacePlaceholders(message, placeholders);
+                    // Resolve PlaceholderAPI tokens if available
+                    try {
+                        if (org.bukkit.Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                            formatted = PlaceholderAPI.setPlaceholders(player, formatted);
+                        }
+                    } catch (Throwable ignored) {}
                     player.sendMessage(ColorHelper.parseComponent(formatted));
                 }
             });
@@ -62,6 +69,11 @@ public class MessageHelper {
                     .thenAccept(message -> {
                         if (message != null) {
                             String formatted = replacePlaceholders(message, allPlaceholders);
+                            try {
+                                if (org.bukkit.Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                                    formatted = PlaceholderAPI.setPlaceholders(player, formatted);
+                                }
+                            } catch (Throwable ignored) {}
                             player.sendMessage(ColorHelper.parseComponent(formatted));
                         }
                     });
@@ -75,7 +87,8 @@ public class MessageHelper {
         return configManager.getMessageAsync(collection, lang, key)
             .thenApply(message -> {
                 if (message == null) return "";
-                return replacePlaceholders(message, placeholders);
+                String formatted = replacePlaceholders(message, placeholders);
+                return formatted;
             });
     }
     
@@ -106,7 +119,13 @@ public class MessageHelper {
                 return configManager.getMessageAsync(collection, lang, key)
                     .thenApply(message -> {
                         if (message == null) return "";
-                        return replacePlaceholders(message, placeholders);
+                        String formatted = replacePlaceholders(message, placeholders);
+                        try {
+                            if (org.bukkit.Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                                formatted = PlaceholderAPI.setPlaceholders(player, formatted);
+                            }
+                        } catch (Throwable ignored) {}
+                        return formatted;
                     });
             });
     }
@@ -135,6 +154,13 @@ public class MessageHelper {
                 .thenAccept(message -> {
                     if (message != null) {
                         String formatted = replacePlaceholders(message, placeholders);
+                        if (sender instanceof Player p) {
+                            try {
+                                if (org.bukkit.Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                                    formatted = PlaceholderAPI.setPlaceholders(p, formatted);
+                                }
+                            } catch (Throwable ignored) {}
+                        }
                         sender.sendMessage(ColorHelper.parseComponent(formatted));
                     }
                 });
