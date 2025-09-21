@@ -169,28 +169,6 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             });
         });
     }
-                    }
-                });
-            })
-            .exceptionally(throwable -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sendMessagesAsync(sender, "&c❌ Error getting collections from ConfigManager: " + throwable.getMessage());
-                });
-                return null;
-            });
-    }
-
-    private void showHelp(CommandSender sender) {
-        sender.sendMessage(Component.text("§6=== MongoDB Configs Commands ===")
-                .color(NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("§f/mongoconfigs reload [collection] §7- Reload specific collection"));
-        sender.sendMessage(Component.text("§f/mongoconfigs reloadall §7- Reload ALL collections from MongoDB"));
-        sender.sendMessage(Component.text("§f/mongoconfigs collections §7- List all collections"));
-        sender.sendMessage(Component.text("§f/mongoconfigs testcollections §7- Test MongoDB collections detection"));
-        sender.sendMessage(Component.text("§f/mongoconfigs changestreams §7- Check Change Streams status"));
-        sender.sendMessage(Component.text("§f/mongoconfigs fixchangestreams §7- Force setup Change Streams"));
-        sender.sendMessage(Component.text("§f/mongoconfigs help §7- Show this help"));
-    }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
@@ -209,4 +187,3 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         return List.of();
     }
 }
-
