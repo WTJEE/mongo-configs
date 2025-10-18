@@ -1,0 +1,44 @@
+# MongoDB Configs Plugin Configuration (Velocity)
+
+mongodb:
+  connection-string: "mongodb://localhost:27017"
+  database: "minecraft"
+  collections:
+    typed-configs: "typed_configs"
+    configs: "configs"
+  player-languages:
+    database: "minecraft"
+    collection: "player_languages"
+  connection-pool:
+    max-size: 20
+    min-size: 5
+    max-idle-time-ms: 60000
+    max-life-time-ms: 1800000
+  timeouts:
+    server-selection-ms: 5000
+    socket-timeout-ms: 10000
+    connect-timeout-ms: 5000
+
+cache:
+  max-size: 10000
+  ttl-seconds: 300
+  refresh-after-seconds: 300
+  record-stats: true
+
+performance:
+  io-threads: 4
+  worker-threads: 8
+
+logging:
+  debug: false
+  verbose: false
+
+# Languages (no separate languages.yml on proxy)
+languages:
+  default: "en"
+  supported:
+    - en
+    - pl
+  display-names:
+    en: "English"
+    pl: "Polski"

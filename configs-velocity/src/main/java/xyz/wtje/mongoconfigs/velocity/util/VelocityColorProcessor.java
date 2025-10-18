@@ -1,0 +1,15 @@
+package xyz.wtje.mongoconfigs.velocity.util;
+
+import xyz.wtje.mongoconfigs.core.util.ColorProcessor;
+
+public class VelocityColorProcessor implements ColorProcessor {
+
+    @Override
+    public String colorize(String message) { return ColorUtils.colorize(message); }
+
+    @Override
+    public String stripColors(String message) { return ColorUtils.stripColors(message); }
+
+    @Override
+    public void clearCache() { ColorUtils.clearCache(); }
+}

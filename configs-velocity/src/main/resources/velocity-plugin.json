@@ -1,0 +1,11 @@
+{
+  "id": "mongoconfigs",
+  "name": "MongoConfigs",
+  "version": "${project.version}",
+  "description": "Advanced MongoDB configuration and translation management library (Velocity)",
+  "authors": ["aiikk"],
+  "url": "https://github.com/aiikk/mongo-configs",
+  "main": "xyz.wtje.mongoconfigs.velocity.MongoConfigsVelocityPlugin",
+  "dependencies": []
+}
+

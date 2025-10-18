@@ -35,7 +35,7 @@ jobs:
     - name: Build
       run: mvn clean package -DskipTests
       
-    - name: Find and upload JAR
+    - name: Find and upload Paper JAR
       run: |
         JAR_FILE="configs-paper/target/MongoConfigs-${{ env.VERSION }}.jar"
         
@@ -51,5 +51,24 @@ jobs:
         
         # Upload to release
         gh release upload ${{ github.event.release.tag_name }} "$JAR_FILE"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Find and upload Velocity JAR
+      run: |
+        VEL_JAR_FILE="configs-velocity/target/MongoConfigs-Velocity-${{ env.VERSION }}.jar"
+        
+        if [ ! -f "$VEL_JAR_FILE" ]; then
+          echo "Velocity JAR not found: $VEL_JAR_FILE"
+          echo "Contents of configs-velocity/target/:"
+          ls -la configs-velocity/target/ || true
+          exit 1
+        fi
+        
+        echo "Found Velocity JAR: $VEL_JAR_FILE"
+        echo "Size: $(du -h "$VEL_JAR_FILE" | cut -f1)"
+        
+        # Upload to release
+        gh release upload ${{ github.event.release.tag_name }} "$VEL_JAR_FILE"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
