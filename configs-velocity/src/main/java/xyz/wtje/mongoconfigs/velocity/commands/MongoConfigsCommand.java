@@ -19,7 +19,7 @@ public class MongoConfigsCommand implements SimpleCommand {
 
     @Override
     public boolean hasPermission(Invocation invocation) {
-        // Velocity doesn't have per-command perms by default; allow all sources
+        
         return true;
     }
 

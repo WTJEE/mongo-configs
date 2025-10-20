@@ -32,17 +32,17 @@ public final class ChangeStreamWatcher {
     private final String collectionName;
     private final ConcurrentMap<String, Document> cache = new ConcurrentHashMap<>();
     private final AtomicReference<BsonDocument> resumeToken = new AtomicReference<>();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService scheduler;
     
-    // Integration with CacheManager
+    
     private CacheManager cacheManager;
     private Consumer<String> reloadCallback;
     
-    // Polling-based change detection (fallback for non-replica sets)
+    
     private volatile boolean usePolling = false;
-    private volatile long lastPollingCheck = 0; // Use timestamp instead of ObjectId
-    private volatile int lastKnownDocumentCount = 0; // Track document count
-    private static final long POLLING_INTERVAL_MS = 3000; // 3 seconds - faster detection
+    private volatile long lastPollingCheck = 0; 
+    private volatile int lastKnownDocumentCount = 0; 
+    private static final long POLLING_INTERVAL_MS = 3000; 
 
     private volatile boolean running = false;
     private volatile Subscription changeStreamSubscription;
@@ -50,37 +50,45 @@ public final class ChangeStreamWatcher {
     public ChangeStreamWatcher(MongoCollection<Document> collection) {
         this.collection = collection;
         this.collectionName = collection.getNamespace().getCollectionName();
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "MongoConfigs-CSW-" + this.collectionName);
+            t.setDaemon(true);
+            return t;
+        });
     }
     
     public ChangeStreamWatcher(MongoCollection<Document> collection, CacheManager cacheManager) {
         this.collection = collection;
         this.collectionName = collection.getNamespace().getCollectionName();
         this.cacheManager = cacheManager;
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "MongoConfigs-CSW-" + this.collectionName);
+            t.setDaemon(true);
+            return t;
+        });
     }
     
-    /**
-     * Set callback for when collection needs reloading
-     */
+    
     public void setReloadCallback(Consumer<String> reloadCallback) {
         this.reloadCallback = reloadCallback;
     }
     private volatile int reconnectAttempts = 0;
 
-    private static final int MAX_RECONNECT_ATTEMPTS = 3; // Mniej prób, szybsze wykrycie problemów
-    private static final int BASE_DELAY_MS = 1000; // 1 sekunda base delay
+    private static final int MAX_RECONNECT_ATTEMPTS = 3; 
+    private static final int BASE_DELAY_MS = 1000; 
 
     public void start() {
         if (running) return;
         running = true;
         
-        // Initialize polling baseline
+        
         lastPollingCheck = System.currentTimeMillis();
 
         LOGGER.info("🚀 Starting ChangeStreamWatcher for collection: " + collectionName);
         
         performInitialLoad();
         
-        // Try Change Streams first, fallback to polling if it fails
+        
         try {
             startChangeStream();
         } catch (Exception e) {
@@ -96,11 +104,13 @@ public final class ChangeStreamWatcher {
         if (changeStreamSubscription != null) {
             changeStreamSubscription.cancel();
         }
-        scheduler.shutdown();
+        try {
+            scheduler.shutdownNow();
+        } catch (Exception ignored) {}
     }
 
     private void performInitialLoad() {
-        // Get initial document count
+        
         collection.countDocuments().subscribe(new Subscriber<Long>() {
             @Override
             public void onSubscribe(Subscription s) { s.request(1); }
@@ -121,7 +131,7 @@ public final class ChangeStreamWatcher {
             public void onComplete() {}
         });
         
-        // Load documents into cache
+        
         collection.find().subscribe(new Subscriber<Document>() {
             @Override
             public void onSubscribe(Subscription s) {
@@ -130,7 +140,7 @@ public final class ChangeStreamWatcher {
 
             @Override
             public void onNext(Document doc) {
-                // Optimize ID extraction to avoid toString() on complex objects
+                
                 Object idObj = doc.get("_id");
                 String id;
                 if (idObj == null) {
@@ -142,7 +152,7 @@ public final class ChangeStreamWatcher {
                 } else if (idObj instanceof Number) {
                     id = idObj.toString();
                 } else {
-                    // For complex types, generate a unique ID instead of converting
+                    
                     id = "doc-" + System.identityHashCode(doc);
                 }
                 cache.put(id, doc);
@@ -163,7 +173,7 @@ public final class ChangeStreamWatcher {
     private void startChangeStream() {
         LOGGER.info("🔗 Setting up change stream monitoring for collection: " + collectionName);
         
-        // USUNIĘTO FILTRY! Teraz wykrywa WSZYSTKIE operacje
+        
         var changeStream = collection.watch()
                 .fullDocument(FullDocument.UPDATE_LOOKUP);
 
@@ -185,7 +195,7 @@ public final class ChangeStreamWatcher {
             public void onNext(ChangeStreamDocument<Document> event) {
                 try {
                     processChangeEvent(event);
-                    reconnectAttempts = 0; // Reset attempts on successful event
+                    reconnectAttempts = 0; 
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "❌ Error processing change event for " + collectionName, e);
                 }
@@ -234,7 +244,7 @@ public final class ChangeStreamWatcher {
             LOGGER.fine("🔄 Processing change event: " + opType + " in collection: " + collectionName);
         }
 
-        // Handle document key extraction (support different ID types)
+        
         String docId = null;
         if (documentKey != null) {
             var idValue = documentKey.get("_id");
@@ -252,8 +262,8 @@ public final class ChangeStreamWatcher {
                 } else if (idValue.isDecimal128()) {
                     docId = idValue.asDecimal128().getValue().toString();
                 } else {
-                    // For complex types, use simple toString() without JSON conversion
-                    docId = "doc-" + System.nanoTime(); // Avoid conversion entirely
+                    
+                    docId = "doc-" + System.nanoTime(); 
                     if (LOGGER.isLoggable(Level.FINE)) {
                         LOGGER.fine("Complex document ID type, using generated ID: " + docId);
                     }
@@ -261,12 +271,12 @@ public final class ChangeStreamWatcher {
             }
         }
 
-        // Process document change asynchronously to avoid blocking
+        
         processDocumentChangeAsync(opType, docId, event);
     }
     
     private void processDocumentChangeAsync(String opType, String docId, ChangeStreamDocument<Document> event) {
-        // Instant async processing - fire and forget for maximum speed
+        
         CompletableFuture.runAsync(() -> {
             processDocumentChangeSync(opType, docId, event);
         }, java.util.concurrent.ForkJoinPool.commonPool());
@@ -279,18 +289,18 @@ public final class ChangeStreamWatcher {
             case "replace":
                 var fullDocument = event.getFullDocument();
                 if (fullDocument != null && docId != null) {
-                    // Update our local cache first
+                    
                     cache.put(docId, fullDocument);
                     if (LOGGER.isLoggable(Level.FINE)) {
                         LOGGER.fine("🧠 ZAKTUALIZOWANO LOKALNY CACHE dla dokumentu: " + docId + " w kolekcji: " + collectionName);
                     }
                     
-                    // Instant async cache update - apply immediately without waiting
+                    
                     CompletableFuture.runAsync(() -> applyDocumentToCache(fullDocument, docId));
-                    // Parallel reload from MongoDB for consistency check
+                    
                     CompletableFuture.runAsync(() -> reloadDocumentFromMongoDB(docId));
                 }
-                // Trigger plugin reload
+                
                 triggerCacheReload("🔄 Document " + opType + " detected", true);
                 break;
 
@@ -379,11 +389,11 @@ public final class ChangeStreamWatcher {
         if (idValue == null) {
             return false;
         }
-        // Avoid String.valueOf() on complex objects
+        
         if (idValue instanceof String) {
             return "config".equals(idValue);
         }
-        // For non-string IDs, config document is unlikely
+        
         return false;
     }
 
@@ -397,9 +407,7 @@ public final class ChangeStreamWatcher {
         return copy;
     }
 
-    /**
-     * Force reload specific document from MongoDB and update cache
-     */
+    
     private void reloadDocumentFromMongoDB(String docId) {
         if (docId == null || docId.isEmpty()) return;
         
@@ -409,13 +417,13 @@ public final class ChangeStreamWatcher {
         
         CompletableFuture.runAsync(() -> {
             try {
-                // Convert string ID to proper BSON type
+                
                 Object bsonId;
                 try {
-                    // Try ObjectId first
+                    
                     bsonId = new org.bson.types.ObjectId(docId);
                 } catch (Exception e) {
-                    // Fallback to string ID
+                    
                     bsonId = docId;
                 }
                 
@@ -427,10 +435,10 @@ public final class ChangeStreamWatcher {
                     @Override
                     public void onNext(Document freshDoc) {
                         if (freshDoc != null) {
-                            // Update local cache
+                            
                             cache.put(docId, freshDoc);
                             
-                            // Update CacheManager cache directly - use replace to ensure proper cache update
+                            
                             if (cacheManager != null) {
                                 if (isConfigDocument(docId, freshDoc)) {
                                     Map<String, Object> configData = copyDocumentExcluding(freshDoc, Set.of("_id", "updatedAt"));
@@ -471,9 +479,7 @@ public final class ChangeStreamWatcher {
         });
     }
 
-    /**
-     * Trigger cache reload with consistent error handling
-     */
+    
     private void triggerCacheReload(String reason) {
         triggerCacheReload(reason, true);
     }
@@ -493,16 +499,16 @@ public final class ChangeStreamWatcher {
                 }
                 
                 if (invalidateCache) {
-                    // Invalidate async and wait for completion
+                    
                     CompletableFuture<Void> invalidateFuture = cacheManager.invalidateCollectionAsync(collectionName);
                     if (invalidateFuture != null) {
-                        invalidateFuture.join(); // Wait for invalidation to complete
+                        invalidateFuture.join(); 
                     } else {
                         cacheManager.invalidateCollection(collectionName);
                     }
                 }
                 
-                // Then reload
+                
                 reloadCallback.accept(collectionName);
                 
             } catch (Exception e) {
@@ -535,10 +541,7 @@ public final class ChangeStreamWatcher {
         return exponentialDelay + jitter;
     }
 
-    /**
-     * Polling-based change detection for MongoDB without replica sets
-     * Uses ObjectId timestamp comparison instead of non-existent updatedAt field
-     */
+    
     private void startPolling() {
         if (!running || !usePolling) return;
         
@@ -556,14 +559,11 @@ public final class ChangeStreamWatcher {
                    " (every " + (POLLING_INTERVAL_MS/1000) + "s)");
     }
     
-    /**
-     * Check for changes using document count and content hash comparison
-     * This detects updates, inserts, and deletes without requiring updatedAt fields
-     */
+    
     private void checkForChanges() {
         long currentTime = System.currentTimeMillis();
         
-        // Get current document count
+        
         collection.countDocuments().subscribe(new Subscriber<Long>() {
             @Override
             public void onSubscribe(Subscription s) { s.request(1); }
@@ -573,14 +573,14 @@ public final class ChangeStreamWatcher {
                 boolean countChanged = (currentCount.intValue() != lastKnownDocumentCount);
                 
                 if (countChanged) {
-                    // Document count changed - definitely a change
+                    
                     lastKnownDocumentCount = currentCount.intValue();
                     LOGGER.info("🔄 Document count changed in " + collectionName + 
                                " (now: " + currentCount + ") - triggering reload");
                     triggerCacheReload("📊 Document count changed: " + currentCount);
                     lastPollingCheck = currentTime;
                 } else {
-                    // Count same - check for updates by comparing a sample of documents
+                    
                     checkForDocumentUpdates(currentTime);
                 }
             }
@@ -588,7 +588,7 @@ public final class ChangeStreamWatcher {
             @Override
             public void onError(Throwable t) {
                 LOGGER.log(Level.WARNING, "🚨 Error checking document count for: " + collectionName, t);
-                // Fallback - trigger reload anyway in case of error
+                
                 triggerCacheReload("🚨 Error checking count - forcing reload");
                 lastPollingCheck = currentTime;
             }
@@ -598,13 +598,11 @@ public final class ChangeStreamWatcher {
         });
     }
     
-    /**
-     * Check for document updates by comparing content
-     */
+    
     private void checkForDocumentUpdates(long currentTime) {
-        // Sample a few documents and compare with cache
+        
         collection.find()
-                .limit(20) // Check only first 20 docs for performance
+                .limit(20) 
                 .subscribe(new Subscriber<Document>() {
                     private boolean changesDetected = false;
                     private Set<String> changedDocIds = new HashSet<>();
@@ -617,16 +615,16 @@ public final class ChangeStreamWatcher {
                         String docId = doc.get("_id") != null ? doc.get("_id").toString() : "unknown";
                         Document cachedDoc = cache.get(docId);
                         
-                        // If document not in cache or content changed
+                        
                         if (cachedDoc == null || !documentsEqual(doc, cachedDoc)) {
-                            // Update our cache
+                            
                             cache.put(docId, doc);
                             
-                            // Track which documents changed for detailed logging
+                            
                             changedDocIds.add(docId);
                             changesDetected = true;
                             
-                            // Apply changes to CacheManager directly for immediate effect
+                            
                             applyDocumentToCache(doc, docId);
                         }
                     }
@@ -648,14 +646,12 @@ public final class ChangeStreamWatcher {
                 });
     }
     
-    /**
-     * Compare two documents for equality (ignoring _id field)
-     */
+    
     private boolean documentsEqual(Document doc1, Document doc2) {
         if (doc1 == null && doc2 == null) return true;
         if (doc1 == null || doc2 == null) return false;
         
-        // Create copies without _id for comparison
+        
         Document copy1 = new Document(doc1);
         Document copy2 = new Document(doc2);
         copy1.remove("_id");
@@ -666,7 +662,7 @@ public final class ChangeStreamWatcher {
 
     public void triggerReload(String id) {
         try {
-            // Manually trigger a change detection for testing/debugging
+            
             LOGGER.info("🔧 Manual reload triggered for document: " + id + " in collection: " + collectionName);
             triggerCacheReload("🔧 Manual reload requested");
         } catch (Exception e) {
@@ -686,17 +682,13 @@ public final class ChangeStreamWatcher {
         return cache.size();
     }
     
-    /**
-     * Get current status for debugging
-     */
+    
     public String getStatus() {
         return String.format("Collection: %s, Running: %s, UsePolling: %s, Cache size: %d, Reconnect attempts: %d", 
                            collectionName, running, usePolling, cache.size(), reconnectAttempts);
     }
     
-    /**
-     * Force switch to polling mode (for testing/debugging)
-     */
+    
     public void forcePollingMode() {
         LOGGER.info("🔄 Forcing polling mode for collection: " + collectionName);
         if (changeStreamSubscription != null) {

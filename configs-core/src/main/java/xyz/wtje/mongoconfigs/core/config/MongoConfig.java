@@ -35,6 +35,9 @@ public class MongoConfig {
     private String playerLanguagesCollection = "player_languages";
     private String typedConfigsCollection = "typed_configs";
     private String configsCollection = "configs";
+    
+    private java.util.Set<String> ignoredDatabases = java.util.Set.of();
+    private java.util.Set<String> ignoredCollections = java.util.Set.of();
 
     private boolean debugLogging = false;
     private boolean verboseLogging = false;
@@ -116,6 +119,12 @@ public class MongoConfig {
 
     public boolean isVerboseLogging() { return verboseLogging; }
     public void setVerboseLogging(boolean verboseLogging) { this.verboseLogging = verboseLogging; }
+
+    public java.util.Set<String> getIgnoredDatabases() { return ignoredDatabases; }
+    public void setIgnoredDatabases(java.util.Set<String> ignoredDatabases) { this.ignoredDatabases = (ignoredDatabases != null ? ignoredDatabases : java.util.Set.of()); }
+
+    public java.util.Set<String> getIgnoredCollections() { return ignoredCollections; }
+    public void setIgnoredCollections(java.util.Set<String> ignoredCollections) { this.ignoredCollections = (ignoredCollections != null ? ignoredCollections : java.util.Set.of()); }
 }
 
 

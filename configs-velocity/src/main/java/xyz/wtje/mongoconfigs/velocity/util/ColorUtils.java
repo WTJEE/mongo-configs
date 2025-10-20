@@ -57,7 +57,7 @@ public final class ColorUtils {
                 Component component = MINI_MESSAGE.deserialize(sanitized);
                 return LEGACY_SERIALIZER.serialize(component);
             } catch (Exception ignored) {
-                return input; // last resort, return as-is
+                return input; 
             }
         }
     }
@@ -119,7 +119,7 @@ public final class ColorUtils {
         out = out.replace((char) 0x00A7, '&');
         out = expandGradientAliases(out);
 
-        // Convert &x&1&2&3&4&5&6 -> <#112233>
+        
         {
             Matcher m = BUKKIT_HEX.matcher(out);
             StringBuffer sb = new StringBuffer();
@@ -144,7 +144,7 @@ public final class ColorUtils {
 
         out = AMP_HEX.matcher(out).replaceAll("<#$1>");
 
-        // &{r,g,b} -> <#rrggbb>
+        
         {
             Matcher m = RGB_FUNC.matcher(out);
             StringBuffer sb = new StringBuffer();

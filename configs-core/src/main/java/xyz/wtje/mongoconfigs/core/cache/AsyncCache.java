@@ -8,9 +8,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
-/**
- * High-performance async cache to minimize main thread blocking
- */
+
 public class AsyncCache<K, V> {
     private static final Logger LOGGER = Logger.getLogger(AsyncCache.class.getName());
     
@@ -27,26 +25,26 @@ public class AsyncCache<K, V> {
     }
     
     public CompletableFuture<V> getAsync(K key, Supplier<CompletableFuture<V>> loader) {
-        // Check if already cached and not expired
+        
         CacheEntry<V> entry = cache.get(key);
         if (entry != null && !isExpired(entry)) {
             return CompletableFuture.completedFuture(entry.value);
         }
         
-        // Check if already loading
+        
         CompletableFuture<V> loadingFuture = loadingFutures.get(key);
         if (loadingFuture != null) {
             return loadingFuture;
         }
         
-        // Start async loading
+        
         CompletableFuture<V> future = loader.get()
             .thenApplyAsync(value -> {
-                // Cache the result
+                
                 cache.put(key, new CacheEntry<>(value, Instant.now()));
                 loadingFutures.remove(key);
                 
-                // Evict if cache is too large
+                
                 if (cache.size() > maxSize) {
                     evictOldest();
                 }
@@ -88,10 +86,10 @@ public class AsyncCache<K, V> {
     private void evictOldest() {
         if (cache.size() <= maxSize) return;
         
-        // Simple LRU-like eviction - remove oldest entries
+        
         cache.entrySet().stream()
             .sorted((e1, e2) -> e1.getValue().timestamp.compareTo(e2.getValue().timestamp))
-            .limit(cache.size() - maxSize + 100) // Evict extra to avoid frequent evictions
+            .limit(cache.size() - maxSize + 100) 
             .forEach(entry -> cache.remove(entry.getKey()));
     }
     

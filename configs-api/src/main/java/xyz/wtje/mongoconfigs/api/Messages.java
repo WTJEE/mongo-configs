@@ -11,21 +11,10 @@ public interface Messages {
     CompletableFuture<String> get(String path, Object... placeholders);
     CompletableFuture<String> get(String path, String language, Object... placeholders);
     
-    /**
-     * Get message with placeholders as Map
-     * @param path Message key path
-     * @param placeholders Map of placeholders
-     * @return CompletableFuture with formatted message
-     */
+    
     CompletableFuture<String> get(String path, Map<String, Object> placeholders);
     
-    /**
-     * Get message with placeholders as Map for specific language
-     * @param path Message key path
-     * @param language Language code
-     * @param placeholders Map of placeholders
-     * @return CompletableFuture with formatted message
-     */
+    
     CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders);
     
     CompletableFuture<List<String>> getList(String path);
@@ -57,9 +46,7 @@ public interface Messages {
                 : delegate.get(path, language, placeholders);
         }
 
-        /**
-         * Get message future with placeholders as Map
-         */
+        
         public CompletableFuture<String> future(String path, Map<String, Object> placeholders) {
             return language == null
                 ? delegate.get(path, placeholders)
@@ -74,9 +61,7 @@ public interface Messages {
             return future(path, placeholders).join();
         }
 
-        /**
-         * Get formatted message synchronously with Map placeholders
-         */
+        
         public String format(String path, Map<String, Object> placeholders) {
             return future(path, placeholders).join();
         }

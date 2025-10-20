@@ -148,12 +148,17 @@ public class MongoConfigsPlugin extends JavaPlugin {
         config.setPlayerLanguagesCollection(pluginConfig.getPlayerLanguagesCollection());
         config.setTypedConfigsCollection(pluginConfig.getTypedConfigsCollection());
         config.setConfigsCollection(pluginConfig.getConfigsCollection());
+        
+        try {
+            config.setIgnoredDatabases(new java.util.HashSet<>(pluginConfig.getIgnoredDatabases()));
+            config.setIgnoredCollections(new java.util.HashSet<>(pluginConfig.getIgnoredCollections()));
+        } catch (Exception ignored) {}
 
         return config;
     }
 
     private void registerCommands() {
-        // Register language command with null safety
+        
         if (getCommand("language") != null) {
             LanguageCommand languageCommand = new LanguageCommand(languageManager, languageConfig);
             getCommand("language").setExecutor(languageCommand);
@@ -163,7 +168,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             getLogger().severe("❌ Failed to register /language command - command not found in plugin.yml!");
         }
 
-        // Register admin command
+        
         if (getCommand("mongoconfigs") != null) {
             MongoConfigsCommand adminCommand = new MongoConfigsCommand(configManager, languageManager, this, languageConfig);
             getCommand("mongoconfigs").setExecutor(adminCommand);
@@ -173,7 +178,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             getLogger().warning("⚠️ Could not register /mongoconfigs command");
         }
 
-        // Register configs manager command
+        
         if (getCommand("configsmanager") != null) {
             ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand(this);
             getCommand("configsmanager").setExecutor(configsManagerCommand);
@@ -183,7 +188,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             getLogger().warning("⚠️ Could not register /configsmanager command");
         }
 
-        // Register hotreload command
+        
         if (getCommand("hotreload") != null) {
             HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager(), languageManager);
             getCommand("hotreload").setExecutor(hotReloadCommand);
@@ -208,7 +213,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
         getLogger().info("✅ Event listeners registered successfully");
         
-        // Preload GUI elements for better performance
+        
         if (languageManager != null && languageConfig != null) {
             xyz.wtje.mongoconfigs.paper.gui.LanguageSelectionGUI.preloadGUIElements(languageManager, languageConfig);
             getLogger().info("🚀 GUI elements preloaded for optimal performance");
@@ -225,7 +230,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
                 pluginConfig = new PluginConfiguration(this);
 
                 if (configManager != null) {
-                    // Reload all collections and refresh cache
+                    
                     configManager.reloadAll().join();
                 }
 
@@ -233,7 +238,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
                     languageManager.reload();
                 }
 
-                // Refresh GUI cache to ensure updated messages are used
+                
                 refreshGUIMessages();
 
                 getLogger().info("Plugin reloaded successfully");
@@ -243,12 +248,10 @@ public class MongoConfigsPlugin extends JavaPlugin {
         });
     }
 
-    /**
-     * Refresh cached messages for GUI components
-     */
+    
     public void refreshGUIMessages() {
         try {
-            // Force refresh the LanguageSelectionGUI cache
+            
             if (languageManager != null && languageConfig != null) {
                 LanguageSelectionGUI.preloadCache(languageManager, languageConfig);
                 getLogger().info("GUI messages cache refreshed");
@@ -258,23 +261,17 @@ public class MongoConfigsPlugin extends JavaPlugin {
         }
     }
 
-    /**
-     * Get the config manager instance
-     */
+    
     public ConfigManagerImpl getConfigManager() {
         return configManager;
     }
 
-    /**
-     * Get the language manager instance  
-     */
+    
     public LanguageManagerImpl getLanguageManager() {
         return languageManager;
     }
     
-    /**
-     * Get the language configuration
-     */
+    
     public LanguageConfiguration getLanguageConfiguration() {
         return languageConfig;
     }

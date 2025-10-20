@@ -144,7 +144,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e� Checking change stream status...");
         
         try {
-            // Simple status check
+            
             sender.sendMessage("§a✅ Change streams are operational");
         } catch (Exception e) {
             sender.sendMessage("§c❌ Error checking change detection: " + e.getMessage());
@@ -158,7 +158,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 for (String collection : collections) {
                     try {
-                        // Force setup change detection for each collection
+                        
                         configManager.enableChangeStreamForCollection(collection);
                         sender.sendMessage("§a✅ Setup change detection for: " + collection);
                     } catch (Exception e) {

@@ -26,7 +26,7 @@ public class CacheManager {
     private final Duration ttl;
     private final boolean recordStats;
     
-    // Cache invalidation callbacks
+    
     private final Set<Consumer<String>> invalidationListeners = new CopyOnWriteArraySet<>();
 
     public CacheManager() {
@@ -239,7 +239,7 @@ public class CacheManager {
         configCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
         messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
         
-        // Notify listeners about invalidation
+        
         for (Consumer<String> listener : invalidationListeners) {
             try {
                 listener.accept(collection);
@@ -250,7 +250,7 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
-        // Instant async invalidation without blocking
+        
         return CompletableFuture.runAsync(() -> invalidateCollection(collection));
     }
 
@@ -258,10 +258,10 @@ public class CacheManager {
         configCache.clear();
         messageCache.clear();
         
-        // Notify listeners about full invalidation
+        
         for (Consumer<String> listener : invalidationListeners) {
             try {
-                listener.accept("*"); // Special marker for full invalidation
+                listener.accept("*"); 
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error in invalidation listener", e);
             }
@@ -276,7 +276,7 @@ public class CacheManager {
     public void invalidateMessages(String collection) {
         messageCache.keySet().removeIf(key -> key.startsWith(collection + ":"));
         
-        // Notify listeners about message invalidation
+        
         for (Consumer<String> listener : invalidationListeners) {
             try {
                 listener.accept(collection + ":messages");
@@ -291,27 +291,19 @@ public class CacheManager {
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * Add a listener that gets notified when cache is invalidated
-     * @param listener Consumer that receives collection name (or "*" for full invalidation)
-     */
+    
     public void addInvalidationListener(Consumer<String> listener) {
         invalidationListeners.add(listener);
     }
 
-    /**
-     * Remove an invalidation listener
-     */
+    
     public void removeInvalidationListener(Consumer<String> listener) {
         invalidationListeners.remove(listener);
     }
 
-    /**
-     * Refresh cache for a specific collection by reloading from source
-     * This should be implemented by the calling code
-     */
+    
     public void refresh(String collection) {
-        // Invalidate first
+        
         invalidateCollection(collection);
         
         if (LOGGER.isLoggable(Level.FINE)) {

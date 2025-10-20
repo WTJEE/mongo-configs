@@ -7,15 +7,11 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Utilities for better async performance and error handling
- */
+
 public class AsyncUtils {
     private static final Logger LOGGER = Logger.getLogger(AsyncUtils.class.getName());
     
-    /**
-     * Executes supplier async with proper error handling
-     */
+    
     public static <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier, Executor executor) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -27,9 +23,7 @@ public class AsyncUtils {
         }, executor);
     }
     
-    /**
-     * Chains async operations with fallback
-     */
+    
     public static <T, U> CompletableFuture<U> thenComposeAsyncWithFallback(
             CompletableFuture<T> future,
             Function<T, CompletableFuture<U>> mapper,
@@ -44,9 +38,7 @@ public class AsyncUtils {
             });
     }
     
-    /**
-     * Runs operation in background without blocking
-     */
+    
     public static void runInBackground(Runnable task, Executor executor) {
         CompletableFuture.runAsync(() -> {
             try {
@@ -57,16 +49,12 @@ public class AsyncUtils {
         }, executor);
     }
     
-    /**
-     * Creates a completed future with null-safe value
-     */
+    
     public static <T> CompletableFuture<T> completedFuture(T value) {
         return CompletableFuture.completedFuture(value);
     }
     
-    /**
-     * Creates a failed future with exception
-     */
+    
     public static <T> CompletableFuture<T> failedFuture(Throwable throwable) {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(throwable);

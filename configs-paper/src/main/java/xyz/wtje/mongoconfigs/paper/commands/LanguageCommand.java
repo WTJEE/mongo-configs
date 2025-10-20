@@ -42,14 +42,14 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        // Open GUI immediately if no args
+        
         if (args.length == 0) {
             getPlugin().getLogger().info("[DEBUG] Opening GUI for " + player.getName());
             openLanguageGUI(player);
             return true;
         }
         
-        // Handle language setting with args
+        
         String requestedLanguage = args[0].toLowerCase();
         handleLanguageSetting(player, requestedLanguage);
         return true;
@@ -58,10 +58,10 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     private void openLanguageGUI(Player player) {
         getPlugin().getLogger().info("[DEBUG] Creating and opening GUI for " + player.getName());
         
-        // Clean up any existing GUI first
+        
         LanguageSelectionGUI.forceCleanupForPlayer(player);
         
-        // Create and open new GUI on main thread
+        
         LanguageSelectionGUI gui = new LanguageSelectionGUI(player, languageManager, config);
         gui.open();
     }
@@ -69,7 +69,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
     private void handleLanguageSetting(Player player, String requestedLanguage) {
         getPlugin().getLogger().info("[DEBUG] Handling language setting for " + player.getName() + ": " + requestedLanguage);
         
-        // Get supported languages async but handle result on main thread
+        
         languageManager.getSupportedLanguages().thenAccept(supportedLanguages -> {
             boolean isSupported = java.util.Arrays.asList(supportedLanguages).contains(requestedLanguage);
             
@@ -82,7 +82,7 @@ public class LanguageCommand implements CommandExecutor, TabCompleter {
                     return;
                 }
                 
-                // Set language async but send messages on main thread
+                
                 languageManager.setPlayerLanguage(player.getUniqueId(), requestedLanguage)
                     .thenAccept(result -> {
                         org.bukkit.Bukkit.getScheduler().runTask(getPlugin(), () -> {

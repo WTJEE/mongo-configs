@@ -73,15 +73,15 @@ public class HotReloadCommand implements CommandExecutor {
         sender.sendMessage("§e⟳ Reloading GUI caches...");
         
         CompletableFuture.runAsync(() -> {
-            // Clear GUI cache
+            
             LanguageSelectionGUI.clearCache();
             
-            // Clear language manager cache
+            
             if (languageManager != null) {
                 languageManager.clearCache();
             }
             
-            // Notify on main thread
+            
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a✔ GUI caches cleared and reloaded!");
                 
@@ -96,18 +96,18 @@ public class HotReloadCommand implements CommandExecutor {
         sender.sendMessage("§e⟳ Clearing all caches...");
         
         CompletableFuture.runAsync(() -> {
-            // Clear config manager cache
+            
             plugin.getConfigManager().invalidateCache();
             
-            // Clear language manager cache
+            
             if (languageManager != null) {
                 languageManager.clearCache();
             }
             
-            // Clear GUI cache
+            
             LanguageSelectionGUI.clearCache();
             
-            // Notify on main thread
+            
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a✔ All caches cleared!");
             });
@@ -118,23 +118,23 @@ public class HotReloadCommand implements CommandExecutor {
         sender.sendMessage("§e⟳ Reloading everything...");
         
         CompletableFuture.runAsync(() -> {
-            // Reload language manager
+            
             if (languageManager != null) {
                 languageManager.reload();
             }
             
-            // Clear config cache
+            
             plugin.getConfigManager().invalidateCache();
             
-            // Clear GUI cache
+            
             LanguageSelectionGUI.clearCache();
             
-            // Preload GUI cache again
+            
             if (languageManager != null) {
                 LanguageSelectionGUI.preloadCache(languageManager, plugin.getLanguageConfiguration());
             }
             
-            // Notify on main thread
+            
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a✔ Full reload complete!");
                 sender.sendMessage("§7• Language Manager reloaded");

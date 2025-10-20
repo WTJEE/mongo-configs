@@ -143,6 +143,11 @@ public class MongoConfigsVelocityPlugin {
         config.setPlayerLanguagesCollection(pluginConfig.getPlayerLanguagesCollection());
         config.setTypedConfigsCollection(pluginConfig.getTypedConfigsCollection());
         config.setConfigsCollection(pluginConfig.getConfigsCollection());
+        
+        try {
+            config.setIgnoredDatabases(new java.util.HashSet<>(pluginConfig.getIgnoredDatabases()));
+            config.setIgnoredCollections(new java.util.HashSet<>(pluginConfig.getIgnoredCollections()));
+        } catch (Exception ignored) {}
         return config;
     }
 

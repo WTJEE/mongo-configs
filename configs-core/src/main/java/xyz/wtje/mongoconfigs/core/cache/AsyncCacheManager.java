@@ -13,27 +13,24 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * High-performance async cache manager using Caffeine
- * Optimized for MongoDB configs and messages with proper async handling
- */
+
 public class AsyncCacheManager {
     private static final Logger LOGGER = Logger.getLogger(AsyncCacheManager.class.getName());
     
-    // Separate caches for different data types
+    
     private final AsyncCache<String, Object> messageCache;
     private final AsyncCache<String, Object> configCache;
     private final AsyncCache<String, Map<String, Object>> documentCache;
     
-    // Metrics
+    
     private final AtomicLong cacheHits = new AtomicLong(0);
     private final AtomicLong cacheMisses = new AtomicLong(0);
     private final AtomicLong cacheLoads = new AtomicLong(0);
     
-    // Executor for async operations
+    
     private final Executor executor;
     
-    // Cache configuration
+    
     private final long maxSize;
     private final Duration ttl;
     private final Duration refreshAfterWrite;
@@ -47,9 +44,9 @@ public class AsyncCacheManager {
         this.recordStats = recordStats;
         this.executor = executor;
         
-        // Build message cache with optimal settings
+        
         var messageCacheBuilder = Caffeine.newBuilder()
-            .maximumSize(maxSize / 2) // Half for messages
+            .maximumSize(maxSize / 2) 
             .executor(executor)
             .removalListener((String key, Object value, RemovalCause cause) -> {
                 if (LOGGER.isLoggable(Level.FINE)) {
@@ -69,9 +66,9 @@ public class AsyncCacheManager {
         
         this.messageCache = messageCacheBuilder.buildAsync();
         
-        // Build config cache with different settings
+        
         var configCacheBuilder = Caffeine.newBuilder()
-            .maximumSize(maxSize / 4) // Quarter for configs
+            .maximumSize(maxSize / 4) 
             .executor(executor)
             .removalListener((String key, Object value, RemovalCause cause) -> {
                 if (LOGGER.isLoggable(Level.FINE)) {
@@ -80,7 +77,7 @@ public class AsyncCacheManager {
             });
             
         if (ttl != null) {
-            configCacheBuilder.expireAfterWrite(ttl.multipliedBy(2)); // Configs live longer
+            configCacheBuilder.expireAfterWrite(ttl.multipliedBy(2)); 
         }
         if (recordStats) {
             configCacheBuilder.recordStats();
@@ -88,11 +85,11 @@ public class AsyncCacheManager {
         
         this.configCache = configCacheBuilder.buildAsync();
         
-        // Build document cache for full documents
+        
         var documentCacheBuilder = Caffeine.newBuilder()
-            .maximumSize(maxSize / 4) // Quarter for documents
+            .maximumSize(maxSize / 4) 
             .executor(executor)
-            .weigher((String key, Map<String, Object> value) -> value.size()) // Weight by map size
+            .weigher((String key, Map<String, Object> value) -> value.size()) 
             .removalListener((String key, Map<String, Object> value, RemovalCause cause) -> {
                 if (LOGGER.isLoggable(Level.FINE)) {
                     LOGGER.fine("Document cache eviction: " + key + " (" + cause + ")");
@@ -100,7 +97,7 @@ public class AsyncCacheManager {
             });
             
         if (ttl != null) {
-            documentCacheBuilder.expireAfterAccess(ttl); // LRU for documents
+            documentCacheBuilder.expireAfterAccess(ttl); 
         }
         if (recordStats) {
             documentCacheBuilder.recordStats();
@@ -112,9 +109,7 @@ public class AsyncCacheManager {
                    ", ttl=" + ttl + ", refreshAfterWrite=" + refreshAfterWrite);
     }
     
-    /**
-     * Get message async with loader function
-     */
+    
     public CompletableFuture<String> getMessageAsync(String collection, String language, 
                                                      String key, Function<String, String> loader) {
         String cacheKey = buildMessageKey(collection, language, key);
@@ -136,9 +131,7 @@ public class AsyncCacheManager {
         });
     }
     
-    /**
-     * Put message async
-     */
+    
     public CompletableFuture<Void> putMessageAsync(String collection, String language, 
                                                    String key, Object value) {
         if (key == null || value == null) {
@@ -151,9 +144,7 @@ public class AsyncCacheManager {
         return CompletableFuture.completedFuture(null);
     }
     
-    /**
-     * Batch put messages for a language
-     */
+    
     public CompletableFuture<Void> putMessageBatchAsync(String collection, String language, 
                                                         Map<String, Object> messages) {
         if (messages == null || messages.isEmpty()) {
@@ -167,7 +158,7 @@ public class AsyncCacheManager {
             Object value = entry.getValue();
             
             if (key != null && value != null) {
-                // Handle nested maps recursively
+                
                 if (value instanceof Map) {
                     futures.add(putNestedMessagesAsync(collection, language, key, (Map<?, ?>) value));
                 } else {
@@ -179,9 +170,7 @@ public class AsyncCacheManager {
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
     
-    /**
-     * Put nested messages recursively
-     */
+    
     private CompletableFuture<Void> putNestedMessagesAsync(String collection, String language,
                                                            String prefix, Map<?, ?> nestedMap) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
@@ -203,9 +192,7 @@ public class AsyncCacheManager {
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
     
-    /**
-     * Get config value async
-     */
+    
     public <T> CompletableFuture<T> getConfigAsync(String collection, String key, 
                                                    T defaultValue, Function<String, T> loader) {
         String cacheKey = buildConfigKey(collection, key);
@@ -227,9 +214,7 @@ public class AsyncCacheManager {
         });
     }
     
-    /**
-     * Put config value async
-     */
+    
     public CompletableFuture<Void> putConfigAsync(String collection, String key, Object value) {
         if (key == null || value == null) {
             return CompletableFuture.completedFuture(null);
@@ -241,9 +226,7 @@ public class AsyncCacheManager {
         return CompletableFuture.completedFuture(null);
     }
     
-    /**
-     * Batch put config data
-     */
+    
     public CompletableFuture<Void> putConfigBatchAsync(String collection, Map<String, Object> configs) {
         if (configs == null || configs.isEmpty()) {
             return CompletableFuture.completedFuture(null);
@@ -258,9 +241,7 @@ public class AsyncCacheManager {
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
     
-    /**
-     * Get full document async
-     */
+    
     public CompletableFuture<Map<String, Object>> getDocumentAsync(String collection, String docId,
                                                                    Function<String, Map<String, Object>> loader) {
         String cacheKey = buildDocumentKey(collection, docId);
@@ -281,9 +262,7 @@ public class AsyncCacheManager {
         });
     }
     
-    /**
-     * Put document async
-     */
+    
     public CompletableFuture<Void> putDocumentAsync(String collection, String docId, 
                                                     Map<String, Object> document) {
         if (docId == null || document == null) {
@@ -296,14 +275,12 @@ public class AsyncCacheManager {
         return CompletableFuture.completedFuture(null);
     }
     
-    /**
-     * Invalidate collection async
-     */
+    
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
         return CompletableFuture.runAsync(() -> {
             String prefix = collection + ":";
             
-            // Invalidate all entries for this collection
+            
             messageCache.synchronous().asMap().keySet()
                 .removeIf(key -> key.startsWith(prefix));
             configCache.synchronous().asMap().keySet()
@@ -315,9 +292,7 @@ public class AsyncCacheManager {
         }, executor);
     }
     
-    /**
-     * Invalidate specific language in collection
-     */
+    
     public CompletableFuture<Void> invalidateLanguageAsync(String collection, String language) {
         return CompletableFuture.runAsync(() -> {
             String prefix = buildMessageKey(collection, language, "");
@@ -329,9 +304,7 @@ public class AsyncCacheManager {
         }, executor);
     }
     
-    /**
-     * Clear all caches
-     */
+    
     public CompletableFuture<Void> clearAllAsync() {
         return CompletableFuture.runAsync(() -> {
             messageCache.synchronous().invalidateAll();
@@ -342,12 +315,10 @@ public class AsyncCacheManager {
         }, executor);
     }
     
-    /**
-     * Invalidate specific entry across all caches
-     */
+    
     public CompletableFuture<Void> invalidateKeyAsync(String cacheKey) {
         return CompletableFuture.runAsync(() -> {
-            // Invalidate the key in all caches
+            
             messageCache.synchronous().invalidate(cacheKey);
             configCache.synchronous().invalidate(cacheKey);
             documentCache.synchronous().invalidate(cacheKey);
@@ -356,13 +327,11 @@ public class AsyncCacheManager {
         }, executor);
     }
     
-    /**
-     * Get cache statistics
-     */
+    
     public CacheStatistics getStatistics() {
         CacheStatistics stats = new CacheStatistics();
         
-        // Aggregate stats from all caches
+        
         if (recordStats) {
             CacheStats messageStats = messageCache.synchronous().stats();
             CacheStats configStats = configCache.synchronous().stats();
@@ -379,7 +348,7 @@ public class AsyncCacheManager {
             
             stats.hitRate = stats.totalHits / (double) (stats.totalHits + stats.totalMisses);
         } else {
-            // Use our own counters
+            
             stats.totalHits = cacheHits.get();
             stats.totalMisses = cacheMisses.get();
             stats.totalLoads = cacheLoads.get();
@@ -395,9 +364,7 @@ public class AsyncCacheManager {
         return stats;
     }
     
-    /**
-     * Perform cleanup/maintenance
-     */
+    
     public CompletableFuture<Void> cleanupAsync() {
         return CompletableFuture.runAsync(() -> {
             messageCache.synchronous().cleanUp();
@@ -410,7 +377,7 @@ public class AsyncCacheManager {
         }, executor);
     }
     
-    // Helper methods
+    
     private String buildMessageKey(String collection, String language, String key) {
         return collection + ":" + language + ":" + key;
     }
@@ -423,9 +390,7 @@ public class AsyncCacheManager {
         return collection + ":doc:" + docId;
     }
     
-    /**
-     * Cache statistics container
-     */
+    
     public static class CacheStatistics {
         public long totalHits;
         public long totalMisses;

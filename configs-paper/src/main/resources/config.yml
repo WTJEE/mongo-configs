@@ -35,6 +35,11 @@ mongodb:
     socket-timeout-ms: 10000
     connect-timeout-ms: 5000
 
+  # Optional: collections/databases to ignore from watching/reloads
+  ignore:
+    databases: []        # e.g. ["analytics", "logs"]
+    collections: []      # e.g. ["typed_configs", "audit"]
+
 # Cache configuration
 cache:
   # Maximum number of entries in cache

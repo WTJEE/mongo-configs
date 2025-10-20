@@ -222,9 +222,7 @@ public class LanguageManagerImpl implements LanguageManager {
         }
     }
     
-    /**
-     * Get the language configuration
-     */
+    
     public LanguageConfiguration getLanguageConfiguration() {
         return config;
     }

@@ -17,7 +17,7 @@ public class MessagePlaceholdersTest {
     
     @Test
     void testPlaceholderFormats() {
-        // Test różnych formatów placeholderów
+        
         String message = "Hello {player}! Welcome to {world}. You have {money} coins.";
         
         Map<String, Object> placeholders = new HashMap<>();
@@ -27,7 +27,7 @@ public class MessagePlaceholdersTest {
         
         String expected = "Hello TestPlayer! Welcome to Overworld. You have 1000 coins.";
         
-        // Testowanie lokalnej zamiany placeholderów
+        
         String result = replacePlaceholders(message, placeholders);
         assertEquals(expected, result);
     }
@@ -71,7 +71,7 @@ public class MessagePlaceholdersTest {
         assertEquals("Hello TestPlayer! Missing: {missing}", result);
     }
     
-    // Helper method to simulate placeholder replacement
+    
     private String replacePlaceholders(String message, Map<String, Object> placeholders) {
         if (placeholders == null || placeholders.isEmpty()) return message;
         

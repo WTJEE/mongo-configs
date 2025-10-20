@@ -11,10 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Helper class for sending messages with placeholders
- * Supports placeholders like {player}, {lang}, {amount}, etc.
- */
+
 public class MessageHelper {
     
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{([^}]+)\\}");
@@ -26,10 +23,7 @@ public class MessageHelper {
         this.languageManager = languageManager;
     }
     
-    /**
-     * Send message to player with placeholders
-     * Example: sendMessage(player, "messages", "welcome", "{player}", player.getName(), "{world}", player.getWorld().getName())
-     */
+    
     public CompletableFuture<Void> sendMessage(Player player, String collection, String key, Object... placeholders) {
         return languageManager.getPlayerLanguage(player.getUniqueId().toString())
             .thenCompose(lang -> configManager.getMessageAsync(collection, lang, key))
@@ -41,14 +35,11 @@ public class MessageHelper {
             });
     }
     
-    /**
-     * Send message with a Map of placeholders
-     * Example: Map<String, Object> placeholders = Map.of("player", player.getName(), "amount", 100);
-     */
+    
     public CompletableFuture<Void> sendMessage(Player player, String collection, String key, Map<String, Object> placeholders) {
         return languageManager.getPlayerLanguage(player.getUniqueId().toString())
             .thenCompose(lang -> {
-                // Add automatic placeholders
+                
                 Map<String, Object> allPlaceholders = new HashMap<>(placeholders);
                 allPlaceholders.put("player", player.getName());
                 allPlaceholders.put("displayname", player.getDisplayName());
@@ -68,9 +59,7 @@ public class MessageHelper {
             });
     }
     
-    /**
-     * Get formatted message with placeholders
-     */
+    
     public CompletableFuture<String> getMessage(String lang, String collection, String key, Object... placeholders) {
         return configManager.getMessageAsync(collection, lang, key)
             .thenApply(message -> {
@@ -80,14 +69,12 @@ public class MessageHelper {
             });
     }
     
-    /**
-     * Get formatted message for player with automatic placeholders
-     */
+    
     public CompletableFuture<String> getPlayerMessage(Player player, String collection, String key, Map<String, Object> extraPlaceholders) {
         return languageManager.getPlayerLanguage(player.getUniqueId().toString())
             .thenCompose(lang -> {
                 Map<String, Object> placeholders = new HashMap<>();
-                // Add automatic player placeholders
+                
                 placeholders.put("player", player.getName());
                 placeholders.put("displayname", player.getDisplayName());
                 placeholders.put("lang", lang);
@@ -99,7 +86,7 @@ public class MessageHelper {
                 placeholders.put("level", player.getLevel());
                 placeholders.put("exp", player.getTotalExperience());
                 
-                // Add extra placeholders
+                
                 if (extraPlaceholders != null) {
                     placeholders.putAll(extraPlaceholders);
                 }
@@ -113,9 +100,7 @@ public class MessageHelper {
             });
     }
     
-    /**
-     * Broadcast message to all players with placeholders
-     */
+    
     public CompletableFuture<Void> broadcast(String collection, String key, Map<String, Object> placeholders) {
         return CompletableFuture.runAsync(() -> {
             for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
@@ -124,14 +109,12 @@ public class MessageHelper {
         });
     }
     
-    /**
-     * Send message to CommandSender (console or player)
-     */
+    
     public CompletableFuture<Void> sendMessage(CommandSender sender, String collection, String key, Object... placeholders) {
         if (sender instanceof Player) {
             return sendMessage((Player) sender, collection, key, placeholders);
         } else {
-            // For console, use default language
+            
             return languageManager.getDefaultLanguage()
                 .thenCompose(lang -> configManager.getMessageAsync(collection, lang, key))
                 .thenAccept(message -> {
@@ -143,20 +126,18 @@ public class MessageHelper {
         }
     }
     
-    /**
-     * Replace placeholders in message using varargs (key, value, key, value...)
-     */
+    
     private String replacePlaceholders(String message, Object... placeholders) {
         if (placeholders.length == 0) return message;
         
         String result = message;
         
-        // Handle key-value pairs
+        
         for (int i = 0; i < placeholders.length - 1; i += 2) {
             String key = String.valueOf(placeholders[i]);
             Object value = placeholders[i + 1];
             
-            // Support both {key} and %key% formats
+            
             result = result.replace("{" + key + "}", String.valueOf(value));
             result = result.replace("%" + key + "%", String.valueOf(value));
         }
@@ -164,9 +145,7 @@ public class MessageHelper {
         return result;
     }
     
-    /**
-     * Replace placeholders in message using a map
-     */
+    
     private String replacePlaceholders(String message, Map<String, Object> placeholders) {
         if (placeholders.isEmpty()) return message;
         
@@ -176,7 +155,7 @@ public class MessageHelper {
             String key = entry.getKey();
             Object value = entry.getValue();
             
-            // Support both {key} and %key% formats
+            
             result = result.replace("{" + key + "}", String.valueOf(value));
             result = result.replace("%" + key + "%", String.valueOf(value));
         }
@@ -184,16 +163,12 @@ public class MessageHelper {
         return result;
     }
     
-    /**
-     * Create a placeholder map builder for easy construction
-     */
+    
     public static PlaceholderBuilder placeholders() {
         return new PlaceholderBuilder();
     }
     
-    /**
-     * Builder for creating placeholder maps
-     */
+    
     public static class PlaceholderBuilder {
         private final Map<String, Object> placeholders = new HashMap<>();
         

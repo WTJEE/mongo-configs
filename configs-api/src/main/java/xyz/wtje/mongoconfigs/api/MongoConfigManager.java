@@ -144,7 +144,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
     public java.util.concurrent.CompletableFuture<Void> reloadAll() {
         return java.util.concurrent.CompletableFuture.runAsync(() -> {
             System.out.println("Refreshing all cached messages and configs...");
-            // Instead of clearing cache completely, mark for refresh
+            
             for (String collection : new java.util.HashSet<>(messagesCache.keySet())) {
                 Messages messages = messagesCache.get(collection);
                 if (messages instanceof CachedMessages cachedMessages) {
@@ -152,11 +152,11 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
                 }
             }
             
-            // Clear config cache to force reload
+            
             configCache.clear();
             languageDocuments.clear();
             
-            // Re-register collections to trigger refresh
+            
             java.util.Set<String> collections = new java.util.HashSet<>(registeredCollections);
             for (String collection : collections) {
                 refreshCollection(collection);
@@ -166,17 +166,15 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         });
     }
     
-    /**
-     * Refresh a specific collection by reloading its data
-     */
+    
     private void refreshCollection(String collection) {
         System.out.println("Refreshing collection: " + collection);
         
-        // Remove from cache to force reload
+        
         messagesCache.remove(collection);
         languageDocuments.remove(collection);
         
-        // Remove config entries for this collection
+        
         configCache.entrySet().removeIf(entry -> 
             entry.getKey().equals(collection) || entry.getKey().startsWith(collection + "."));
     }
@@ -598,7 +596,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         });
     }
 
-    // Message API implementations
+    
     @Override
     public java.util.concurrent.CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
         return findById(collection).get(key, language);

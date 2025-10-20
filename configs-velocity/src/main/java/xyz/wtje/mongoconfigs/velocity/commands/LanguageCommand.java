@@ -26,7 +26,7 @@ public class LanguageCommand implements SimpleCommand {
         }
 
         if (args.length == 0) {
-            // No GUI on proxy: show usage and available languages
+            
             sendAvailableLanguages(player);
             return;
         }

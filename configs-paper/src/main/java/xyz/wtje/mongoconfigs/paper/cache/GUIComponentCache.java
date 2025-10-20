@@ -12,17 +12,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 
-/**
- * Cache for pre-built GUI components to minimize main thread work
- */
+
 public class GUIComponentCache {
     private static final ConcurrentHashMap<String, ItemStack> ITEM_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Component> COMPONENT_CACHE = new ConcurrentHashMap<>();
     private static final Executor ASYNC_EXECUTOR = ForkJoinPool.commonPool();
     
-    /**
-     * Get or create cached ItemStack asynchronously
-     */
+    
     public static CompletableFuture<ItemStack> getCachedItemAsync(String key, ItemStackBuilder builder) {
         ItemStack cached = ITEM_CACHE.get(key);
         if (cached != null) {
@@ -36,9 +32,7 @@ public class GUIComponentCache {
         }, ASYNC_EXECUTOR);
     }
     
-    /**
-     * Get or create cached Component asynchronously
-     */
+    
     public static CompletableFuture<Component> getCachedComponentAsync(String key, ComponentBuilder builder) {
         Component cached = COMPONENT_CACHE.get(key);
         if (cached != null) {
@@ -52,12 +46,10 @@ public class GUIComponentCache {
         }, ASYNC_EXECUTOR);
     }
     
-    /**
-     * Pre-warm cache with common items
-     */
+    
     public static void preWarmCache() {
         CompletableFuture.runAsync(() -> {
-            // Pre-build common materials
+            
             for (Material material : Material.values()) {
                 if (material.name().contains("WOOL") || material == Material.PLAYER_HEAD || material == Material.BARRIER) {
                     String key = "basic_item_" + material.name();
@@ -68,7 +60,7 @@ public class GUIComponentCache {
                 }
             }
             
-            // Pre-build common components
+            
             String[] commonColors = {"§c", "§a", "§e", "§b", "§f", "§7", "§6"};
             String[] commonTexts = {"Close", "Select", "Back", "Next", "Confirm", "Cancel"};
             
@@ -84,25 +76,19 @@ public class GUIComponentCache {
         }, ASYNC_EXECUTOR);
     }
     
-    /**
-     * Invalidate specific cache entry
-     */
+    
     public static void invalidate(String key) {
         ITEM_CACHE.remove(key);
         COMPONENT_CACHE.remove(key);
     }
     
-    /**
-     * Clear all caches
-     */
+    
     public static void clearAll() {
         ITEM_CACHE.clear();
         COMPONENT_CACHE.clear();
     }
     
-    /**
-     * Get cache statistics
-     */
+    
     public static String getCacheStats() {
         return "GUI Cache - Items: " + ITEM_CACHE.size() + ", Components: " + COMPONENT_CACHE.size();
     }
@@ -117,9 +103,7 @@ public class GUIComponentCache {
         Component build();
     }
     
-    /**
-     * Builder for quick ItemStack creation
-     */
+    
     public static class QuickItemBuilder {
         private Material material;
         private String displayName;

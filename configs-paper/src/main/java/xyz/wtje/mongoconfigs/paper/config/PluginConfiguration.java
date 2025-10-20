@@ -88,15 +88,15 @@ public class PluginConfiguration {
     }
 
     public boolean isChangeStreamsEnabled() {
-        return true; // Using polling-based change detection (works without Replica Set)
+        return true; 
     }
 
     public int getChangeStreamResumeRetries() {
-        return 3; // Optimal retry count
+        return 3; 
     }
 
     public long getChangeStreamResumeDelay() {
-        return 1000; // 1 second delay - fast but not aggressive
+        return 1000; 
     }
 
     public boolean isDebugLogging() {
@@ -107,5 +107,13 @@ public class PluginConfiguration {
         return config.getBoolean("logging.verbose", false);
     }
 
-}
+    public java.util.List<String> getIgnoredDatabases() {
+        java.util.List<String> list = config.getStringList("mongodb.ignore.databases");
+        return list != null ? list : java.util.List.of();
+    }
 
+    public java.util.List<String> getIgnoredCollections() {
+        java.util.List<String> list = config.getStringList("mongodb.ignore.collections");
+        return list != null ? list : java.util.List.of();
+    }
+}

@@ -154,7 +154,7 @@ public class PluginConfiguration {
         return Boolean.parseBoolean(String.valueOf(v));
     }
 
-    // Languages (optional, no separate languages.yml on proxy)
+    
     public String getDefaultLanguage() {
         Object v = get("languages.default", "en");
         return String.valueOf(v);
@@ -179,5 +179,25 @@ public class PluginConfiguration {
             }
         }
         return out;
+    }
+
+    public java.util.List<String> getIgnoredDatabases() {
+        Object v = get("mongodb.ignore.databases", java.util.List.of());
+        if (v instanceof java.util.List<?> list) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (Object o : list) out.add(String.valueOf(o));
+            return out;
+        }
+        return java.util.List.of();
+    }
+
+    public java.util.List<String> getIgnoredCollections() {
+        Object v = get("mongodb.ignore.collections", java.util.List.of());
+        if (v instanceof java.util.List<?> list) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (Object o : list) out.add(String.valueOf(o));
+            return out;
+        }
+        return java.util.List.of();
     }
 }

@@ -61,7 +61,7 @@ public class ConfigManagerImpl implements ConfigManager {
             this.cacheManager = new CacheManager(maxSize, Duration.ofSeconds(ttlSeconds), recordStats);
         }
 
-        // Log every cache invalidation for visibility in console
+        
         this.cacheManager.addInvalidationListener(coll -> {
             if ("*".equals(coll)) {
                 LOGGER.info("🧹 CACHE: PEŁNA INWALIDACJA WSZYSTKICH KOLEKCJI (Timestamp: " + System.currentTimeMillis() + ")");
@@ -78,7 +78,7 @@ public class ConfigManagerImpl implements ConfigManager {
         this.languageMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         this.languageMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
+        
         LOGGER.info("ConfigManager initialized with MongoDB database: " + config.getDatabase() +
                    ", Cache TTL: " + (ttlSeconds <= 0 ? "no expiration" : ttlSeconds + "s") +
                    ", Max size: " + maxSize);
@@ -97,7 +97,7 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public void shutdown() {
-        // Stop all change stream watchers
+        
         for (xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher : changeStreamWatchers.values()) {
             try {
                 watcher.stop();
@@ -109,6 +109,21 @@ public class ConfigManagerImpl implements ConfigManager {
         
         mongoManager.close();
         LOGGER.info("ConfigManager shutdown complete");
+    }
+    private boolean isIgnoredCollection(String collectionName) {
+        if (collectionName == null) return true;
+        if (collectionName.equals("player_languages") || collectionName.equals(config.getPlayerLanguagesCollection())) {
+            return true;
+        }
+        java.util.Set<String> ignored = config.getIgnoredCollections();
+        return ignored != null && ignored.contains(collectionName);
+    }
+
+    private boolean isIgnoredDatabase() {
+        java.util.Set<String> ignoredDbs = config.getIgnoredDatabases();
+        if (ignoredDbs == null || ignoredDbs.isEmpty()) return false;
+        String db = config.getDatabase();
+        return db != null && ignoredDbs.contains(db);
     }
     public void setColorProcessor(ColorProcessor colorProcessor) {
         this.colorProcessor = colorProcessor;
@@ -150,21 +165,23 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     
     public CompletableFuture<Void> reloadCollection(String collection, boolean invalidateCache) {
+        if (isIgnoredDatabase() || isIgnoredCollection(collection)) {
+            LOGGER.info("Skipping reload for ignored collection: " + collection);
+            return CompletableFuture.completedFuture(null);
+        }
         return CompletableFuture.runAsync(() -> {
-            // Always use INFO level logging for better visibility in console
+            
             LOGGER.info("🔁 START RELOAD KOLEKCJI: " + collection + " (invalidateCache=" + invalidateCache + ")");
             
-            // Only invalidate if not called from change stream (to avoid double invalidation)
+            
             if (invalidateCache) {
                 LOGGER.info("🧹 INWALIDACJA CACHE dla kolekcji: " + collection);
                 cacheManager.invalidateCollection(collection);
             }
         }, asyncExecutor)
         .thenCompose(v -> {
-            // Setup change stream if not already setup (skip for player_languages)
-            if (!changeStreamWatchers.containsKey(collection) && 
-                !collection.equals("player_languages") && 
-                !collection.equals(config.getPlayerLanguagesCollection())) {
+            
+            if (!changeStreamWatchers.containsKey(collection) && !isIgnoredCollection(collection)) {
                 setupChangeStreamForCollection(collection);
             }
             
@@ -172,11 +189,9 @@ public class ConfigManagerImpl implements ConfigManager {
                 .thenCompose(configDoc -> {
                     if (configDoc == null) {
                         if (config.isDebugLogging()) {
-                            LOGGER.info("Config document missing for collection: " + collection + ", creating new one");
+                            LOGGER.info("Config document missing for collection: " + collection + ", skipping auto-create");
                         }
-                        ConfigDocument newConfigDoc = new ConfigDocument("config", new HashMap<>());
-                        return mongoManager.saveConfig(collection, newConfigDoc)
-                            .thenApply(v2 -> newConfigDoc);
+                        return CompletableFuture.completedFuture(null);
                     } else {
                         return CompletableFuture.completedFuture(configDoc);
                     }
@@ -221,22 +236,22 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
 
                     return ensureLanguagesFuture.thenCompose(v2 -> {
-            // Load all language documents
+            
                         List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
                                 .map(lang -> mongoManager.getLanguage(collection, lang))
                                 .collect(Collectors.toList());
 
-                        // Clear and reload cache for this collection
+                        
                         if (config.isDebugLogging()) {
                             LOGGER.info("Refreshing cache for collection: " + collection);
                         }
                         
-                        // Only invalidate if explicitly requested
+                        
                         if (invalidateCache) {
                             cacheManager.invalidateCollection(collection);
                         }
                         
-                        // Load config data into cache
+                        
                         if (configDoc != null && configDoc.getData() != null) {
                             cacheManager.putConfigData(collection, configDoc.getData());
                             if (config.isDebugLogging()) {
@@ -248,10 +263,10 @@ public class ConfigManagerImpl implements ConfigManager {
                             }
                         }
 
-                        // Load language data into cache asynchronously
+                        
                         return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
                             .thenCompose(unused -> {
-                                // Process results asynchronously instead of blocking with .join()
+                                
                                 List<CompletableFuture<Void>> cachingFutures = new ArrayList<>();
                                 
                                 for (CompletableFuture<LanguageDocument> future : languageFutures) {
@@ -273,13 +288,13 @@ public class ConfigManagerImpl implements ConfigManager {
                                 return CompletableFuture.allOf(cachingFutures.toArray(new CompletableFuture[0]));
                             })
                             .thenRun(() -> {
-                                // Always use INFO level logging regardless of debug settings
+                                
                                 LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI: " + collection +
                                             " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
                                             " | Languages=" + finalExpectedLanguages.size() +
                                             " | Timestamp=" + System.currentTimeMillis());
                                 
-                                // Notify any registered listeners about the reload
+                                
                                 notifyReloadListeners(collection);
                             });
                     });
@@ -309,10 +324,10 @@ public class ConfigManagerImpl implements ConfigManager {
                 LOGGER.info("Reloading " + allCollections.size() + " collections...");
             }
 
-            // First ensure all language documents exist
+            
             return prepareCollectionsAsync(allCollections)
                 .thenCompose(prepared -> {
-                    // Then reload each collection's data into cache
+                    
                     return reloadCollectionsInParallel(allCollections);
                 })
                 .thenRun(() -> {
@@ -320,7 +335,7 @@ public class ConfigManagerImpl implements ConfigManager {
                         LOGGER.info("Successfully reloaded all " + allCollections.size() + " collections into cache!");
                     }
                     
-                    // Setup Change Streams for newly discovered collections
+                    
                     LOGGER.info("🔄 Setting up Change Streams for reloaded collections...");
                     for (String collection : allCollections) {
                         if (!changeStreamWatchers.containsKey(collection)) {
@@ -607,7 +622,7 @@ public class ConfigManagerImpl implements ConfigManager {
             
             
             List<CompletableFuture<Void>> loadFutures = collections.stream()
-                .filter(collection -> !collection.equals(config.getPlayerLanguagesCollection()))
+                .filter(collection -> !isIgnoredCollection(collection))
                 .map(this::loadCollectionIntoCache)
                 .collect(Collectors.toList());
             
@@ -627,6 +642,10 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     
     private void setupChangeStreams() {
+        if (isIgnoredDatabase()) {
+            LOGGER.info("Skipping Change Streams setup: database is ignored -> " + config.getDatabase());
+            return;
+        }
         if (!config.isEnableChangeStreams()) {
             LOGGER.info("⚠️ Change Streams DISABLED - manual reload required for updates");
             LOGGER.info("💡 To enable change streams, set enableChangeStreams=true in your MongoConfig");
@@ -636,7 +655,7 @@ public class ConfigManagerImpl implements ConfigManager {
         CompletableFuture.runAsync(() -> {
             LOGGER.info("📡 Setting up change streams for collections...");
             
-            // Setup change streams for known collections
+            
             Set<String> collections = new HashSet<>(knownCollections);
             
             if (collections.isEmpty()) {
@@ -650,9 +669,8 @@ public class ConfigManagerImpl implements ConfigManager {
             int successCount = 0;
             int skippedCount = 0;
             for (String collection : collections) {
-                // Skip player_languages collection
-                if (collection.equals("player_languages") || 
-                    collection.equals(config.getPlayerLanguagesCollection())) {
+                
+                if (isIgnoredCollection(collection)) {
                     skippedCount++;
                     continue;
                 }
@@ -671,7 +689,12 @@ public class ConfigManagerImpl implements ConfigManager {
     }
     
     private void setupChangeStreamForCollection(String collectionName) {
-        // Skip player_languages collection - it doesn't need change streams
+        
+        if (isIgnoredCollection(collectionName)) {
+            LOGGER.info("������ Skipping change stream for ignored collection: " + collectionName);
+            return;
+        }
+        
         if (collectionName.equals("player_languages") || 
             collectionName.equals(config.getPlayerLanguagesCollection())) {
             LOGGER.info("⏭️ Skipping change stream for player_languages collection");
@@ -680,7 +703,7 @@ public class ConfigManagerImpl implements ConfigManager {
         
         if (changeStreamWatchers.containsKey(collectionName)) {
             LOGGER.info("🔄 Change stream already exists for collection: " + collectionName);
-            return; // Already setup
+            return; 
         }
         
         LOGGER.info("🚀 Setting up new change stream for collection: " + collectionName);
@@ -692,18 +715,18 @@ public class ConfigManagerImpl implements ConfigManager {
                     cacheManager
                 );
             
-            // Set reload callback that reloads collection when changes detected
+            
             watcher.setReloadCallback(changedCollection -> {
                 CompletableFuture.runAsync(() -> {
                     try {
-                        // Always print clear info logs for visibility
+                        
                         LOGGER.info("♻️ ROZPOCZYNAM ODŚWIEŻANIE KOLEKCJI po wykryciu zmiany (Change Stream): " + changedCollection);
-                        // Don't use .join() to avoid potential deadlocks
-                        // Pass false to avoid double cache invalidation (change stream already invalidated)
+                        
+                        
                         reloadCollection(changedCollection, false)
                             .thenRun(() -> {
                                 LOGGER.info("✅ ZAKOŃCZONO ODŚWIEŻANIE KOLEKCJI (cache przeładowany): " + changedCollection);
-                                // Notify any registered listeners about the reload
+                                
                                 notifyReloadListeners(changedCollection);
                             })
                             .exceptionally(throwable -> {
@@ -725,6 +748,9 @@ public class ConfigManagerImpl implements ConfigManager {
         }
     }
     private CompletableFuture<Void> loadCollectionIntoCache(String collection) {
+        if (isIgnoredCollection(collection)) {
+            return CompletableFuture.completedFuture(null);
+        }
         return CompletableFuture.supplyAsync(() -> {
             if (config.isVerboseLogging()) {
                 LOGGER.info("Loading collection into cache: " + collection);
@@ -840,16 +866,12 @@ public class ConfigManagerImpl implements ConfigManager {
         }
     }
 
-    /**
-     * Enable change stream monitoring for a specific collection
-     */
+    
     public void enableChangeStreamForCollection(String collectionName) {
         setupChangeStreamForCollection(collectionName);
     }
 
-    /**
-     * Disable change stream monitoring for a specific collection
-     */
+    
     public void disableChangeStreamForCollection(String collectionName) {
         xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = changeStreamWatchers.remove(collectionName);
         if (watcher != null) {
@@ -864,16 +886,12 @@ public class ConfigManagerImpl implements ConfigManager {
         }
     }
 
-    /**
-     * Check if change stream is enabled for a collection
-     */
+    
     public boolean isChangeStreamEnabled(String collectionName) {
         return changeStreamWatchers.containsKey(collectionName);
     }
     
-    /**
-     * Get status of all change stream watchers for debugging
-     */
+    
     public Map<String, String> getChangeStreamStatus() {
         Map<String, String> status = new HashMap<>();
         for (Map.Entry<String, xyz.wtje.mongoconfigs.core.ChangeStreamWatcher> entry : changeStreamWatchers.entrySet()) {
@@ -882,9 +900,7 @@ public class ConfigManagerImpl implements ConfigManager {
         return status;
     }
     
-    /**
-     * Force all change streams to polling mode (for debugging)
-     */
+    
     public void forceAllToPollingMode() {
         LOGGER.info("🔄 Forcing ALL change streams to polling mode for debugging");
         for (xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher : changeStreamWatchers.values()) {
@@ -892,9 +908,7 @@ public class ConfigManagerImpl implements ConfigManager {
         }
     }
     
-    /**
-     * Manually trigger cache reload for testing change detection
-     */
+    
     public void testChangeDetection(String collectionName) {
         LOGGER.info("🧪 Testing change detection for collection: " + collectionName);
         if (changeStreamWatchers.containsKey(collectionName)) {
@@ -1172,9 +1186,7 @@ public class ConfigManagerImpl implements ConfigManager {
         return cacheManager.getMessageAsync(collection, language, key, defaultValue);
     }
 
-    /**
-     * Get message asynchronously with placeholders (varargs)
-     */
+    
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders) {
         return getMessageAsync(collection, language, key)
             .thenApply(message -> {
@@ -1183,9 +1195,7 @@ public class ConfigManagerImpl implements ConfigManager {
             });
     }
 
-    /**
-     * Get message asynchronously with placeholders (Map)
-     */
+    
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders) {
         return getMessageAsync(collection, language, key)
             .thenApply(message -> {
@@ -1697,11 +1707,9 @@ public class ConfigManagerImpl implements ConfigManager {
         return false;
     }
     
-    /**
-     * Notify all reload listeners for a specific collection
-     */
+    
     private void notifyReloadListeners(String collection) {
-        // Notify collection-specific listeners
+        
         Set<Consumer<String>> listeners = reloadListeners.get(collection);
         if (listeners != null && !listeners.isEmpty()) {
             LOGGER.info("🔔 Powiadamianie " + listeners.size() + " słuchaczy o odświeżeniu kolekcji: " + collection);
@@ -1714,7 +1722,7 @@ public class ConfigManagerImpl implements ConfigManager {
             }
         }
         
-        // Notify global listeners (listening to all collections)
+        
         Set<Consumer<String>> globalListeners = reloadListeners.get("*");
         if (globalListeners != null && !globalListeners.isEmpty()) {
             LOGGER.info("🔔 Powiadamianie " + globalListeners.size() + " globalnych słuchaczy o odświeżeniu kolekcji: " + collection);
@@ -1728,12 +1736,7 @@ public class ConfigManagerImpl implements ConfigManager {
         }
     }
     
-    /**
-     * Add a listener to be notified when a specific collection is reloaded
-     * 
-     * @param collection Collection name or "*" for all collections
-     * @param listener Listener to call when collection is reloaded
-     */
+    
     public void addReloadListener(String collection, Consumer<String> listener) {
         if (collection == null || listener == null) return;
         
@@ -1742,12 +1745,7 @@ public class ConfigManagerImpl implements ConfigManager {
         LOGGER.info("➕ Dodano nowego słuchacza odświeżenia dla kolekcji: " + collection);
     }
     
-    /**
-     * Remove a reload listener for a specific collection
-     * 
-     * @param collection Collection name or "*" for all collections
-     * @param listener Listener to remove
-     */
+    
     public void removeReloadListener(String collection, Consumer<String> listener) {
         if (collection == null || listener == null) return;
         
