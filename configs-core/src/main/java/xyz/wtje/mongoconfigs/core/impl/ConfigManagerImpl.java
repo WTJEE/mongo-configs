@@ -517,6 +517,9 @@ public class ConfigManagerImpl implements ConfigManager {
         return reloadCollection(collection);
     }
     private <T> CompletableFuture<Void> putConfigValues(String collection, Map<String, T> configValues) {
+        if (configValues == null || configValues.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
         return mongoManager.getConfig(collection)
                 .thenCompose(configDoc -> {
                     if (configDoc == null) {
@@ -527,6 +530,7 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
                     Map<String, Object> data = configDoc.getData();
                     data.putAll(configValues);
+                    configDoc.setData(data);
                     cacheManager.putConfigData(collection, data);
                     return mongoManager.saveConfig(collection, configDoc);
                 });

@@ -35,7 +35,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             languageConfig = new LanguageConfiguration(this);
 
             String connectionString = pluginConfig.getMongoConnectionString();
-            getLogger().info("Using MongoDB connection string: " + 
+            logVerbose("Using MongoDB connection string: " + 
                 (connectionString.contains("@") ? 
                     connectionString.replaceAll("://[^@]*@", "://***@") :
                     connectionString));
@@ -46,8 +46,15 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
             configManager.setColorProcessor(new BukkitColorProcessor());
 
-            languageManager = new LanguageManagerImpl(configManager, languageConfig, 
-                configManager.getMongoManager(), pluginConfig.getPlayerLanguagesDatabase(), pluginConfig.getPlayerLanguagesCollection());
+            languageManager = new LanguageManagerImpl(
+                configManager,
+                languageConfig,
+                configManager.getMongoManager(),
+                pluginConfig.getPlayerLanguagesDatabase(),
+                pluginConfig.getPlayerLanguagesCollection(),
+                pluginConfig.isDebugLogging(),
+                pluginConfig.isVerboseLogging()
+            );
 
             MongoConfigsAPI.setConfigManager(configManager);
             MongoConfigsAPI.setLanguageManager(languageManager);
@@ -59,12 +66,12 @@ public class MongoConfigsPlugin extends JavaPlugin {
 
                     LanguageSelectionGUI.preloadCache(languageManager, languageConfig);
 
-                    getLogger().info("MongoDB Configs initialized successfully");
-                    getLogger().info("Performance configuration: " + 
-                        pluginConfig.getIoThreads() + " I/O threads, " + 
+                    logVerbose("MongoDB Configs initialized successfully");
+                    logVerbose("Performance configuration: " +
+                        pluginConfig.getIoThreads() + " I/O threads, " +
                         pluginConfig.getWorkerThreads() + " worker threads");
-                    getLogger().info("Cache: Using simple in-memory maps (Caffeine cache settings ignored)");
-                    getLogger().info("Cache config values: max-size=" + pluginConfig.getCacheMaxSize() + 
+                    logVerbose("Cache: Using simple in-memory maps (Caffeine cache settings ignored)");
+                    logVerbose("Cache config values: max-size=" + pluginConfig.getCacheMaxSize() +
                         ", ttl=" + pluginConfig.getCacheTtlSeconds() + "s" +
                         ", refresh-after=" + pluginConfig.getCacheRefreshAfterSeconds() + "s (NOT USED)");
                 } catch (Exception e) {
@@ -109,7 +116,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         MongoConfig config = new MongoConfig();
 
         String connectionString = pluginConfig.getMongoConnectionString();
-        getLogger().info("createMongoConfig: Setting connection string to: " + 
+        logDebug("Preparing MongoConfig with connection string: " + 
             (connectionString.contains("@") ? 
                 connectionString.replaceAll("://[^@]*@", "://***@") :
                 connectionString));
@@ -133,7 +140,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         config.setChangeStreamResumeRetries(pluginConfig.getChangeStreamResumeRetries());
         config.setChangeStreamResumeDelayMs(pluginConfig.getChangeStreamResumeDelay());
 
-        getLogger().info("Change detection enabled (Change Streams + Polling fallback)");
+        logVerbose("Change detection enabled (Change Streams + Polling fallback)");
 
         config.setIoThreads(pluginConfig.getIoThreads());
         config.setWorkerThreads(pluginConfig.getWorkerThreads());
@@ -145,6 +152,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
         config.setSupportedLanguages(languageConfig.getSupportedLanguages());
         config.setLanguageDisplayNames(languageConfig.getLanguageDisplayNames());
 
+        config.setPlayerLanguagesDatabase(pluginConfig.getPlayerLanguagesDatabase());
         config.setPlayerLanguagesCollection(pluginConfig.getPlayerLanguagesCollection());
         config.setTypedConfigsCollection(pluginConfig.getTypedConfigsCollection());
         config.setConfigsCollection(pluginConfig.getConfigsCollection());
@@ -163,9 +171,9 @@ public class MongoConfigsPlugin extends JavaPlugin {
             LanguageCommand languageCommand = new LanguageCommand(languageManager, languageConfig);
             getCommand("language").setExecutor(languageCommand);
             getCommand("language").setTabCompleter(languageCommand);
-            getLogger().info("✅ Language command registered successfully");
+            logDebug("Language command registered successfully");
         } else {
-            getLogger().severe("❌ Failed to register /language command - command not found in plugin.yml!");
+            getLogger().severe("Failed to register /language command - command not found in plugin.yml");
         }
 
         
@@ -173,9 +181,9 @@ public class MongoConfigsPlugin extends JavaPlugin {
             MongoConfigsCommand adminCommand = new MongoConfigsCommand(configManager, languageManager, this, languageConfig);
             getCommand("mongoconfigs").setExecutor(adminCommand);
             getCommand("mongoconfigs").setTabCompleter(adminCommand);
-            getLogger().info("✅ MongoConfigs admin command registered");
+            logDebug("MongoConfigs admin command registered");
         } else {
-            getLogger().warning("⚠️ Could not register /mongoconfigs command");
+            getLogger().warning("Could not register /mongoconfigs command");
         }
 
         
@@ -183,40 +191,40 @@ public class MongoConfigsPlugin extends JavaPlugin {
             ConfigsManagerCommand configsManagerCommand = new ConfigsManagerCommand(this);
             getCommand("configsmanager").setExecutor(configsManagerCommand);
             getCommand("configsmanager").setTabCompleter(configsManagerCommand);
-            getLogger().info("✅ ConfigsManager command registered");
+            logDebug("ConfigsManager command registered");
         } else {
-            getLogger().warning("⚠️ Could not register /configsmanager command");
+            getLogger().warning("Could not register /configsmanager command");
         }
 
         
         if (getCommand("hotreload") != null) {
             HotReloadCommand hotReloadCommand = new HotReloadCommand(this, configManager.getTypedConfigManager(), languageManager);
             getCommand("hotreload").setExecutor(hotReloadCommand);
-            getLogger().info("✅ HotReload command registered");
+            logDebug("HotReload command registered");
         } else {
-            getLogger().warning("⚠️ Could not register /hotreload command");
+            getLogger().warning("Could not register /hotreload command");
         }
 
-        getLogger().info("✅ Command registration phase completed");
+        logDebug("Command registration phase completed");
     }
 
     private void registerListeners() {
-        getLogger().info("[DEBUG] Registering event listeners...");
+        logDebug("Registering event listeners...");
         
         getServer().getPluginManager().registerEvents(
                 new PlayerJoinListener(languageManager), this);
-        getLogger().info("[DEBUG] PlayerJoinListener registered");
+        logDebug("PlayerJoinListener registered");
 
         getServer().getPluginManager().registerEvents(
                 new GUIListener(this), this);
-        getLogger().info("[DEBUG] GUIListener registered with plugin instance");
+        logDebug("GUIListener registered with plugin instance");
 
-        getLogger().info("✅ Event listeners registered successfully");
+        logDebug("Event listeners registered successfully");
         
         
         if (languageManager != null && languageConfig != null) {
             xyz.wtje.mongoconfigs.paper.gui.LanguageSelectionGUI.preloadGUIElements(languageManager, languageConfig);
-            getLogger().info("🚀 GUI elements preloaded for optimal performance");
+            logVerbose("GUI elements preloaded for optimal performance");
         }
     }
 
@@ -241,7 +249,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
                 
                 refreshGUIMessages();
 
-                getLogger().info("Plugin reloaded successfully");
+                logVerbose("Plugin reloaded successfully");
             } catch (Exception e) {
                 getLogger().log(Level.SEVERE, "Error reloading plugin", e);
             }
@@ -254,7 +262,7 @@ public class MongoConfigsPlugin extends JavaPlugin {
             
             if (languageManager != null && languageConfig != null) {
                 LanguageSelectionGUI.preloadCache(languageManager, languageConfig);
-                getLogger().info("GUI messages cache refreshed");
+                logDebug("GUI messages cache refreshed");
             }
         } catch (Exception e) {
             getLogger().log(Level.WARNING, "Error refreshing GUI messages", e);
@@ -275,5 +283,20 @@ public class MongoConfigsPlugin extends JavaPlugin {
     public LanguageConfiguration getLanguageConfiguration() {
         return languageConfig;
     }
+
+    private void logDebug(String message) {
+        if (pluginConfig != null && pluginConfig.isDebugLogging()) {
+            getLogger().info(message);
+        }
+    }
+
+    private void logVerbose(String message) {
+        if (pluginConfig != null && (pluginConfig.isVerboseLogging() || pluginConfig.isDebugLogging())) {
+            getLogger().info(message);
+        }
+    }
 }
+
+
+
 

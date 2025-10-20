@@ -42,10 +42,12 @@ public class MongoManager {
         );
 
         String connectionStr = config.getConnectionString();
-        LOGGER.info("MongoManager: Creating client with connection string: " + 
-            (connectionStr.contains("@") ? 
-                connectionStr.replaceAll("://[^@]*@", "://***@") :
-                connectionStr));
+        if (config.isVerboseLogging() || config.isDebugLogging()) {
+            LOGGER.info("MongoManager: Creating client with connection string: " +
+                (connectionStr.contains("@") ?
+                    connectionStr.replaceAll("://[^@]*@", "://***@") :
+                    connectionStr));
+        }
 
         ConnectionString connectionString = new ConnectionString(connectionStr);
 
@@ -73,9 +75,11 @@ public class MongoManager {
         this.mongoClient = MongoClients.create(settings);
         this.database = mongoClient.getDatabase(config.getDatabase());
 
-        LOGGER.info("MongoDB connection initialized for database: " + config.getDatabase());
-        LOGGER.info("Configured with " + config.getIoThreads() + " I/O threads and " + 
-                   config.getWorkerThreads() + " worker threads");
+        if (config.isVerboseLogging() || config.isDebugLogging()) {
+            LOGGER.info("MongoDB connection initialized for database: " + config.getDatabase());
+            LOGGER.info("Configured with " + config.getIoThreads() + " I/O threads and " + 
+                       config.getWorkerThreads() + " worker threads");
+        }
     }
 
     public CompletableFuture<ConfigDocument> getConfig(String collection) {
@@ -133,9 +137,23 @@ public class MongoManager {
         ).thenApply(names -> names.contains(collection));
     }
 
+    public CompletableFuture<Boolean> collectionExists(String databaseName, String collection) {
+        MongoDatabase targetDatabase = mongoClient.getDatabase(databaseName);
+        return PublisherAdapter.toCompletableFutureList(
+            targetDatabase.listCollectionNames()
+        ).thenApply(names -> names.contains(collection));
+    }
+
     public CompletableFuture<Void> createCollection(String collection) {
         return PublisherAdapter.toCompletableFutureVoid(
             database.createCollection(collection)
+        );
+    }
+
+    public CompletableFuture<Void> createCollection(String databaseName, String collection) {
+        MongoDatabase targetDatabase = mongoClient.getDatabase(databaseName);
+        return PublisherAdapter.toCompletableFutureVoid(
+            targetDatabase.createCollection(collection)
         );
     }
 

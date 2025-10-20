@@ -95,11 +95,14 @@ gui:
     title: "gradient:#54daf4:#545eb6&lLanguage Selection"
     
     # GUI size (must be multiple of 9, max 54)
-    size: 27
+    size: 45
     
     # Starting slot for language items (0-based indexing)
     start-slot: 10
-    
+    fillers:
+      corners: "PURPLE_STAINED_GLASS_PANE"
+      edges: "MAGENTA_STAINED_GLASS_PANE"
+      inner: "WHITE_STAINED_GLASS_PANE"    
     # Close button settings
     close-button:
       # Material for close button
@@ -265,3 +268,4 @@ player-languages:
   
   # Database for player languages (if different from main)
   database: "minecraft"
+

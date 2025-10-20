@@ -22,6 +22,7 @@ import xyz.wtje.mongoconfigs.paper.impl.LanguageManagerImpl;
 import xyz.wtje.mongoconfigs.paper.util.ColorHelper;
 
 import java.net.URL;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -37,12 +38,28 @@ public class LanguageSelectionGUI implements InventoryHolder {
     
     
     private static final Map<UUID, LanguageSelectionGUI> OPEN_GUIS = new ConcurrentHashMap<>();
+    private static final int[] CORNER_SLOTS = {0, 8, 36, 44};
+    private static final int[] EDGE_SLOTS = {1, 7, 9, 17, 27, 35, 37, 43};
+    private static final int[] INNER_SLOTS = {2, 3, 5, 6, 38, 39, 41, 42};
+    private static final int[] LANGUAGE_SLOTS = {
+            10, 11, 12, 13, 14, 15, 16,
+            19, 20, 21, 22, 23, 24, 25,
+            28, 29, 30, 31, 32, 33, 34
+    };
+    private static final int PREVIOUS_PAGE_SLOT = 18;
+    private static final int NEXT_PAGE_SLOT = 26;
+    private static volatile boolean GLOBAL_DEBUG_LOGGING = false;
+    private static volatile boolean GLOBAL_VERBOSE_LOGGING = false;
 
     private final LanguageManagerImpl languageManager;
     private final LanguageConfiguration config;
     private volatile Inventory inventory; 
     private final Player player;
     private volatile boolean isOpen = false;
+    private final boolean debugLogging;
+    private final boolean verboseLogging;
+    private int currentPage = 0;
+    private java.util.List<String> availableLanguages = java.util.List.of();
     
     
     private static final Map<String, Map<String, ItemStack>> LANGUAGE_ITEMS_CACHE = new ConcurrentHashMap<>();
@@ -68,30 +85,34 @@ public class LanguageSelectionGUI implements InventoryHolder {
         this.player = player;
         this.languageManager = languageManager;
         this.config = config;
+        this.debugLogging = languageManager.isDebugLoggingEnabled();
+        this.verboseLogging = languageManager.isVerboseLoggingEnabled();
+        this.currentPage = 0;
+        GLOBAL_DEBUG_LOGGING = this.debugLogging;
+        GLOBAL_VERBOSE_LOGGING = this.verboseLogging;
 
-        
         this.inventory = null;
     }
     
     
     public static LanguageSelectionGUI getOpenGUI(Player player) {
         if (player == null) {
-            LOGGER.info("[DEBUG-GUI] getOpenGUI called with null player");
+            debugLogStatic("getOpenGUI called with null player");
             return null;
         }
         
-        LOGGER.info("[DEBUG-GUI] getOpenGUI checking for player: " + player.getName());
+        debugLogStatic("getOpenGUI checking for player: " + player.getName());
         LanguageSelectionGUI gui = OPEN_GUIS.get(player.getUniqueId());
         if (gui == null) {
-            LOGGER.info("[DEBUG-GUI] No GUI found in OPEN_GUIS map for player: " + player.getName());
+            debugLogStatic("No GUI found in OPEN_GUIS map for player: " + player.getName());
             return null;
         }
 
-        LOGGER.info("[DEBUG-GUI] Found GUI in map for player: " + player.getName() + ", gui.isOpen=" + gui.isOpen);
+        debugLogStatic("Found GUI in map for player: " + player.getName() + ", gui.isOpen=" + gui.isOpen);
         try {
             InventoryView view = player.getOpenInventory();
             if (view == null) {
-                LOGGER.info("[DEBUG-GUI] Player's open inventory view is null for: " + player.getName());
+                debugLogStatic("Player's open inventory view is null for: " + player.getName());
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
                 gui.isOpen = false;
                 return null;
@@ -99,27 +120,27 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
             Inventory top = view.getTopInventory();
             if (top == null) {
-                LOGGER.info("[DEBUG-GUI] Top inventory is null for player: " + player.getName());
+                debugLogStatic("Top inventory is null for player: " + player.getName());
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
                 gui.isOpen = false;
                 return null;
             }
             
-            LOGGER.info("[DEBUG-GUI] Top inventory holder check: current=" + top.getHolder() + ", expected=" + gui + ", matches=" + (top.getHolder() == gui));
+            debugLogStatic("Top inventory holder check: current=" + top.getHolder() + ", expected=" + gui + ", matches=" + (top.getHolder() == gui));
             if (top.getHolder() != gui) {
-                LOGGER.info("[DEBUG-GUI] Top inventory holder mismatch for player: " + player.getName());
+                debugLogStatic("Top inventory holder mismatch for player: " + player.getName());
                 OPEN_GUIS.remove(player.getUniqueId(), gui);
                 gui.isOpen = false;
                 return null;
             }
         } catch (Throwable t) {
-            LOGGER.info("[DEBUG-GUI] Exception checking inventory: " + t.getMessage());
+            debugLogStatic("Exception checking inventory: " + t.getMessage());
             OPEN_GUIS.remove(player.getUniqueId(), gui);
             gui.isOpen = false;
             return null;
         }
 
-        LOGGER.info("[DEBUG-GUI] Returning valid GUI for player: " + player.getName());
+        debugLogStatic("Returning valid GUI for player: " + player.getName());
         return gui;
     }
 
@@ -158,86 +179,42 @@ public class LanguageSelectionGUI implements InventoryHolder {
 
     
     public void open() {
-        getPlugin().getLogger().info("[DEBUG-GUI] Opening GUI synchronously for player: " + player.getName());
+        debugLog("Opening GUI synchronously for player: " + player.getName());
         
         try {
             
             String title = resolvePlaceholders(config.getGuiTitle(), null);
             int size = safeSize(config.getGuiSize());
             inventory = Bukkit.createInventory(this, size, ColorHelper.parseComponent(title));
-            getPlugin().getLogger().info("[DEBUG-GUI] Created inventory with title: " + title + ", size: " + size);
+            debugLog("Created inventory with title: " + title + ", size: " + size);
             
             
             ItemStack closeButton = createCloseButton();
             inventory.setItem(config.getCloseButtonSlot(), closeButton);
-            getPlugin().getLogger().info("[DEBUG-GUI] Added close button at slot: " + config.getCloseButtonSlot());
+            debugLog("Added close button at slot: " + config.getCloseButtonSlot());
             
             
             addLanguageItems();
-            getPlugin().getLogger().info("[DEBUG-GUI] Added language items");
+            debugLog("Added language items");
             
             
             player.openInventory(inventory);
             isOpen = true;
             OPEN_GUIS.put(player.getUniqueId(), this);
             
-            getPlugin().getLogger().info("[DEBUG-GUI] GUI opened successfully for player: " + player.getName());
+            debugLog("GUI opened successfully for player: " + player.getName());
             
         } catch (Exception e) {
-            getPlugin().getLogger().severe("[DEBUG-GUI] Failed to open GUI for " + player.getName() + ": " + e.getMessage());
+            getPlugin().getLogger().severe("Failed to open GUI for " + player.getName() + ": " + e.getMessage());
             e.printStackTrace();
             player.sendMessage("§c[ERROR] Failed to open language GUI: " + e.getMessage());
         }
     }
     
     private void addLanguageItems() {
-        
-        try {
-            String[] supportedLanguages = languageManager.getSupportedLanguages().get(1, java.util.concurrent.TimeUnit.SECONDS);
-            String currentLanguage = languageManager.getPlayerLanguage(player.getUniqueId().toString()).get(1, java.util.concurrent.TimeUnit.SECONDS);
-            
-            
-            String cacheKey = currentLanguage + "_" + String.join(",", supportedLanguages);
-            
-            
-            Map<String, ItemStack> cachedItems = LANGUAGE_ITEMS_CACHE.get(cacheKey);
-            
-            int slot = config.getGuiStartSlot();
-            for (String language : supportedLanguages) {
-                ItemStack item;
-                
-                
-                if (cachedItems != null && cachedItems.containsKey(language)) {
-                    item = cachedItems.get(language).clone();
-                } else {
-                    item = createLanguageItem(language, language.equals(currentLanguage));
-                    
-                    
-                    if (cachedItems == null) {
-                        cachedItems = new ConcurrentHashMap<>();
-                        LANGUAGE_ITEMS_CACHE.put(cacheKey, cachedItems);
-                    }
-                    cachedItems.put(language, item.clone());
-                }
-                
-                inventory.setItem(slot, item);
-                slot++;
-                
-                
-                if (slot % 9 == 8) {
-                    slot += 2;
-                }
-            }
-        } catch (Exception e) {
-            getPlugin().getLogger().warning("[DEBUG-GUI] Failed to load language data: " + e.getMessage());
-            
-            ItemStack errorItem = new ItemStack(Material.BARRIER);
-            ItemMeta meta = errorItem.getItemMeta();
-            meta.displayName(Component.text("§cError loading languages"));
-            errorItem.setItemMeta(meta);
-            inventory.setItem(config.getGuiStartSlot(), errorItem);
-        }
+        refreshAsync();
     }
+
     
     private ItemStack createCloseButton() {
         
@@ -397,23 +374,82 @@ public class LanguageSelectionGUI implements InventoryHolder {
             languageManager.getPlayerLanguage(player.getUniqueId().toString()),
             (supportedLanguages, currentLanguage) -> {
                 Map<Integer, ItemStack> itemsToSet = new HashMap<>();
-                int slot = config.getGuiStartSlot();
+                java.util.List<String> languages = java.util.Arrays.asList(supportedLanguages);
+                availableLanguages = languages;
 
-                for (String language : supportedLanguages) {
-                    ItemStack item = createLanguageItem(language, language.equals(currentLanguage));
-                    itemsToSet.put(slot, item);
-                    slot++;
-
-                    if (slot % 9 == 8) {
-                        slot += 2;
-                    }
+                int totalPages = Math.max(1, (int) Math.ceil((double) languages.size() / LANGUAGE_SLOTS.length));
+                if (currentPage >= totalPages) {
+                    currentPage = totalPages - 1;
                 }
 
-                ItemStack closeButton = createCloseButton();
-                itemsToSet.put(config.getCloseButtonSlot(), closeButton);
-
+                addFillerPanes(itemsToSet);
+                addLanguageItems(itemsToSet, languages, currentLanguage);
+                addNavigationButtons(itemsToSet, totalPages);
+                itemsToSet.put(config.getCloseButtonSlot(), createCloseButton());
                 return itemsToSet;
             });
+    }
+
+    private void addFillerPanes(Map<Integer, ItemStack> itemsToSet) {
+        Material cornerMaterial = config.getCornerPaneMaterial();
+        Material edgeMaterial = config.getEdgePaneMaterial();
+        Material innerMaterial = config.getInnerPaneMaterial();
+
+        for (int slot : CORNER_SLOTS) {
+            itemsToSet.put(slot, createPaneItem(cornerMaterial));
+        }
+        for (int slot : EDGE_SLOTS) {
+            itemsToSet.put(slot, createPaneItem(edgeMaterial));
+        }
+        for (int slot : INNER_SLOTS) {
+            itemsToSet.put(slot, createPaneItem(innerMaterial));
+        }
+    }
+
+    private void addLanguageItems(Map<Integer, ItemStack> itemsToSet, java.util.List<String> languages, String currentLanguage) {
+        int startIndex = currentPage * LANGUAGE_SLOTS.length;
+        for (int i = 0; i < LANGUAGE_SLOTS.length; i++) {
+            int slot = LANGUAGE_SLOTS[i];
+            int languageIndex = startIndex + i;
+            if (languageIndex < languages.size()) {
+                String language = languages.get(languageIndex);
+                itemsToSet.put(slot, createLanguageItem(language, language.equals(currentLanguage)));
+            } else {
+                itemsToSet.put(slot, new ItemStack(Material.AIR));
+            }
+        }
+    }
+
+    private void addNavigationButtons(Map<Integer, ItemStack> itemsToSet, int totalPages) {
+        if (currentPage > 0) {
+            itemsToSet.put(PREVIOUS_PAGE_SLOT, createNavigationButton(false));
+        } else {
+            itemsToSet.put(PREVIOUS_PAGE_SLOT, createPaneItem(config.getInnerPaneMaterial()));
+        }
+
+        if (currentPage < totalPages - 1) {
+            itemsToSet.put(NEXT_PAGE_SLOT, createNavigationButton(true));
+        } else {
+            itemsToSet.put(NEXT_PAGE_SLOT, createPaneItem(config.getInnerPaneMaterial()));
+        }
+    }
+
+    private ItemStack createPaneItem(Material material) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(" ");
+        meta.setLore(java.util.List.of());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createNavigationButton(boolean next) {
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(ColorHelper.parseComponent(next ? "&aNext Page" : "&aPrevious Page"));
+        meta.lore(java.util.List.of(ColorHelper.parseComponent("&7Click to view " + (next ? "next" : "previous") + " languages")));
+        item.setItemMeta(meta);
+        return item;
     }
 
     private org.bukkit.plugin.Plugin getPlugin() {
@@ -431,15 +467,17 @@ public class LanguageSelectionGUI implements InventoryHolder {
         };
     }
 
-    private boolean isLanguageItem(ItemStack item) {
-        Material type = item.getType();
-        return type == Material.PLAYER_HEAD ||
-               type == Material.WHITE_WOOL ||
-               type == Material.RED_WOOL ||
-               type == Material.YELLOW_WOOL ||
-               type == Material.BLUE_WOOL ||
-               type == Material.ORANGE_WOOL ||
-               type == Material.GRAY_WOOL;
+    private boolean isLanguageSlot(int slot) {
+        for (int languageSlot : LANGUAGE_SLOTS) {
+            if (languageSlot == slot) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasNextPage() {
+        return (currentPage + 1) * LANGUAGE_SLOTS.length < availableLanguages.size();
     }
 
     public void onInventoryClick(InventoryClickEvent event) {
@@ -448,7 +486,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
 
         event.setCancelled(true);
-        LOGGER.info("[DEBUG-GUI] Inventory click detected for player: " + player.getName());
+        debugLog("Inventory click detected for player: " + player.getName());
 
         if (!(event.getWhoClicked() instanceof Player clickingPlayer)) {
             return;
@@ -460,8 +498,10 @@ public class LanguageSelectionGUI implements InventoryHolder {
         }
 
         
-        if (event.getSlot() == config.getCloseButtonSlot()) {
-            LOGGER.info("[DEBUG-GUI] Close button clicked by: " + clickingPlayer.getName());
+        int slot = event.getSlot();
+
+        if (slot == config.getCloseButtonSlot()) {
+            debugLog("Close button clicked by: " + clickingPlayer.getName());
             clickingPlayer.closeInventory();
             
             
@@ -477,53 +517,67 @@ public class LanguageSelectionGUI implements InventoryHolder {
             return;
         }
 
-        
-        if (isLanguageItem(clickedItem)) {
-            LOGGER.info("[DEBUG-GUI] Language item clicked at slot: " + event.getSlot());
-            handleLanguageSelection(clickingPlayer, event.getSlot());
+        if (slot == PREVIOUS_PAGE_SLOT) {
+            if (currentPage > 0) {
+                currentPage--;
+                debugLog("Navigated to previous page: " + currentPage);
+                refreshAsync();
+            }
+            return;
+        }
+
+        if (slot == NEXT_PAGE_SLOT) {
+            if (hasNextPage()) {
+                currentPage++;
+                debugLog("Navigated to next page: " + currentPage);
+                refreshAsync();
+            }
+            return;
+        }
+
+        if (isLanguageSlot(slot)) {
+            debugLog("Language item clicked at slot: " + slot);
+            handleLanguageSelection(clickingPlayer, slot);
         }
     }
     
     private void handleLanguageSelection(Player clickingPlayer, int slot) {
         try {
-            
-            String[] supportedLanguages = languageManager.getSupportedLanguages().get(1, java.util.concurrent.TimeUnit.SECONDS);
+            java.util.List<String> languages = availableLanguages;
+            if (languages.isEmpty()) {
+                languages = java.util.Arrays.asList(
+                    languageManager.getSupportedLanguages().get(1, java.util.concurrent.TimeUnit.SECONDS)
+                );
+            }
             String currentPlayerLanguage = languageManager.getPlayerLanguage(clickingPlayer.getUniqueId().toString()).get(1, java.util.concurrent.TimeUnit.SECONDS);
-            
-            String selectedLanguage = getLanguageFromSlot(slot, supportedLanguages);
-            LOGGER.info("[DEBUG-GUI] Selected language: " + selectedLanguage + " for player: " + clickingPlayer.getName());
+
+            String selectedLanguage = getLanguageFromSlot(slot, languages);
+            debugLog("Selected language: " + selectedLanguage + " for player: " + clickingPlayer.getName());
 
             if (selectedLanguage != null) {
-                
                 if (selectedLanguage.equals(currentPlayerLanguage)) {
                     String alreadySelectedMessage = config.getMessage("commands.language.already_selected", currentPlayerLanguage);
                     if (alreadySelectedMessage == null || alreadySelectedMessage.isEmpty()) {
-                        alreadySelectedMessage = "§eYou already have this language selected!";
+                        alreadySelectedMessage = "??eYou already have this language selected!";
                     }
                     clickingPlayer.sendMessage(ColorHelper.parseComponent(alreadySelectedMessage));
                     return;
                 }
-                
-                
+
                 LANGUAGE_ITEMS_CACHE.entrySet().removeIf(entry -> entry.getKey().startsWith(currentPlayerLanguage + "_"));
-                
-                
+
                 languageManager.setPlayerLanguage(clickingPlayer.getUniqueId(), selectedLanguage)
-                    .thenAccept(result -> {
-                        Bukkit.getScheduler().runTask(getPlugin(), () -> {
-                            try {
-                                String displayName = config.getDisplayName(selectedLanguage);
-                                String successMessage = config.getMessage("commands.language.success", selectedLanguage)
-                                    .replace("{language}", displayName);
-                                clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
-                                
-                                
-                                addLanguageItems();
-                            } catch (Exception e) {
-                                getPlugin().getLogger().warning("Error updating GUI after language change: " + e.getMessage());
-                            }
-                        });
-                    })
+                    .thenAccept(result -> Bukkit.getScheduler().runTask(getPlugin(), () -> {
+                        try {
+                            String displayName = config.getDisplayName(selectedLanguage);
+                            String successMessage = config.getMessage("commands.language.success", selectedLanguage)
+                                .replace("{language}", displayName);
+                            clickingPlayer.sendMessage(ColorHelper.parseComponent(successMessage));
+                            refreshAsync();
+                        } catch (Exception e) {
+                            getPlugin().getLogger().warning("Error updating GUI after language change: " + e.getMessage());
+                        }
+                    }))
                     .exceptionally(throwable -> {
                         Bukkit.getScheduler().runTask(getPlugin(), () -> {
                             getPlugin().getLogger().warning("Failed to update language for " +
@@ -535,10 +589,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     });
             }
         } catch (Exception e) {
-            LOGGER.warning("[DEBUG-GUI] Error in handleLanguageSelection: " + e.getMessage());
-            clickingPlayer.sendMessage("§cError selecting language. Please try again.");
+            LOGGER.warning("Error in handleLanguageSelection: " + e.getMessage());
+            clickingPlayer.sendMessage("??cError selecting language. Please try again.");
         }
     }
+
 
     private void refreshInventoryAsync(Player player) {
         CompletableFuture.runAsync(() -> {
@@ -618,53 +673,46 @@ public class LanguageSelectionGUI implements InventoryHolder {
     }
 
     public void onClose(InventoryCloseEvent event) {
-        LOGGER.info("[DEBUG-GUI] onClose event triggered for player: " + player.getName());
+        debugLog("onClose event triggered for player: " + player.getName());
         if (refreshTask != null) {
             refreshTask.cancel();
             refreshTask = null;
-            LOGGER.info("[DEBUG-GUI] Cancelled refresh task for player: " + player.getName());
+            debugLog("Cancelled refresh task for player: " + player.getName());
         }
         countdownSeconds = -1;
         isOpen = false;
-        LOGGER.info("[DEBUG-GUI] Set isOpen=false for player: " + player.getName());
+        debugLog("Set isOpen=false for player: " + player.getName());
         
         
         OPEN_GUIS.remove(player.getUniqueId());
-        LOGGER.info("[DEBUG-GUI] Removed from OPEN_GUIS map for player: " + player.getName());
+        debugLog("Removed from OPEN_GUIS map for player: " + player.getName());
         
         
         inventory = null;
-        LOGGER.info("[DEBUG-GUI] Reset inventory to null for player: " + player.getName());
+        debugLog("Reset inventory to null for player: " + player.getName());
         
         
         Bukkit.getScheduler().runTaskLater(getPlugin(), () -> {
-            LOGGER.info("[DEBUG-GUI] Running delayed cleanup for player: " + player.getName());
+            debugLog("Running delayed cleanup for player: " + player.getName());
             if (OPEN_GUIS.containsKey(player.getUniqueId())) {
                 OPEN_GUIS.remove(player.getUniqueId());
-                LOGGER.info("[DEBUG-GUI] Removed lingering reference from OPEN_GUIS map for player: " + player.getName());
+                debugLog("Removed lingering reference from OPEN_GUIS map for player: " + player.getName());
             }
         }, 5L); 
     }
 
-    private String getLanguageFromSlot(int slot, String[] languages) {
-        
-        int startSlot = config.getGuiStartSlot();
-        int langIndex = 0;
-        int currentSlot = startSlot;
-        
-        for (String lang : languages) {
-            if (currentSlot == slot) {
-                return lang;
+    private String getLanguageFromSlot(int slot, java.util.List<String> languages) {
+        for (int i = 0; i < LANGUAGE_SLOTS.length; i++) {
+            if (LANGUAGE_SLOTS[i] == slot) {
+                int index = currentPage * LANGUAGE_SLOTS.length + i;
+                if (index >= 0 && index < languages.size()) {
+                    return languages.get(index);
+                }
             }
-            currentSlot++;
-            
-            if (currentSlot % 9 == 8) {
-                currentSlot += 2;
-            }
-            langIndex++;
         }
         return null;
     }
+
 
     @Override
     public Inventory getInventory() {
@@ -815,7 +863,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
             return;
         }
         
-        LOGGER.info("[DEBUG-GUI] Force cleaning any existing GUI for player: " + player.getName());
+        debugLogStatic("Force cleaning any existing GUI for player: " + player.getName());
         LanguageSelectionGUI existing = OPEN_GUIS.remove(player.getUniqueId());
         if (existing != null) {
             existing.isOpen = false;
@@ -824,7 +872,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                 existing.refreshTask.cancel();
                 existing.refreshTask = null;
             }
-            LOGGER.info("[DEBUG-GUI] Forcibly cleaned existing GUI for player: " + player.getName());
+            debugLogStatic("Forcibly cleaned existing GUI for player: " + player.getName());
         }
     }
     
@@ -837,8 +885,11 @@ public class LanguageSelectionGUI implements InventoryHolder {
         OPEN_GUIS.clear();
         CACHED_CLOSE_BUTTON = null;
         isPreloading = false;
-        LOGGER.info("[DEBUG-GUI] Cleared all GUI caches including language items cache");
+        GLOBAL_DEBUG_LOGGING = false;
+        GLOBAL_VERBOSE_LOGGING = false;
+        debugLogStatic("Cleared all GUI caches including language items cache");
     }
+
     
     
     public static void preloadGUIElements(LanguageManagerImpl languageManager, LanguageConfiguration config) {
@@ -871,7 +922,7 @@ public class LanguageSelectionGUI implements InventoryHolder {
                     }
                 }
                 
-                LOGGER.info("[DEBUG-GUI] Preloaded " + CACHED_HEADS.size() + " language heads");
+                debugLogStatic("Preloaded " + CACHED_HEADS.size() + " language heads");
             } finally {
                 isPreloading = false;
             }
@@ -924,5 +975,42 @@ public class LanguageSelectionGUI implements InventoryHolder {
             LOGGER.warning("Failed to preload heads: " + e.getMessage());
         }
     }
+
+    private void debugLog(String message) {
+        if (debugLogging) {
+            LOGGER.info(message);
+        }
+    }
+
+    private void verboseLog(String message) {
+        if (debugLogging || verboseLogging) {
+            LOGGER.info(message);
+        }
+    }
+
+    private static void debugLogStatic(String message) {
+        if (GLOBAL_DEBUG_LOGGING) {
+            LOGGER.info(message);
+        }
+    }
+
+    private static void verboseLogStatic(String message) {
+        if (GLOBAL_VERBOSE_LOGGING || GLOBAL_DEBUG_LOGGING) {
+            LOGGER.info(message);
+        }
+    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -1,5 +1,6 @@
 package xyz.wtje.mongoconfigs.paper.config;
 
+import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.Plugin;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 public class LanguageConfiguration {
 
@@ -94,11 +96,24 @@ public class LanguageConfiguration {
     }
 
     public int getGuiSize() {
-        return config.getInt("gui.language-selection.size", 27);
+        return config.getInt("gui.language-selection.size", 45);
     }
+
 
     public int getGuiStartSlot() {
         return config.getInt("gui.language-selection.start-slot", 10);
+    }
+
+    public Material getCornerPaneMaterial() {
+        return parseMaterial("gui.language-selection.fillers.corners", Material.PURPLE_STAINED_GLASS_PANE);
+    }
+
+    public Material getEdgePaneMaterial() {
+        return parseMaterial("gui.language-selection.fillers.edges", Material.MAGENTA_STAINED_GLASS_PANE);
+    }
+
+    public Material getInnerPaneMaterial() {
+        return parseMaterial("gui.language-selection.fillers.inner", Material.WHITE_STAINED_GLASS_PANE);
     }
 
     public String getCloseButtonMaterial() {
@@ -167,5 +182,19 @@ public class LanguageConfiguration {
     public String getPlayerLanguagesDatabase() {
         return config.getString("player-languages.database", "minecraft");
     }
+
+    private Material parseMaterial(String path, Material defaultMaterial) {
+        String value = config.getString(path);
+        if (value == null || value.isBlank()) {
+            return defaultMaterial;
+        }
+        try {
+            return Material.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("Invalid material '" + value + "' at " + path + ", using " + defaultMaterial.name());
+            return defaultMaterial;
+        }
+    }
 }
+
 

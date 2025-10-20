@@ -5,6 +5,7 @@ import org.bson.types.ObjectId;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
 public class ConfigDocument {
@@ -14,12 +15,13 @@ public class ConfigDocument {
     private Date updatedAt;
 
     public ConfigDocument() {
+        this.data = new HashMap<>();
         this.updatedAt = Date.from(Instant.now());
     }
 
     public ConfigDocument(String name, Map<String, Object> data) {
         this.name = name;
-        this.data = data;
+        setData(data);
         this.updatedAt = Date.from(Instant.now());
     }
 
@@ -40,7 +42,12 @@ public class ConfigDocument {
         }
 
         config.name = doc.getString("name");
-        config.data = doc.get("data", Document.class);
+        Document dataDoc = doc.get("data", Document.class);
+        if (dataDoc != null) {
+            config.data = new HashMap<>(dataDoc);
+        } else {
+            config.data = new HashMap<>();
+        }
         config.updatedAt = doc.getDate("updatedAt");
         return config;
     }
@@ -51,7 +58,8 @@ public class ConfigDocument {
             doc.put("_id", id);
         }
         doc.put("name", name);
-        doc.put("data", data);
+        Map<String, Object> dataMap = getData();
+        doc.put("data", new Document(dataMap));
         doc.put("updatedAt", updatedAt);
         return doc;
     }
@@ -66,8 +74,22 @@ public class ConfigDocument {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public Map<String, Object> getData() { return data; }
-    public void setData(Map<String, Object> data) { this.data = data; }
+    public Map<String, Object> getData() {
+        if (data == null) {
+            data = new HashMap<>();
+        }
+        return data;
+    }
+
+    public void setData(Map<String, Object> data) {
+        if (data == null) {
+            this.data = new HashMap<>();
+        } else if (data instanceof Document) {
+            this.data = new HashMap<>((Document) data);
+        } else {
+            this.data = new HashMap<>(data);
+        }
+    }
 
     public Date getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Date updatedAt) { this.updatedAt = updatedAt; }

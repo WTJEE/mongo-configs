@@ -32,6 +32,7 @@ public class MongoConfig {
         "en", "English",
         "pl", "Polski"
     );
+    private String playerLanguagesDatabase = "minecraft";
     private String playerLanguagesCollection = "player_languages";
     private String typedConfigsCollection = "typed_configs";
     private String configsCollection = "configs";
@@ -106,6 +107,8 @@ public class MongoConfig {
     public void setLanguageDisplayNames(Map<String, String> languageDisplayNames) { this.languageDisplayNames = languageDisplayNames; }
 
     public String getPlayerLanguagesCollection() { return playerLanguagesCollection; }
+    public String getPlayerLanguagesDatabase() { return playerLanguagesDatabase; }
+    public void setPlayerLanguagesDatabase(String playerLanguagesDatabase) { this.playerLanguagesDatabase = playerLanguagesDatabase; }
     public void setPlayerLanguagesCollection(String playerLanguagesCollection) { this.playerLanguagesCollection = playerLanguagesCollection; }
 
     public String getTypedConfigsCollection() { return typedConfigsCollection; }
