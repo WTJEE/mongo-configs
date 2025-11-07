@@ -14,12 +14,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import xyz.wtje.mongoconfigs.api.MongoConfigsAPI;
 import xyz.wtje.mongoconfigs.core.config.MongoConfig;
 import xyz.wtje.mongoconfigs.core.impl.ConfigManagerImpl;
-import xyz.wtje.mongoconfigs.velocity.commands.LanguageCommand;
 import xyz.wtje.mongoconfigs.velocity.commands.MongoConfigsCommand;
 import xyz.wtje.mongoconfigs.velocity.config.PluginConfiguration;
 import xyz.wtje.mongoconfigs.velocity.impl.LanguageManagerImpl;
@@ -36,6 +39,7 @@ public class MongoConfigsVelocityPlugin {
     private PluginConfiguration pluginConfig;
     private ConfigManagerImpl configManager;
     private LanguageManagerImpl languageManager;
+    private CompletableFuture<Void> initializationFuture;
 
     @Inject
     public MongoConfigsVelocityPlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -66,7 +70,7 @@ public class MongoConfigsVelocityPlugin {
             MongoConfigsAPI.setConfigManager(configManager);
             MongoConfigsAPI.setLanguageManager(languageManager);
 
-            CompletableFuture.runAsync(() -> {
+            this.initializationFuture = CompletableFuture.runAsync(() -> {
                 try {
                     configManager.initialize();
                     languageManager.initialize();
@@ -75,7 +79,7 @@ public class MongoConfigsVelocityPlugin {
                 } catch (Exception e) {
                     logger.error("Failed to initialize MongoDB Configs", e);
                 }
-            });
+            }, configManager.getMongoManager().getExecutorService());
 
             registerCommands();
             logger.info("MongoDB Configs Velocity plugin enabled");
@@ -87,9 +91,10 @@ public class MongoConfigsVelocityPlugin {
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
         try {
+            awaitInitialization();
             MongoConfigsAPI.reset();
-            if (configManager != null) configManager.shutdown();
             if (languageManager != null) languageManager.shutdown();
+            if (configManager != null) configManager.shutdown();
             logger.info("MongoDB Configs Velocity plugin disabled");
         } catch (Exception e) {
             logger.warn("Error during plugin shutdown", e);
@@ -98,9 +103,29 @@ public class MongoConfigsVelocityPlugin {
 
     private void registerCommands() {
         CommandManager cm = server.getCommandManager();
-        cm.register(cm.metaBuilder("language").aliases("lang", "jezyk").build(), new LanguageCommand(languageManager));
         cm.register(cm.metaBuilder("mongoconfigs").aliases("mconfig", "mc").build(), new MongoConfigsCommand(configManager, languageManager));
         cm.register(cm.metaBuilder("mongoconfigsproxy").build(), new MongoConfigsProxyCommand(configManager, languageManager));
+    }
+
+    private void awaitInitialization() {
+        if (initializationFuture == null) {
+            return;
+        }
+
+        try {
+            initializationFuture.get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (CancellationException ignored) {
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            logger.warn("Startup task completed with errors", cause);
+        } catch (TimeoutException e) {
+            logger.warn("Startup task is still running after 10 seconds, cancelling to continue shutdown.");
+            initializationFuture.cancel(true);
+        } finally {
+            initializationFuture = null;
+        }
     }
 
     private MongoConfig createMongoConfig() {

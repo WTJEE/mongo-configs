@@ -14,6 +14,7 @@ import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
 public class LanguageManagerImpl implements LanguageManager {
@@ -26,6 +27,8 @@ public class LanguageManagerImpl implements LanguageManager {
     private final MongoManager mongoManager;
     private final String collectionName;
     private final String databaseName;
+    private final Executor asyncExecutor;
+    private volatile boolean shuttingDown = false;
 
     public LanguageManagerImpl(ConfigManager configManager, PluginConfiguration pluginConfig, MongoManager mongoManager, String databaseName, String collectionName) {
         this.configManager = configManager;
@@ -33,6 +36,7 @@ public class LanguageManagerImpl implements LanguageManager {
         this.mongoManager = mongoManager;
         this.databaseName = databaseName;
         this.collectionName = collectionName;
+        this.asyncExecutor = mongoManager.getExecutorService();
 
         this.playerLanguagesCache = new ConcurrentHashMap<>();
     }
@@ -61,6 +65,8 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     public void shutdown() {
+        shuttingDown = true;
+        playerLanguagesCache.clear();
         LOGGER.info("LanguageManager shutdown");
     }
 
@@ -75,6 +81,10 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     public CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
+        if (shuttingDown) {
+            return CompletableFuture.completedFuture(pluginConfig.getDefaultLanguage());
+        }
+
         String cached = playerLanguagesCache.get(playerId);
         if (cached != null) return CompletableFuture.completedFuture(cached);
         return CompletableFuture.supplyAsync(() -> {
@@ -90,7 +100,7 @@ public class LanguageManagerImpl implements LanguageManager {
                 LOGGER.warning("Error loading player language for " + playerId + ": " + e.getMessage());
                 return pluginConfig.getDefaultLanguage();
             }
-        });
+        }, asyncExecutor);
     }
 
     @Override
@@ -103,6 +113,10 @@ public class LanguageManagerImpl implements LanguageManager {
     }
 
     public CompletableFuture<Void> setPlayerLanguageAsync(String playerId, String language) {
+        if (shuttingDown) {
+            return CompletableFuture.completedFuture(null);
+        }
+
         return isLanguageSupported(language).thenCompose(supported -> {
             if (!supported) {
                 return CompletableFuture.failedFuture(new IllegalArgumentException("Unsupported language: " + language));
@@ -145,7 +159,7 @@ public class LanguageManagerImpl implements LanguageManager {
                     LOGGER.warning("Error saving player language: " + e.getMessage());
                     throw new RuntimeException(e);
                 }
-            });
+            }, asyncExecutor);
         });
     }
 
