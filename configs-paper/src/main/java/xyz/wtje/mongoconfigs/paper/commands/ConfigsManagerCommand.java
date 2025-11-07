@@ -128,7 +128,8 @@ public class ConfigsManagerCommand implements CommandExecutor, TabCompleter {
                 CompletableFuture<Void> allDone = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         return allDone.thenApply(ignored ->
             futures.stream()
-                .map((CompletableFuture<CollectionInfo> cf) -> cf.join())
+                .map((CompletableFuture<CollectionInfo> cf) -> cf.getNow(new CollectionInfo("", Set.of())))
+                .filter(info -> !info.name.isEmpty())
                 .collect(Collectors.<CollectionInfo>toList()));
             })
             .whenComplete((infos, throwable) -> runSync(() -> {

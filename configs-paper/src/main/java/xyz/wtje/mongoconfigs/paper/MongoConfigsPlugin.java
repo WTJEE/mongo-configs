@@ -233,26 +233,25 @@ public class MongoConfigsPlugin extends JavaPlugin {
         getLogger().info("Reloading MongoDB Configs plugin...");
 
         CompletableFuture.runAsync(() -> {
-            try {
-                reloadConfig();
-                pluginConfig = new PluginConfiguration(this);
-
-                if (configManager != null) {
-                    
-                    configManager.reloadAll().join();
-                }
-
-                if (languageManager != null) {
-                    languageManager.reload();
-                }
-
-                
-                refreshGUIMessages();
-
-                logVerbose("Plugin reloaded successfully");
-            } catch (Exception e) {
-                getLogger().log(Level.SEVERE, "Error reloading plugin", e);
+            reloadConfig();
+            pluginConfig = new PluginConfiguration(this);
+        })
+        .thenCompose(v -> {
+            if (configManager != null) {
+                return configManager.reloadAll();
             }
+            return CompletableFuture.completedFuture(null);
+        })
+        .thenRun(() -> {
+            if (languageManager != null) {
+                languageManager.reload();
+            }
+            refreshGUIMessages();
+            logVerbose("Plugin reloaded successfully");
+        })
+        .exceptionally(throwable -> {
+            getLogger().log(Level.SEVERE, "Error reloading plugin", throwable);
+            return null;
         });
     }
 

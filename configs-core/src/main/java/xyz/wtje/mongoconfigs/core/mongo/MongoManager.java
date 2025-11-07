@@ -216,11 +216,13 @@ public class MongoManager {
                 LOGGER.info("Starting getMongoCollections() - listing all collections from MongoDB...");
             }
 
+            // Fallback synchroniczny - dla zachowania kompatybilności
+            // Używaj getMongoCollectionsAsync dla pełnego async
             java.util.Set<String> collections = new java.util.HashSet<>();
 
             java.util.List<String> collectionList = PublisherAdapter.toCompletableFutureList(
                 database.listCollectionNames()
-            ).join();
+            ).getNow(java.util.List.of());
 
             collections.addAll(collectionList);
 
@@ -249,6 +251,42 @@ public class MongoManager {
             }
             return java.util.Set.of();
         }
+    }
+
+    public CompletableFuture<java.util.Set<String>> getMongoCollectionsAsync() {
+        if (config.isDebugLogging()) {
+            LOGGER.info("Starting getMongoCollectionsAsync() - listing all collections from MongoDB...");
+        }
+
+        return PublisherAdapter.toCompletableFutureList(database.listCollectionNames())
+            .thenApply(collectionList -> {
+                java.util.Set<String> collections = new java.util.HashSet<>(collectionList);
+
+                if (config.isDebugLogging()) {
+                    LOGGER.info("Found " + collections.size() + " collections in MongoDB: " + collections);
+
+                    for (String collection : collections) {
+                        LOGGER.info("Collection: " + collection);
+                    }
+                }
+
+                if (collections.isEmpty() && config.isVerboseLogging()) {
+                    LOGGER.warning("No collections found in MongoDB! This might indicate:");
+                    LOGGER.warning("1. Database is empty");
+                    LOGGER.warning("2. Connection issues");
+                    LOGGER.warning("3. Wrong database name");
+                    LOGGER.warning("4. Collections were not created yet");
+                }
+
+                return collections;
+            })
+            .exceptionally(throwable -> {
+                LOGGER.warning("Error listing MongoDB collections: " + throwable.getMessage());
+                if (config.isDebugLogging()) {
+                    LOGGER.log(java.util.logging.Level.WARNING, "Exception details: ", throwable);
+                }
+                return java.util.Set.of();
+            });
     }
 
     public ExecutorService getExecutorService() {

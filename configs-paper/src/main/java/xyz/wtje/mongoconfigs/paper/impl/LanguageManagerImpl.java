@@ -117,20 +117,20 @@ public class LanguageManagerImpl implements LanguageManager {
     public CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
         String cached = playerLanguagesCache.getIfPresent(playerId);
         if (cached != null) return CompletableFuture.completedFuture(cached);
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
-                Document doc = PublisherAdapter.toCompletableFuture(
-                    collection.find(Filters.eq("_id", playerId)).first()
-                ).join();
+        
+        MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
+        return PublisherAdapter.toCompletableFuture(
+                collection.find(Filters.eq("_id", playerId)).first()
+            )
+            .thenApply(doc -> {
                 String lang = doc != null ? doc.getString("language") : config.getDefaultLanguage();
                 playerLanguagesCache.put(playerId, lang);
                 return lang;
-            } catch (Exception e) {
-                LOGGER.warning("Error loading player language for " + playerId + ": " + e.getMessage());
+            })
+            .exceptionally(throwable -> {
+                LOGGER.warning("Error loading player language for " + playerId + ": " + throwable.getMessage());
                 return config.getDefaultLanguage();
-            }
-        });
+            });
     }
 
     @Override
@@ -157,35 +157,33 @@ public class LanguageManagerImpl implements LanguageManager {
             playerLanguagesCache.put(playerId, language);
             logDebug("Updated language for player " + playerId + " to " + language);
 
-            return CompletableFuture.runAsync(() -> {
-                try {
-                    MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
-                    Document currentDoc = PublisherAdapter.toCompletableFuture(
-                        collection.find(Filters.eq("_id", playerId)).first()
-                    ).join();
-
+            MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
+            return PublisherAdapter.toCompletableFuture(
+                    collection.find(Filters.eq("_id", playerId)).first()
+                )
+                .thenCompose(currentDoc -> {
                     String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
                     if (language.equals(currentDbLanguage)) {
                         logDebug("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
-                        return;
+                        return CompletableFuture.completedFuture(null);
                     }
 
                     PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
 
-                    PublisherAdapter.toCompletableFuture(
+                    return PublisherAdapter.toCompletableFuture(
                         collection.replaceOne(
                             Filters.eq("_id", playerId),
                             doc.toDocument(),
                             new ReplaceOptions().upsert(true)
                         )
-                    ).join();
-
-                    logDebug("Saved language preference for " + playerId + ": " + language);
-                } catch (Exception e) {
-                    LOGGER.warning("Error saving player language: " + e.getMessage());
-                    throw new RuntimeException(e);
-                }
-            });
+                    ).thenRun(() -> {
+                        logDebug("Saved language preference for " + playerId + ": " + language);
+                    });
+                })
+                .exceptionally(throwable -> {
+                    LOGGER.warning("Error saving player language: " + throwable.getMessage());
+                    throw new RuntimeException(throwable);
+                });
         });
     }
 

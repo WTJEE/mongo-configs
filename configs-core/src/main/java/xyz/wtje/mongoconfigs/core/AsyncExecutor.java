@@ -194,17 +194,16 @@ public class AsyncExecutor {
     
     private <T> CompletableFuture<T> executeWithRetryInternal(Callable<T> task, int maxRetries, long delayMs, int attempt) {
         return supplyIO(task)
-            .exceptionally(throwable -> {
+            .exceptionallyCompose(throwable -> {
                 if (attempt < maxRetries) {
                     LOGGER.info("Retrying task, attempt " + (attempt + 1) + " of " + maxRetries);
-                    try {
-                        Thread.sleep(delayMs * (attempt + 1)); 
-                        return executeWithRetryInternal(task, maxRetries, delayMs, attempt + 1).join();
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
+                    CompletableFuture<Void> delay = new CompletableFuture<>();
+                    scheduler.schedule(() -> delay.complete(null), delayMs * (attempt + 1), TimeUnit.MILLISECONDS);
+                    return delay.thenCompose(v -> executeWithRetryInternal(task, maxRetries, delayMs, attempt + 1));
                 } else {
-                    throw new CompletionException("Task failed after " + maxRetries + " retries", throwable);
+                    return CompletableFuture.failedFuture(
+                        new CompletionException("Task failed after " + maxRetries + " retries", throwable)
+                    );
                 }
             });
     }

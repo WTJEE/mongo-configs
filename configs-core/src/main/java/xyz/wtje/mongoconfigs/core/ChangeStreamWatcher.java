@@ -492,29 +492,22 @@ public final class ChangeStreamWatcher {
             return;
         }
         
-        CompletableFuture.runAsync(() -> {
-            try {
-                if (LOGGER.isLoggable(Level.FINE)) {
-                    LOGGER.fine("🎯 Cache invalidation/reload: " + reason + " for: " + collectionName);
-                }
-                
-                if (invalidateCache) {
-                    
-                    CompletableFuture<Void> invalidateFuture = cacheManager.invalidateCollectionAsync(collectionName);
-                    if (invalidateFuture != null) {
-                        invalidateFuture.join(); 
-                    } else {
-                        cacheManager.invalidateCollection(collectionName);
-                    }
-                }
-                
-                
-                reloadCallback.accept(collectionName);
-                
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Cache invalidation/reload failed for collection: " + collectionName, e);
+        CompletableFuture<Void> operation = invalidateCache ? 
+            (cacheManager.invalidateCollectionAsync(collectionName) != null ?
+                cacheManager.invalidateCollectionAsync(collectionName) :
+                CompletableFuture.runAsync(() -> cacheManager.invalidateCollection(collectionName))) :
+            CompletableFuture.completedFuture(null);
+        
+        operation.thenRunAsync(() -> {
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine("🎯 Cache invalidation/reload: " + reason + " for: " + collectionName);
             }
-        }, java.util.concurrent.ForkJoinPool.commonPool());
+            reloadCallback.accept(collectionName);
+        }, java.util.concurrent.ForkJoinPool.commonPool())
+        .exceptionally(throwable -> {
+            LOGGER.log(Level.WARNING, "Cache invalidation/reload failed for collection: " + collectionName, throwable);
+            return null;
+        });
     }
 
     private void scheduleReconnect() {
