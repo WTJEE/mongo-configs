@@ -107,7 +107,7 @@ public final class HelpPlugin implements JavaPlugin {
 }
 ```
 
-Embedding the library outside Paper works the same way: create `MongoConfigManager`, call `getOrCreateFromObject`, and handle the `CompletableFuture` asynchronously.
+Embedding the library outside Paper works the same way: instantiate `ConfigManagerImpl` with your `MongoConfig`, call `getOrCreateFromObject`, and handle the `CompletableFuture` asynchronously just like the server modules do.
 
 ## Reading values in handlers
 
@@ -122,7 +122,7 @@ You can also fetch language-specific variants:
 messages.get("general.playerJoined", "pl", "player", player.getName());
 ```
 
-If you prefer to stay completely asynchronous, keep chaining futures. For handlers that only need cached values you can also grab a `Messages.View` once the messages object is ready:
+Keep chaining futures when you interact with Bukkit/Velocity objects. If you really need synchronous access, create a `Messages.View` after the initial load. **All** `View` methods call `CompletableFuture#join`, so use them only after the data is cached and never on a busy game thread.
 
 ```java
 Messages.View msg = messages.view(playerLanguage);
@@ -132,7 +132,7 @@ player.sendMessage(color(joined));
 motd.forEach(line -> player.sendMessage(color(line)));
 ```
 
-The view joins the underlying futures internally, so only create it after `getOrCreateFromObject` completes. Calls remain non-blocking in practice because the cache resolves the futures immediately.
+`Messages.View` simply blocks until the cached value is available, which is handy for background tasks or precomputed menus. Prefer the asynchronous variants in player-facing code so you never stall the main loop.
 
 
 If you must touch Bukkit API objects, use `Bukkit.getScheduler().runTask` inside the continuation to hop back to the main thread.

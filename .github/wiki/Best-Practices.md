@@ -6,12 +6,14 @@ Follow these recommendations to keep MongoConfigs responsive and maintainable in
 
 - Treat every API call as asynchronous. Chain continuations with `thenAccept`/`thenCompose` or reschedule on your main thread executor.
 - Never block on `CompletableFuture#get` in the server thread; it can freeze the tick loop.
+- `Messages.View#get/format/list` call `CompletableFuture#join`. Only use the view from worker threads or after you have preloaded data.
 - Prefer batching reloads with `reloadAll()` during scheduled maintenance instead of hammering the database per-request.
 
 ## Schema management
 
 - Keep POJOs small and focused. Split unrelated concerns into separate classes and collections.
-- Use `@SupportedLanguages` only for languages you actually serve—extra entries trigger unnecessary lookups.
+- Prefer the ID-based helpers (`getConfigOrGenerate(id, ...)`) for high-cardinality data such as players or arenas so each record stays isolated.
+- Use `@SupportedLanguages` only for languages you actually serve-extra entries trigger unnecessary lookups.
 - Version large structural changes by renaming the `@ConfigsFileProperties` value so you can migrate old data gradually.
 
 ## Performance tuning

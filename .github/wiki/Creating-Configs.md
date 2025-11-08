@@ -63,15 +63,24 @@ configManager.setObject(settings); // runs off-thread
 
 Use `reloadCollection("plugin-settings")` or `reloadAll()` when you update values directly in MongoDB to refresh caches.
 
-## Partial updates
+## Targeted documents
 
-When you only need to change a single value you can work with the typed config manager directly.
+The API does not expose per-field patching. When you only need a lightweight document, create the type you want to persist and call the generic `set` / `get` helpers that operate on explicit IDs:
 
 ```java
-configManager.getTypedConfigManager()
-    .set("plugin-settings", "broadcastIntervalSeconds", 120);
+public record MaintenanceState(boolean enabled, long updatedAt) {}
+
+configManager.set("maintenance-state", new MaintenanceState(true, System.currentTimeMillis()))
+    .thenRun(() -> getLogger().info("Flag stored"));
+
+configManager.get("maintenance-state", MaintenanceState.class)
+    .thenAccept(state -> {
+        if (state != null && state.enabled()) {
+            getLogger().info("Maintenance went live at " + state.updatedAt());
+        }
+    });
 ```
 
-Call `get("plugin-settings", "broadcastIntervalSeconds", Integer.class)` to read a single property without loading the whole document.
+Use this pattern for small utility documents or whenever you want to bypass the annotation-based `_id` handling. Pair it with the overload `getConfigOrGenerate("maintenance-state", MaintenanceState.class, MaintenanceState::new)` to seed defaults per document ID. For anything more complex, stick with `getConfigOrGenerate(Class, Supplier)` and `setObject(T)` so the annotation-driven `_id` remains the source of truth.
 
 Continue with [Messages API](Messages-API) to publish language-specific strings or jump to the [Example Plugin](Example-Plugin) for a complete Paper integration.

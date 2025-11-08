@@ -32,7 +32,9 @@ configManager.getMessageAsync("messages", "en", "welcome")
     });
 ```
 
-#### Using MessageHelper (Recommended)
+#### Using MessageHelper (Paper module)
+
+`MessageHelper` is bundled with the Paper plugin (`configs-paper`) and wraps `ConfigManagerImpl` + the Bukkit-aware `LanguageManagerImpl`. It is not available on Velocity or in the standalone API.
 ```java
 MessageHelper messageHelper = new MessageHelper(configManager, languageManager);
 
@@ -61,21 +63,16 @@ messageHelper.sendMessage(player, "messages", "teleport",
 
 ## Automatic Placeholders
 
-When using `MessageHelper`, these placeholders are automatically available:
+`MessageHelper` injects a small set of placeholders so you do not have to add them manually:
 
-| Placeholder | Description |
-|------------|-------------|
-| `{player}` | Player's name |
-| `{displayname}` | Player's display name |
-| `{uuid}` | Player's UUID |
-| `{lang}` | Player's current language code |
-| `{world}` | Player's current world |
-| `{x}` | Player's X coordinate |
-| `{y}` | Player's Y coordinate |
-| `{z}` | Player's Z coordinate |
-| `{health}` | Player's health |
-| `{level}` | Player's level |
-| `{exp}` | Player's total experience |
+| Placeholder | Available From | Description |
+|-------------|----------------|-------------|
+| `{player}` / `{displayname}` | `sendMessage` / `broadcast` / `getPlayerMessage` | Player's username + display name |
+| `{lang}` | `sendMessage` / `broadcast` / `getPlayerMessage` | Player's resolved language code |
+| `{world}` `{x}` `{y}` `{z}` | `sendMessage` / `broadcast` / `getPlayerMessage` | Current location |
+| `{uuid}` `{health}` `{level}` `{exp}` | `getPlayerMessage` only | Detailed profile values for custom menus |
+
+Everything else should be supplied via the `Map<String,Object>` you pass to `sendMessage`/`broadcast` or via the `PlaceholderBuilder`.
 
 ## Advanced Examples
 
@@ -132,7 +129,7 @@ public void teleportPlayer(Player player, Location destination) {
 }
 ```
 
-### Time-based Placeholders
+### Time-based placeholders
 ```java
 public void showCooldown(Player player, long remainingSeconds) {
     messageHelper.sendMessage(player, "messages", "cooldown",
@@ -227,23 +224,4 @@ CompletableFuture.allOf(
 });
 ```
 
-## PlaceholderAPI Integration
-
-Message sending (MessageHelper) and GUI both resolve PlaceholderAPI tokens when the PAPI plugin is present. That means any `%...%` used in your MongoDB messages or GUI texts is evaluated per-player asynchronously.
-
-Examples:
-```yaml
-# Works in GUI titles/names/lores and in messages sent via MessageHelper
-Welcome: "%player_name%, your balance is %vault_eco_balance%"
-```
-
-Under the hood:
-- First we apply your own placeholders (e.g., {player}, {amount})
-- Then we pass the result through PlaceholderAPI for dynamic tokens
-- Everything runs async; only the final send to the player happens on the main thread
-
-For external plugins using PlaceholderAPI:
-- `%mongoconfigs_message_<collection>_<key>%` - Gets message with auto placeholders
-- `%mongoconfigs_config_<collection>_<key>%` - Gets config value
-
-These work in any plugin supporting PlaceholderAPI (scoreboards, TAB, etc.)
+MessageHelper only replaces the keys you provide (plus the automatic ones listed above). If you rely on PlaceholderAPI or any other formatter, resolve those tokens yourself after the MongoConfigs future finishes.

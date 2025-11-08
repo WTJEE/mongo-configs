@@ -13,6 +13,23 @@ public interface ConfigManager {
     <T> CompletableFuture<Void> setObject(T pojo);
     <T> CompletableFuture<T> getObject(Class<T> type);
     <T> CompletableFuture<T> getConfigOrGenerate(Class<T> type, Supplier<T> generator);
+    default <T> CompletableFuture<Void> setObject(String id, T pojo) {
+        return set(id, pojo);
+    }
+
+    default <T> CompletableFuture<T> getObject(String id, Class<T> type) {
+        return get(id, type);
+    }
+
+    default <T> CompletableFuture<T> getConfigOrGenerate(String id, Class<T> type, Supplier<T> generator) {
+        return getObject(id, type).thenCompose(current -> {
+            if (current != null) {
+                return CompletableFuture.completedFuture(current);
+            }
+            T created = generator.get();
+            return setObject(id, created).thenApply(ignored -> created);
+        });
+    }
     
     
     <T> CompletableFuture<Void> createFromObject(T messageObject);

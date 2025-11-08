@@ -33,7 +33,7 @@ All asynchronous work (MongoDB I/O, serialization, caching) runs on the worker p
 
 ## Embedded library usage (advanced)
 
-If you are integrating MongoConfigs in a non-Paper environment, add the dependency manually and build the configuration object.
+If you embed MongoConfigs in another JVM application, depend on the `configs-core` module and instantiate `ConfigManagerImpl` yourself. The API module only exposes the interfaces.
 
 ### Maven
 
@@ -62,19 +62,22 @@ dependencies {
 }
 ```
 
-Construct `MongoConfig` with your connection info (either through setters or the builder) and pass it to `MongoConfigManager`.
+Construct `MongoConfig` with setters and pass it to `ConfigManagerImpl`. That implementation wires up the MongoDB client, caches, and change-stream subscriptions exactly like the Paper/Velocity modules.
 
 ```java
-MongoConfig config = MongoConfig.builder()
-    .connectionString("mongodb://localhost:27017")
-    .database("my-app")
-    .configsCollection("configs")
-    .messagesCollection("messages")
-    .typedConfigsCollection("typed-configs")
-    .build();
+import xyz.wtje.mongoconfigs.core.config.MongoConfig;
+import xyz.wtje.mongoconfigs.core.impl.ConfigManagerImpl;
 
-MongoConfigManager manager = new MongoConfigManager(config);
+MongoConfig config = new MongoConfig();
+config.setConnectionString("mongodb://localhost:27017");
+config.setDatabase("my-app");
+config.setConfigsCollection("configs");
+config.setTypedConfigsCollection("typed_configs");
+config.setPlayerLanguagesCollection("player_languages");
+config.setPlayerLanguagesDatabase("my-app");
+
+ConfigManagerImpl manager = new ConfigManagerImpl(config);
 manager.initialize();
 ```
 
-Shut the manager down when your application stops to close the MongoDB client and thread pools.
+`ConfigManagerImpl` implements the `ConfigManager` API, so you interact with it identically to the server modules. Call `manager.shutdown()` during application shutdown to close the MongoDB client, executor services, and change-stream watchers. If you need a language layer outside Paper/Velocity you must supply your own `LanguageManager` implementation, since the bundled ones depend on Bukkit/Velocity services.

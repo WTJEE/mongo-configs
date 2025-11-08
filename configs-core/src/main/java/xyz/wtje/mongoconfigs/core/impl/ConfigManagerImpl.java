@@ -1243,12 +1243,19 @@ public class ConfigManagerImpl implements ConfigManager {
         return typedConfigManager.getConfigOrGenerate(type, generator);
     }
 
+    @Override
     public <T> CompletableFuture<Void> setObject(String id, T pojo) {
         return typedConfigManager.setObject(id, pojo);
     }
 
+    @Override
     public <T> CompletableFuture<T> getObject(String id, Class<T> type) {
         return typedConfigManager.getObject(id, type);
+    }
+
+    @Override
+    public <T> CompletableFuture<T> getConfigOrGenerate(String id, Class<T> type, Supplier<T> generator) {
+        return typedConfigManager.getConfigOrGenerate(id, type, generator);
     }
 
     public Messages findById(String id) {

@@ -75,7 +75,6 @@ public interface ConfigManager {
     
     // With Map placeholders (NEW)
     CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders);
-    CompletableFuture<String> getMessageAsync(String collection, String language, String key, String defaultValue, Map<String, Object> placeholders);
 }
 ```
 

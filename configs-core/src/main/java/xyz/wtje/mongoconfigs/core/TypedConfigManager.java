@@ -99,6 +99,17 @@ public final class TypedConfigManager {
                 .thenApply(doc -> doc == null ? null : codec.toPojo(doc, type));
     }
 
+    public <T> CompletableFuture<T> getConfigOrGenerate(String id, Class<T> type, Supplier<T> generator) {
+        return getObject(id, type).thenCompose(current -> {
+            if (current != null) {
+                return CompletableFuture.completedFuture(current);
+            }
+
+            T created = generator.get();
+            return setObject(id, created).thenApply(ignored -> created);
+        });
+    }
+
     public <T> CompletableFuture<Void> set(String id, T value) {
         var doc = codec.toDocument(value, id, value.getClass().getName(), 1);
         return Asyncs.one(defaultCollection.replaceOne(new Document("_id", id), doc, new ReplaceOptions().upsert(true)))

@@ -1,325 +1,99 @@
-# Messages API v2
+# Messages API Reference
 
-## Overview
-The Messages API provides a powerful, **fully asynchronous** system for managing localized messages from MongoDB. All operations are optimized for instant response with real-time synchronization via Change Streams.
+This page mirrors the public interfaces shipped in `configs-api`. Everything listed below is implemented in `ConfigManagerImpl`/`Messages` at runtime, so you can rely on it from any module (Paper, Velocity, or an embedded app).
 
-## Key Features
-- ✅ **100% Async Operations** - All methods return `CompletableFuture` for non-blocking execution
-- ✅ **Instant Cache Updates** - Changes apply immediately without blocking
-- ✅ **Real-time Sync** - Change Streams detect and apply MongoDB changes instantly
-- ✅ **PlaceholderAPI Support** - Full integration with PlaceholderAPI
-- ✅ **Thread-Safe** - All operations are thread-safe with proper synchronization
+## ConfigManager entry points
 
-## Basic Usage
+`ConfigManager` exposes the following methods for working with message bundles:
 
-### Getting Messages (Async)
+| Method | Description |
+|--------|-------------|
+| `getOrCreateFromObject(T defaults)` | Ensures the MongoDB document exists (seeded from your POJO) and returns a `Messages` facade backed by that data. |
+| `createFromObject(T defaults)` | Seeds the POJO without returning a `Messages` facade. Useful for preloading defaults at startup. |
+| `getMessageAsync(collection, language, key)` | Reads a single message string. |
+| `getMessageAsync(..., String defaultValue)` | Same as above but falls back to a literal default if the key is missing. |
+| `getMessageAsync(..., Object... placeholders)` | Fetches the message and performs positional placeholder replacement. |
+| `getMessageAsync(..., Map<String, Object> placeholders)` | Fetches the message and replaces named `{placeholder}` tokens. |
+
+Every method returns a `CompletableFuture`. Never call `join()` on the server thread—chain continuations or hop back to the main thread with your scheduler once the future completes.
+
+## Messages facade
+
+`Messages` is what `getOrCreateFromObject` returns. It mirrors the async surface of `ConfigManager` but scopes calls to a single document:
+
 ```java
-// Get a message asynchronously
-configManager.getMessageAsync("messages", "en", "welcome.message")
-    .thenAccept(message -> {
-        player.sendMessage(message);
-    });
-
-// With placeholders
-configManager.getMessageAsync("messages", playerLang, "kill.message")
-    .thenAccept(msg -> {
-        String formatted = msg.replace("{player}", player.getName())
-                             .replace("{victim}", victim.getName());
-        player.sendMessage(formatted);
-    });
-
-// With default value
-configManager.getMessageAsync("messages", lang, "error.unknown", "An error occurred")
-    .thenAccept(player::sendMessage);
+CompletableFuture<String> get(String path);
+CompletableFuture<String> get(String path, String language);
+CompletableFuture<String> get(String path, Object... placeholders);
+CompletableFuture<String> get(String path, String language, Object... placeholders);
+CompletableFuture<String> get(String path, Map<String, Object> placeholders);
+CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders);
+CompletableFuture<List<String>> getList(String path);
+CompletableFuture<List<String>> getList(String path, String language);
 ```
 
-### Batch Operations
-```java
-// Get multiple messages at once
-CompletableFuture<String> welcomeFuture = configManager.getMessageAsync("messages", lang, "welcome");
-CompletableFuture<String> motdFuture = configManager.getMessageAsync("messages", lang, "motd");
-CompletableFuture<String> tipFuture = configManager.getMessageAsync("messages", lang, "tip");
+It also ships with `Messages.View`. That helper caches a language selection and exposes synchronous `get/format/list` methods that internally call `join()`. Only use it from background threads or after you know the futures are fulfilled—`View` is a convenience wrapper, not a cache by itself.
 
-CompletableFuture.allOf(welcomeFuture, motdFuture, tipFuture)
-    .thenRun(() -> {
-        player.sendMessage(welcomeFuture.join());
-        player.sendMessage(motdFuture.join());
-        player.sendMessage(tipFuture.join());
-    });
+## Language manager integration
+
+`LanguageManager` (available through `MongoConfigsAPI.getLanguageManager()` inside the Paper and Velocity modules) lets you look up the player’s preferred language:
+
+```java
+languageManager.getPlayerLanguage(player.getUniqueId())
+    .thenCompose(lang -> messages.get("general.playerJoined", lang))
+    .thenAcceptAsync(msg -> player.sendMessage(ColorHelper.parseComponent(msg)), task -> Bukkit.getScheduler().runTask(this, () -> task.run()));
 ```
 
-## Class-based (typed) messages
+You can set a preference with `setPlayerLanguage(UUID,String)` and inspect the supported set with `getSupportedLanguages()`. The implementation is entirely asynchronous and backed by MongoDB.
 
-You can model your language messages as a typed Java class and store it in MongoDB using the typed config pipeline. This keeps your keys strongly-typed and easy to evolve.
+## Putting it together
 
 ```java
-import xyz.wtje.mongoconfigs.api.annotations.ConfigsFileProperties;
-import xyz.wtje.mongoconfigs.api.annotations.ConfigsCollection;
+public void sendJoinMessage(Player player) {
+    ConfigManager configManager = MongoConfigsAPI.getConfigManager();
+    LanguageManager languageManager = MongoConfigsAPI.getLanguageManager();
 
-@ConfigsFileProperties(name = "messages_en") // _id of the document
-@ConfigsCollection("messages")               // collection for messages
-public class MessagesEN {
-  public String welcome = "Welcome {player}!";
-  public Shop shop = new Shop();
-  public static class Shop {
-    public String buy = "You bought {item} for ${price}";
-    public String sell = "You sold {item} for ${price}";
-  }
+    configManager.getOrCreateFromObject(new PluginMessages())
+        .thenCompose(messages -> languageManager.getPlayerLanguage(player.getUniqueId())
+            .thenCompose(lang -> messages.get("general.playerJoined", lang,
+                "player", player.getName(),
+                "online", Bukkit.getOnlinePlayers().size())))
+        .thenAccept(msg -> Bukkit.getScheduler().runTask(this,
+            () -> player.sendMessage(ColorHelper.parseComponent(msg))));
 }
 ```
 
-Load or generate it asynchronously (first call seeds defaults):
+All placeholder handling shown above happens in your code (e.g., simple `String#replace` or a helper utility). The API does not integrate with PlaceholderAPI automatically—if you need that, pass the resolved text through PlaceholderAPI yourself after the future completes.
 
-```java
-MongoConfigsAPI.getConfigManager()
-  .getConfigOrGenerate(MessagesEN.class, MessagesEN::new)
-  .thenAccept(messages -> {
-    // Use with placeholders (also supports PlaceholderAPI %...%)
-    messageHelper.sendMessage(player, "messages", "welcome",
-        "player", player.getName());
-  });
-```
+## MongoDB structure
 
-Notes:
-- Store per-language classes (e.g., MessagesPL, MessagesEN) by using different `name` values.
-- You can still call `ConfigManager.getMessageAsync(collection, lang, key)` for fine-grained access.
-- MessageHelper will resolve both your placeholders and PlaceholderAPI tokens.
+Documents stored by `Messages` are plain JSON with `_id` equal to the value of `@ConfigsFileProperties(name = "...")` and optional `lang` metadata if you maintain separate copies per language. Nested classes in your POJO become nested objects in the document.
 
-## Language Management
-
-### Player Language (Async)
-```java
-// Get player's language
-languageManager.getPlayerLanguage(player.getUniqueId().toString())
-    .thenAccept(lang -> {
-        // Use the language
-        configManager.getMessageAsync("messages", lang, "welcome")
-            .thenAccept(player::sendMessage);
-    });
-
-// Set player's language
-languageManager.setPlayerLanguage(player.getUniqueId(), "pl")
-    .thenRun(() -> {
-        player.sendMessage("Language updated!");
-    })
-    .exceptionally(error -> {
-        player.sendMessage("Failed to update language: " + error.getMessage());
-        return null;
-    });
-```
-
-### Language Detection
-```java
-// Check if language is supported
-languageManager.isLanguageSupported("fr")
-    .thenAccept(supported -> {
-        if (supported) {
-            // Set the language
-        } else {
-            // Use default
-        }
-    });
-
-// Get all supported languages
-languageManager.getSupportedLanguages()
-    .thenAccept(languages -> {
-        for (String lang : languages) {
-            // Process each language
-        }
-    });
-```
-
-## Configuration Values
-
-### Getting Config Values (Async)
-```java
-// Get config value
-configManager.getAsync("settings:max-players")
-    .thenAccept(value -> {
-        if (value != null) {
-            int maxPlayers = (int) value;
-            // Use the value
-        }
-    });
-
-// With type and default
-configManager.getAsync("settings:spawn-protection", 16)
-    .thenAccept(protection -> {
-        // Use the protection radius
-    });
-
-// Complex object
-configManager.getAsync("rewards:daily")
-    .thenAccept(reward -> {
-        if (reward instanceof Map) {
-            Map<String, Object> rewardData = (Map<String, Object>) reward;
-            // Process reward data
-        }
-    });
-```
-
-## Cache Management
-
-### Invalidation
-```java
-// Invalidate specific collection
-configManager.invalidateCollectionAsync("messages")
-    .thenRun(() -> {
-        getLogger().info("Messages cache cleared");
-    });
-
-// Invalidate everything
-configManager.invalidateAllAsync()
-    .thenRun(() -> {
-        getLogger().info("All caches cleared");
-    });
-```
-
-### Reload Operations
-```java
-// Reload specific collection
-configManager.reloadCollectionAsync("messages")
-    .thenRun(() -> {
-        getLogger().info("Messages reloaded from MongoDB");
-    });
-
-// Full reload
-configManager.reloadAll()
-    .thenRun(() -> {
-        getLogger().info("All collections reloaded");
-    });
-```
-
-## PlaceholderAPI Integration
-
-The plugin provides these placeholders:
-
-- `%mongoconfigs_language%` - Player's current language code
-- `%mongoconfigs_langname%` - Player's language display name
-- `%mongoconfigs_message_<collection>_<key>%` - Get message in player's language
-- `%mongoconfigs_config_<collection>_<key>%` - Get config value
-
-### Examples:
-```yaml
-# In any plugin supporting PlaceholderAPI
-message: "Your language: %mongoconfigs_langname%"
-welcome: "%mongoconfigs_message_messages_welcome%"
-max-players: "Max players: %mongoconfigs_config_settings_max-players%"
-```
-
-## Commands
-
-### Language Command
-```
-/language - Open language selection GUI
-/language <code> - Set language directly
-```
-
-### Hot Reload Commands
-```
-/hotreload gui - Clear and reload GUI caches
-/hotreload cache - Clear all caches
-/hotreload all - Full reload (language manager, caches, GUI)
-/hotreload status - Show system status
-```
-
-### Admin Commands
-```
-/mongoconfigs reload - Reload plugin
-/mongoconfigs info - Show plugin info
-/configsmanager - Manage configurations
-```
-
-## Event-Driven Updates
-
-### Listen for Language Changes
-```java
-@EventHandler
-public void onPlayerJoin(PlayerJoinEvent event) {
-    Player player = event.getPlayer();
-    
-    // Get and display welcome message in player's language
-    languageManager.getPlayerLanguage(player.getUniqueId().toString())
-        .thenCompose(lang -> 
-            configManager.getMessageAsync("messages", lang, "join.welcome"))
-        .thenAccept(message -> {
-            if (message != null) {
-                player.sendMessage(message.replace("{player}", player.getName()));
-            }
-        });
-}
-```
-
-### Real-time Updates
-Changes in MongoDB are detected and applied instantly:
-
-```java
-// This happens automatically - no code needed!
-// 1. Admin updates message in MongoDB
-// 2. Change Stream detects the change
-// 3. Cache updates instantly
-// 4. Next getMessage() returns new value immediately
-```
-
-## Performance Tips
-
-1. **Use Async Methods** - Always prefer async methods for best performance
-2. **Batch Operations** - Combine multiple operations with `CompletableFuture.allOf()`
-3. **Cache Results** - The plugin caches automatically, but cache results in hot paths
-4. **Preload Common Messages** - Load frequently used messages at startup
-
-## Error Handling
-
-```java
-// Comprehensive error handling
-languageManager.getPlayerLanguage(playerId)
-    .thenCompose(lang -> 
-        configManager.getMessageAsync("messages", lang, "welcome"))
-    .thenAccept(msg -> {
-        if (msg != null) {
-            player.sendMessage(msg);
-        }
-    })
-    .exceptionally(error -> {
-        getLogger().warning("Failed to get message: " + error.getMessage());
-        player.sendMessage("Welcome!"); // Fallback message
-        return null;
-    });
-```
-
-## MongoDB Document Structure
-
-### Messages Collection
 ```json
 {
-  "_id": "messages_en",
+  "_id": "plugin-messages",
   "lang": "en",
-  "welcome": "Welcome to the server, {player}!",
-  "commands": {
-    "help": "Available commands:",
-    "reload": "Configuration reloaded"
+  "general": {
+    "playerJoined": "&a{player} joined!",
+    "playerLeft": "&c{player} left."
+  },
+  "gui": {
+    "title": "&aHelp Menu",
+    "helpItem": {
+      "name": "&eHelp",
+      "lore": [
+        "&7Click to see commands",
+        "&7Players online: {online}"
+      ]
+    }
   }
 }
 ```
 
-### Player Languages Collection
-```json
-{
-  "_id": "uuid-here",
-  "language": "pl",
-  "updatedAt": "2024-01-01T00:00:00Z"
-}
-```
+## Best practices
 
-### Config Collection
-```json
-{
-  "_id": "config",
-  "max-players": 100,
-  "spawn-protection": 16,
-  "features": {
-    "pvp": true,
-    "chat": true
-  }
-}
-```
+- Keep everything async—switch to the main thread only when you touch Bukkit/Velocity objects.
+- Reuse the same default POJO when calling `getOrCreateFromObject` so schema inference stays consistent.
+- Prefer named placeholders (maps) over positional ones for maintainability.
+- If you need synchronous access, precompute it off the main thread with `Messages.View` and store the result in your own cache.
+- Call `configManager.reloadCollection("plugin-messages")` or `reloadAll()` when you edit documents directly in MongoDB to invalidate caches.
