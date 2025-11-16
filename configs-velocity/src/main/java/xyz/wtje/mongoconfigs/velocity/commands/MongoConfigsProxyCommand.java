@@ -28,8 +28,8 @@ public class MongoConfigsProxyCommand implements SimpleCommand {
         CommandSource source = invocation.source();
         String[] args = invocation.arguments();
 
-        if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
-            source.sendMessage(Component.text("Usage: /mongoconfigsproxy reload"));
+        if (args.length == 0 || (!args[0].equalsIgnoreCase("reload") && !args[0].equalsIgnoreCase("reloadall"))) {
+            source.sendMessage(Component.text("Usage: /mongoconfigsproxy <reload|reloadall>"));
             return;
         }
 
@@ -38,12 +38,13 @@ public class MongoConfigsProxyCommand implements SimpleCommand {
             return;
         }
 
-        source.sendMessage(Component.text("Reloading MongoConfigs on proxy..."));
+        String action = args[0].equalsIgnoreCase("reloadall") ? "ALL collections" : "MongoConfigs";
+        source.sendMessage(Component.text("Reloading " + action + " on proxy..."));
         configManager.reloadAll().thenRun(() -> {
             languageManager.reload();
-            source.sendMessage(Component.text("Reload complete."));
+            source.sendMessage(Component.text("✅ Reload complete."));
         }).exceptionally(ex -> {
-            source.sendMessage(Component.text("Reload failed: " + ex.getMessage()));
+            source.sendMessage(Component.text("❌ Reload failed: " + ex.getMessage()));
             return null;
         });
     }

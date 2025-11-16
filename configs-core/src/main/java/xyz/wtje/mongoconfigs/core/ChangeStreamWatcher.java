@@ -492,20 +492,16 @@ public final class ChangeStreamWatcher {
             return;
         }
         
-        CompletableFuture<Void> operation = invalidateCache ? 
-            (cacheManager.invalidateCollectionAsync(collectionName) != null ?
-                cacheManager.invalidateCollectionAsync(collectionName) :
-                CompletableFuture.runAsync(() -> cacheManager.invalidateCollection(collectionName))) :
-            CompletableFuture.completedFuture(null);
-        
-        operation.thenRunAsync(() -> {
+        // Callback (ConfigManagerImpl.reloadCollection) sam zadba o invalidację cache
+        // Więc nie robimy tutaj podwójnej invalidacji!
+        CompletableFuture.runAsync(() -> {
             if (LOGGER.isLoggable(Level.FINE)) {
-                LOGGER.fine("🎯 Cache invalidation/reload: " + reason + " for: " + collectionName);
+                LOGGER.fine("🎯 Triggering reload callback: " + reason + " for: " + collectionName);
             }
             reloadCallback.accept(collectionName);
         }, java.util.concurrent.ForkJoinPool.commonPool())
         .exceptionally(throwable -> {
-            LOGGER.log(Level.WARNING, "Cache invalidation/reload failed for collection: " + collectionName, throwable);
+            LOGGER.log(Level.WARNING, "Reload callback failed for collection: " + collectionName, throwable);
             return null;
         });
     }

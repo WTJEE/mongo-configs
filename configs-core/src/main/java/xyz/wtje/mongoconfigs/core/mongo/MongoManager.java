@@ -17,6 +17,7 @@ import xyz.wtje.mongoconfigs.core.model.LanguageDocument;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -34,9 +35,17 @@ public class MongoManager {
 
         System.setProperty("io.netty.eventLoopThreads", String.valueOf(config.getIoThreads()));
 
+        // Create daemon ForkJoinPool threads
+        ForkJoinPool.ForkJoinWorkerThreadFactory daemonFactory = pool -> {
+            ForkJoinWorkerThread thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+            thread.setDaemon(true);
+            thread.setName("MongoManager-ForkJoin-" + thread.getPoolIndex());
+            return thread;
+        };
+
         this.executorService = new ForkJoinPool(
             config.getWorkerThreads(),
-            ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+            daemonFactory,
             null,
             true
         );

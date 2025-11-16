@@ -64,9 +64,9 @@ public class ConfigManagerImpl implements ConfigManager {
         
         this.cacheManager.addInvalidationListener(coll -> {
             if ("*".equals(coll)) {
-                LOGGER.info("🧹 CACHE: PEŁNA INWALIDACJA WSZYSTKICH KOLEKCJI (Timestamp: " + System.currentTimeMillis() + ")");
+                LOGGER.info("­čž╣ CACHE: PE┼üNA INWALIDACJA WSZYSTKICH KOLEKCJI (Timestamp: " + System.currentTimeMillis() + ")");
             } else if (coll != null) {
-                LOGGER.info("🧹 CACHE: INWALIDACJA KOLEKCJI -> " + coll + " (Timestamp: " + System.currentTimeMillis() + ")");
+                LOGGER.info("­čž╣ CACHE: INWALIDACJA KOLEKCJI -> " + coll + " (Timestamp: " + System.currentTimeMillis() + ")");
             }
         });
 
@@ -171,11 +171,11 @@ public class ConfigManagerImpl implements ConfigManager {
         }
         return CompletableFuture.runAsync(() -> {
             
-            LOGGER.info("🔁 START RELOAD KOLEKCJI: " + collection + " (invalidateCache=" + invalidateCache + ")");
+            LOGGER.info("­čöü START RELOAD KOLEKCJI: " + collection + " (invalidateCache=" + invalidateCache + ")");
             
             
             if (invalidateCache) {
-                LOGGER.info("🧹 INWALIDACJA CACHE dla kolekcji: " + collection);
+                LOGGER.info("­čž╣ INWALIDACJA CACHE dla kolekcji: " + collection);
                 cacheManager.invalidateCollection(collection);
             }
         }, asyncExecutor)
@@ -220,84 +220,92 @@ public class ConfigManagerImpl implements ConfigManager {
                         }
                     }
 
-                    final Set<String> finalExpectedLanguages = expectedLanguages;
+                    final Set<String> configuredLanguages = expectedLanguages.isEmpty()
+                            ? Set.of()
+                            : new HashSet<>(expectedLanguages);
                     CompletableFuture<Void> ensureLanguagesFuture;
                     
-                    if (!expectedLanguages.isEmpty()) {
+                    if (!configuredLanguages.isEmpty()) {
                         if (config.isDebugLogging()) {
-                            LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + expectedLanguages);
+                            LOGGER.info("Ensuring language documents exist for collection: " + collection + " -> " + configuredLanguages);
                         }
-                        ensureLanguagesFuture = ensureLanguageDocumentsExist(collection, expectedLanguages);
+                        ensureLanguagesFuture = ensureLanguageDocumentsExist(collection, configuredLanguages);
                     } else {
                         if (config.isDebugLogging()) {
-                            LOGGER.info("No expected languages found for collection: " + collection + ", skipping document check");
+                            LOGGER.info("No configured languages found for collection: " + collection + ", discovering directly from MongoDB");
                         }
                         ensureLanguagesFuture = CompletableFuture.completedFuture(null);
                     }
 
-                    return ensureLanguagesFuture.thenCompose(v2 -> {
-            
-                        List<CompletableFuture<LanguageDocument>> languageFutures = finalExpectedLanguages.stream()
-                                .map(lang -> mongoManager.getLanguage(collection, lang))
-                                .collect(Collectors.toList());
+                    return ensureLanguagesFuture
+                        .thenCompose(v2 -> discoverLanguages(collection))
+                        .thenCompose(actualLanguages -> {
+                            Set<String> languagesToLoad = new HashSet<>(configuredLanguages);
+                            languagesToLoad.addAll(actualLanguages);
 
-                        
-                        if (config.isDebugLogging()) {
-                            LOGGER.info("Refreshing cache for collection: " + collection);
-                        }
-                        
-                        
-                        if (invalidateCache) {
-                            cacheManager.invalidateCollection(collection);
-                        }
-                        
-                        
-                        if (configDoc != null && configDoc.getData() != null) {
-                            cacheManager.putConfigData(collection, configDoc.getData());
-                            if (config.isDebugLogging()) {
-                                LOGGER.info("Successfully cached config for collection: " + collection);
+                            if (languagesToLoad.isEmpty()) {
+                                LOGGER.warning("No language documents detected for collection: " + collection + " – cache cannot be refreshed.");
+                                collectionLanguages.remove(collection);
+                                return CompletableFuture.completedFuture(null);
                             }
-                        } else {
-                            if (config.isVerboseLogging()) {
+
+                            collectionLanguages.put(collection, new HashSet<>(languagesToLoad));
+
+                            if (config.isDebugLogging()) {
+                                LOGGER.info("Refreshing cache for collection: " + collection + " with languages " + languagesToLoad);
+                            }
+
+                            if (invalidateCache) {
+                                cacheManager.invalidateCollection(collection);
+                            }
+
+                            if (configDoc != null && configDoc.getData() != null) {
+                                cacheManager.putConfigData(collection, configDoc.getData());
+                                if (config.isDebugLogging()) {
+                                    LOGGER.info("Successfully cached config for collection: " + collection);
+                                }
+                            } else if (config.isVerboseLogging()) {
                                 LOGGER.warning("No config data found for collection: " + collection);
                             }
-                        }
 
-                        
-                        return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
-                            .thenCompose(unused -> {
-                                
-                                List<CompletableFuture<Void>> cachingFutures = new ArrayList<>();
-                                
-                                for (CompletableFuture<LanguageDocument> future : languageFutures) {
-                                    CompletableFuture<Void> cachingFuture = future
-                                        .thenAcceptAsync(langDoc -> {
-                                            if (langDoc != null && langDoc.getData() != null) {
-                                                cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
-                                            }
-                                        }, asyncExecutor)
-                                        .exceptionally(throwable -> {
-                                            if (config.isVerboseLogging()) {
-                                                LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, throwable);
-                                            }
-                                            return null;
-                                        });
-                                    cachingFutures.add(cachingFuture);
-                                }
-                                
-                                return CompletableFuture.allOf(cachingFutures.toArray(new CompletableFuture[0]));
-                            })
-                            .thenRun(() -> {
-                                
-                                LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI: " + collection +
-                                            " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
-                                            " | Languages=" + finalExpectedLanguages.size() +
-                                            " | Timestamp=" + System.currentTimeMillis());
-                                
-                                
-                                notifyReloadListeners(collection);
-                            });
-                    });
+                            List<CompletableFuture<LanguageDocument>> languageFutures = languagesToLoad.stream()
+                                    .map(lang -> mongoManager.getLanguage(collection, lang))
+                                    .collect(Collectors.toList());
+
+                            return CompletableFuture.allOf(languageFutures.toArray(new CompletableFuture[0]))
+                                .thenCompose(unused -> {
+                                    
+                                    List<CompletableFuture<Void>> cachingFutures = new ArrayList<>();
+                                    
+                                    for (CompletableFuture<LanguageDocument> future : languageFutures) {
+                                        CompletableFuture<Void> cachingFuture = future
+                                            .thenAcceptAsync(langDoc -> {
+                                                if (langDoc != null && langDoc.getData() != null) {
+                                                    cacheManager.putMessageData(collection, langDoc.getLang(), langDoc.getData());
+                                                }
+                                            }, asyncExecutor)
+                                            .exceptionally(throwable -> {
+                                                if (config.isVerboseLogging()) {
+                                                    LOGGER.log(Level.WARNING, "Failed to load language data for collection: " + collection, throwable);
+                                                }
+                                                return null;
+                                            });
+                                        cachingFutures.add(cachingFuture);
+                                    }
+                                    
+                                    return CompletableFuture.allOf(cachingFutures.toArray(new CompletableFuture[0]));
+                                })
+                                .thenRun(() -> {
+                                    
+                                    LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI: " + collection +
+                                                " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
+                                                " | Languages=" + languagesToLoad.size() +
+                                                " | Timestamp=" + System.currentTimeMillis());
+                                    
+                                    
+                                    notifyReloadListeners(collection);
+                                });
+                        });
                 });
         })
         .exceptionally(throwable -> {
@@ -336,13 +344,13 @@ public class ConfigManagerImpl implements ConfigManager {
                     }
                     
                     
-                    LOGGER.info("🔄 Setting up Change Streams for reloaded collections...");
+                    LOGGER.info("­čöä Setting up Change Streams for reloaded collections...");
                     for (String collection : allCollections) {
                         if (!changeStreamWatchers.containsKey(collection)) {
                             setupChangeStreamForCollection(collection);
                         }
                     }
-                    LOGGER.info("✅ Change Streams setup completed after reload. Active watchers: " + changeStreamWatchers.size());
+                    LOGGER.info("Ôťů Change Streams setup completed after reload. Active watchers: " + changeStreamWatchers.size());
                 });
         })
         .exceptionally(throwable -> {
@@ -654,24 +662,24 @@ public class ConfigManagerImpl implements ConfigManager {
             return;
         }
         if (!config.isEnableChangeStreams()) {
-            LOGGER.info("⚠️ Change Streams DISABLED - manual reload required for updates");
-            LOGGER.info("💡 To enable change streams, set enableChangeStreams=true in your MongoConfig");
+            LOGGER.info("ÔÜá´ŞĆ Change Streams DISABLED - manual reload required for updates");
+            LOGGER.info("­čĺí To enable change streams, set enableChangeStreams=true in your MongoConfig");
             return;
         }
         
         CompletableFuture.runAsync(() -> {
-            LOGGER.info("📡 Setting up change streams for collections...");
+            LOGGER.info("­čôí Setting up change streams for collections...");
             
             
             Set<String> collections = new HashSet<>(knownCollections);
             
             if (collections.isEmpty()) {
-                LOGGER.warning("⚠️ No collections found for Change Streams! knownCollections is empty.");
-                LOGGER.warning("💡 Make sure collections exist and are loaded before setting up change streams");
+                LOGGER.warning("ÔÜá´ŞĆ No collections found for Change Streams! knownCollections is empty.");
+                LOGGER.warning("­čĺí Make sure collections exist and are loaded before setting up change streams");
                 return;
             }
             
-            LOGGER.info("📊 Found " + collections.size() + " collections for Change Streams: " + collections);
+            LOGGER.info("­čôŐ Found " + collections.size() + " collections for Change Streams: " + collections);
             
             int successCount = 0;
             int skippedCount = 0;
@@ -686,11 +694,11 @@ public class ConfigManagerImpl implements ConfigManager {
                     setupChangeStreamForCollection(collection);
                     successCount++;
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "❌ Failed to setup change stream for collection: " + collection, e);
+                    LOGGER.log(Level.WARNING, "ÔŁî Failed to setup change stream for collection: " + collection, e);
                 }
             }
             
-            LOGGER.info("🎉 Change streams setup completed! Active watchers: " + changeStreamWatchers.size() + 
+            LOGGER.info("­čÄë Change streams setup completed! Active watchers: " + changeStreamWatchers.size() + 
                        "/" + successCount + " (skipped: " + skippedCount + ", total collections: " + collections.size() + ")");
         }, asyncExecutor);
     }
@@ -698,22 +706,22 @@ public class ConfigManagerImpl implements ConfigManager {
     private void setupChangeStreamForCollection(String collectionName) {
         
         if (isIgnoredCollection(collectionName)) {
-            LOGGER.info("������ Skipping change stream for ignored collection: " + collectionName);
+            LOGGER.info("´┐Ż´┐Ż´┐Ż´┐Ż´┐Ż´┐Ż Skipping change stream for ignored collection: " + collectionName);
             return;
         }
         
         if (collectionName.equals("player_languages") || 
             collectionName.equals(config.getPlayerLanguagesCollection())) {
-            LOGGER.info("⏭️ Skipping change stream for player_languages collection");
+            LOGGER.info("ÔĆş´ŞĆ Skipping change stream for player_languages collection");
             return;
         }
         
         if (changeStreamWatchers.containsKey(collectionName)) {
-            LOGGER.info("🔄 Change stream already exists for collection: " + collectionName);
+            LOGGER.info("­čöä Change stream already exists for collection: " + collectionName);
             return; 
         }
         
-        LOGGER.info("🚀 Setting up new change stream for collection: " + collectionName);
+        LOGGER.info("­čÜÇ Setting up new change stream for collection: " + collectionName);
         
         try {
             xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = 
@@ -727,21 +735,21 @@ public class ConfigManagerImpl implements ConfigManager {
                 CompletableFuture.runAsync(() -> {
                     try {
                         
-                        LOGGER.info("♻️ ROZPOCZYNAM ODŚWIEŻANIE KOLEKCJI po wykryciu zmiany (Change Stream): " + changedCollection);
+                        LOGGER.info("ÔÖ╗´ŞĆ ROZPOCZYNAM OD┼ÜWIE┼╗ANIE KOLEKCJI po wykryciu zmiany (Change Stream): " + changedCollection);
                         
-                        
-                        reloadCollection(changedCollection, false)
+                        // KRYTYCZNE: invalidateCache=true aby wyczy┼Ťci─ç stary cache!
+                        reloadCollection(changedCollection, true)
                             .thenRun(() -> {
-                                LOGGER.info("✅ ZAKOŃCZONO ODŚWIEŻANIE KOLEKCJI (cache przeładowany): " + changedCollection);
+                                LOGGER.info("Ôťů ZAKO┼âCZONO OD┼ÜWIE┼╗ANIE KOLEKCJI (cache prze┼éadowany): " + changedCollection);
                                 
                                 notifyReloadListeners(changedCollection);
                             })
                             .exceptionally(throwable -> {
-                                LOGGER.log(Level.WARNING, "❌ BŁĄD podczas odświeżania kolekcji po Change Stream: " + changedCollection, throwable);
+                                LOGGER.log(Level.WARNING, "ÔŁî B┼ü─äD podczas od┼Ťwie┼╝ania kolekcji po Change Stream: " + changedCollection, throwable);
                                 return null;
                             });
                     } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "❌ BŁĄD obsługi callbacku Change Stream dla: " + changedCollection, e);
+                        LOGGER.log(Level.WARNING, "ÔŁî B┼ü─äD obs┼éugi callbacku Change Stream dla: " + changedCollection, e);
                     }
                 }, asyncExecutor);
             });
@@ -749,7 +757,7 @@ public class ConfigManagerImpl implements ConfigManager {
             watcher.start();
             changeStreamWatchers.put(collectionName, watcher);
             
-            LOGGER.info("✅ Successfully setup change stream watcher for collection: " + collectionName);
+            LOGGER.info("Ôťů Successfully setup change stream watcher for collection: " + collectionName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to setup change stream for collection: " + collectionName, e);
         }
@@ -832,6 +840,25 @@ public class ConfigManagerImpl implements ConfigManager {
                 });
         });
     }
+
+    private CompletableFuture<Set<String>> discoverLanguages(String collection) {
+        return PublisherAdapter.toCompletableFutureList(
+                mongoManager.getCollection(collection)
+                        .find(Filters.exists("lang"))
+        ).thenApply(documents -> {
+            Set<String> languages = new HashSet<>();
+            for (Document doc : documents) {
+                String lang = doc.getString("lang");
+                if (lang != null && !lang.isEmpty()) {
+                    languages.add(lang);
+                }
+            }
+            return languages;
+        }).exceptionally(throwable -> {
+            LOGGER.log(Level.WARNING, "Error discovering languages for collection: " + collection, throwable);
+            return Set.of();
+        });
+    }
     public void invalidateCache(String collection) {
         cacheManager.invalidateCollection(collection);
         if (config.isDebugLogging()) {
@@ -860,7 +887,7 @@ public class ConfigManagerImpl implements ConfigManager {
             if (testMessage != null && !testMessage.equals("test.key")) {
                 return true;
             }
-            // Fallback: zwracamy false, używaj hasMessagesAsync dla prawdziwej async walidacji
+            // Fallback: zwracamy false, u┼╝ywaj hasMessagesAsync dla prawdziwej async walidacji
             return false;
         } catch (Exception e) {
             return false;
@@ -903,7 +930,7 @@ public class ConfigManagerImpl implements ConfigManager {
     
     
     public void forceAllToPollingMode() {
-        LOGGER.info("🔄 Forcing ALL change streams to polling mode for debugging");
+        LOGGER.info("­čöä Forcing ALL change streams to polling mode for debugging");
         for (xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher : changeStreamWatchers.values()) {
             watcher.forcePollingMode();
         }
@@ -911,12 +938,12 @@ public class ConfigManagerImpl implements ConfigManager {
     
     
     public void testChangeDetection(String collectionName) {
-        LOGGER.info("🧪 Testing change detection for collection: " + collectionName);
+        LOGGER.info("­čž¬ Testing change detection for collection: " + collectionName);
         if (changeStreamWatchers.containsKey(collectionName)) {
             xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = changeStreamWatchers.get(collectionName);
             watcher.triggerReload("test-manual");
         } else {
-            LOGGER.warning("⚠️ No change stream watcher found for collection: " + collectionName);
+            LOGGER.warning("ÔÜá´ŞĆ No change stream watcher found for collection: " + collectionName);
         }
     }
 
@@ -1037,7 +1064,7 @@ public class ConfigManagerImpl implements ConfigManager {
     private CompletableFuture<Void> ensureLanguageDocumentsExist(String collection, Set<String> expectedLanguages) {
         return CompletableFuture.supplyAsync(() -> {
             if (config.isDebugLogging()) {
-                LOGGER.info("🔍 Checking language documents for collection: " + collection + ", expected: " + expectedLanguages);
+                LOGGER.info("­čöŹ Checking language documents for collection: " + collection + ", expected: " + expectedLanguages);
             }
             return expectedLanguages;
         }, asyncExecutor)
@@ -1045,7 +1072,7 @@ public class ConfigManagerImpl implements ConfigManager {
             return getExistingLanguagesInCollection(collection)
                 .thenCompose(existingLanguages -> {
                     if (config.isDebugLogging()) {
-                        LOGGER.info("📋 Existing languages: " + existingLanguages);
+                        LOGGER.info("­čôő Existing languages: " + existingLanguages);
                     }
 
                     Set<String> missingLanguages = new HashSet<>(expectedLanguages);
@@ -1053,30 +1080,30 @@ public class ConfigManagerImpl implements ConfigManager {
 
                     if (missingLanguages.isEmpty()) {
                         if (config.isDebugLogging()) {
-                            LOGGER.info("✅ All language documents exist for collection: " + collection);
+                            LOGGER.info("Ôťů All language documents exist for collection: " + collection);
                         }
                         return CompletableFuture.completedFuture(null);
                     }
 
                     if (config.isDebugLogging()) {
-                        LOGGER.info("❌ Missing language documents in collection " + collection + ": " + missingLanguages);
-                        LOGGER.info("🔧 Creating missing language documents...");
+                        LOGGER.info("ÔŁî Missing language documents in collection " + collection + ": " + missingLanguages);
+                        LOGGER.info("­čöž Creating missing language documents...");
                     }
 
                     List<CompletableFuture<Void>> createFutures = missingLanguages.stream()
                             .map(language -> {
                                 if (config.isVerboseLogging()) {
-                                    LOGGER.info("🆕 Creating language document: " + collection + ":" + language);
+                                    LOGGER.info("­čćĽ Creating language document: " + collection + ":" + language);
                                 }
                                 LanguageDocument langDoc = new LanguageDocument(language, new HashMap<>());
                                 return mongoManager.saveLanguage(collection, langDoc)
                                         .thenRun(() -> {
                                             if (config.isVerboseLogging()) {
-                                                LOGGER.info("✅ Created language document: " + collection + ":" + language);
+                                                LOGGER.info("Ôťů Created language document: " + collection + ":" + language);
                                             }
                                         })
                                         .exceptionally(throwable -> {
-                                            LOGGER.log(Level.SEVERE, "❌ Failed to create language document " + collection + ":" + language, throwable);
+                                            LOGGER.log(Level.SEVERE, "ÔŁî Failed to create language document " + collection + ":" + language, throwable);
                                             return null;
                                         });
                             })
@@ -1085,14 +1112,14 @@ public class ConfigManagerImpl implements ConfigManager {
                     return CompletableFuture.allOf(createFutures.toArray(new CompletableFuture[0]))
                         .thenRun(() -> {
                             if (config.isDebugLogging()) {
-                                LOGGER.info("🎉 Successfully created " + missingLanguages.size() + " missing language documents for collection: " + collection);
+                                LOGGER.info("­čÄë Successfully created " + missingLanguages.size() + " missing language documents for collection: " + collection);
                             }
                         });
                 });
         })
         .exceptionally(throwable -> {
             if (config.isVerboseLogging()) {
-                LOGGER.log(Level.SEVERE, "💥 Error ensuring language documents exist for collection: " + collection, throwable);
+                LOGGER.log(Level.SEVERE, "­čĺą Error ensuring language documents exist for collection: " + collection, throwable);
             }
             throw new RuntimeException(throwable);
         });
@@ -1161,7 +1188,7 @@ public class ConfigManagerImpl implements ConfigManager {
         LOGGER.info("Performance: io-threads=" + config.getIoThreads() + ", worker-threads=" + config.getWorkerThreads());
         LOGGER.info("Cache requests - Config: " + cacheManager.getConfigRequests() + ", Messages: " + cacheManager.getMessageRequests());
         LOGGER.info("Known collections: " + knownCollections.size());
-        LOGGER.info("Change Streams: " + (config.isEnableChangeStreams() ? "✅ ENABLED" : "❌ DISABLED") + 
+        LOGGER.info("Change Streams: " + (config.isEnableChangeStreams() ? "Ôťů ENABLED" : "ÔŁî DISABLED") + 
                    ", Active watchers: " + changeStreamWatchers.size());
         LOGGER.info("=== Configuration Status Complete ===");
     }
@@ -1719,12 +1746,12 @@ public class ConfigManagerImpl implements ConfigManager {
         
         Set<Consumer<String>> listeners = reloadListeners.get(collection);
         if (listeners != null && !listeners.isEmpty()) {
-            LOGGER.info("🔔 Powiadamianie " + listeners.size() + " słuchaczy o odświeżeniu kolekcji: " + collection);
+            LOGGER.info("­čöö Powiadamianie " + listeners.size() + " s┼éuchaczy o od┼Ťwie┼╝eniu kolekcji: " + collection);
             for (Consumer<String> listener : listeners) {
                 try {
                     listener.accept(collection);
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "❌ Błąd podczas powiadamiania słuchacza o odświeżeniu kolekcji: " + collection, e);
+                    LOGGER.log(Level.WARNING, "ÔŁî B┼é─ůd podczas powiadamiania s┼éuchacza o od┼Ťwie┼╝eniu kolekcji: " + collection, e);
                 }
             }
         }
@@ -1732,12 +1759,12 @@ public class ConfigManagerImpl implements ConfigManager {
         
         Set<Consumer<String>> globalListeners = reloadListeners.get("*");
         if (globalListeners != null && !globalListeners.isEmpty()) {
-            LOGGER.info("🔔 Powiadamianie " + globalListeners.size() + " globalnych słuchaczy o odświeżeniu kolekcji: " + collection);
+            LOGGER.info("­čöö Powiadamianie " + globalListeners.size() + " globalnych s┼éuchaczy o od┼Ťwie┼╝eniu kolekcji: " + collection);
             for (Consumer<String> listener : globalListeners) {
                 try {
                     listener.accept(collection);
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "❌ Błąd podczas powiadamiania globalnego słuchacza o odświeżeniu kolekcji: " + collection, e);
+                    LOGGER.log(Level.WARNING, "ÔŁî B┼é─ůd podczas powiadamiania globalnego s┼éuchacza o od┼Ťwie┼╝eniu kolekcji: " + collection, e);
                 }
             }
         }
@@ -1749,7 +1776,7 @@ public class ConfigManagerImpl implements ConfigManager {
         
         reloadListeners.computeIfAbsent(collection, k -> ConcurrentHashMap.newKeySet())
                        .add(listener);
-        LOGGER.info("➕ Dodano nowego słuchacza odświeżenia dla kolekcji: " + collection);
+        LOGGER.info("Ô×Ľ Dodano nowego s┼éuchacza od┼Ťwie┼╝enia dla kolekcji: " + collection);
     }
     
     
@@ -1759,7 +1786,7 @@ public class ConfigManagerImpl implements ConfigManager {
         Set<Consumer<String>> listeners = reloadListeners.get(collection);
         if (listeners != null) {
             listeners.remove(listener);
-            LOGGER.info("➖ Usunięto słuchacza odświeżenia dla kolekcji: " + collection);
+            LOGGER.info("Ô×ľ Usuni─Öto s┼éuchacza od┼Ťwie┼╝enia dla kolekcji: " + collection);
         }
     }
 }

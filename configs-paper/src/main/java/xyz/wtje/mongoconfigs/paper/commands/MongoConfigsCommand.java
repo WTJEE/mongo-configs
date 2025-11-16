@@ -88,6 +88,7 @@ public class MongoConfigsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e[INFO] Reloading all configs and caches...");
         
         configManager.reloadAll().thenAccept(result -> {
+            languageManager.reload();
             Bukkit.getScheduler().runTask(plugin, () -> {
                 sender.sendMessage("§a[SUCCESS] All configs and caches reloaded!");
             });

@@ -90,14 +90,34 @@ public class MongoConfigsVelocityPlugin {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
+        logger.info("Starting MongoDB Configs Velocity plugin shutdown...");
+        
         try {
-            awaitInitialization();
+            // Cancel initialization if still running
+            if (initializationFuture != null && !initializationFuture.isDone()) {
+                logger.info("Cancelling initialization task...");
+                initializationFuture.cancel(true);
+                initializationFuture = null;
+            }
+            
+            // Shutdown managers in reverse order
             MongoConfigsAPI.reset();
-            if (languageManager != null) languageManager.shutdown();
-            if (configManager != null) configManager.shutdown();
-            logger.info("MongoDB Configs Velocity plugin disabled");
+            
+            if (languageManager != null) {
+                logger.info("Shutting down LanguageManager...");
+                languageManager.shutdown();
+                languageManager = null;
+            }
+            
+            if (configManager != null) {
+                logger.info("Shutting down ConfigManager...");
+                configManager.shutdown();
+                configManager = null;
+            }
+            
+            logger.info("MongoDB Configs Velocity plugin disabled successfully");
         } catch (Exception e) {
-            logger.warn("Error during plugin shutdown", e);
+            logger.error("Error during plugin shutdown", e);
         }
     }
 
@@ -107,26 +127,7 @@ public class MongoConfigsVelocityPlugin {
         cm.register(cm.metaBuilder("mongoconfigsproxy").build(), new MongoConfigsProxyCommand(configManager, languageManager));
     }
 
-    private void awaitInitialization() {
-        if (initializationFuture == null) {
-            return;
-        }
 
-        try {
-            initializationFuture.get(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (CancellationException ignored) {
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            logger.warn("Startup task completed with errors", cause);
-        } catch (TimeoutException e) {
-            logger.warn("Startup task is still running after 10 seconds, cancelling to continue shutdown.");
-            initializationFuture.cancel(true);
-        } finally {
-            initializationFuture = null;
-        }
-    }
 
     private MongoConfig createMongoConfig() {
         MongoConfig config = new MongoConfig();

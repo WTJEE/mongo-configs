@@ -37,11 +37,24 @@
     </properties>
 
     <modules>
-        <module>configs-core</module>
         <module>configs-api</module>
+        <module>configs-core</module>
         <module>configs-paper</module>
         <module>configs-velocity</module>
     </modules>
+
+    <profiles>
+        <!-- Profile for building plugins locally (Paper + Velocity need special repos) -->
+        <profile>
+            <id>with-plugins</id>
+            <modules>
+                <module>configs-api</module>
+                <module>configs-core</module>
+                <module>configs-paper</module>
+                <module>configs-velocity</module>
+            </modules>
+        </profile>
+    </profiles>
 
     <repositories>
         <repository>

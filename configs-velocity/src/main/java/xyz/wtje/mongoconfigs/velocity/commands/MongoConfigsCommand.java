@@ -29,7 +29,7 @@ public class MongoConfigsCommand implements SimpleCommand {
         String[] args = invocation.arguments();
 
         if (args.length == 0) {
-            source.sendMessage(Component.text("Usage: /mongoconfigs reload"));
+            source.sendMessage(Component.text("Usage: /mongoconfigs <reload|reloadall>"));
             return;
         }
 
@@ -45,7 +45,19 @@ public class MongoConfigsCommand implements SimpleCommand {
             return;
         }
 
-        source.sendMessage(ColorHelper.parseComponent("&cUnknown subcommand."));
+        if (args[0].equalsIgnoreCase("reloadall")) {
+            source.sendMessage(Component.text("Reloading ALL collections from MongoDB..."));
+            configManager.reloadAll().thenRun(() -> {
+                languageManager.reload();
+                source.sendMessage(Component.text("✅ Successfully reloaded ALL collections!"));
+            }).exceptionally(ex -> {
+                source.sendMessage(Component.text("❌ Reload failed: " + ex.getMessage()));
+                return null;
+            });
+            return;
+        }
+
+        source.sendMessage(ColorHelper.parseComponent("&cUnknown subcommand. Use: /mongoconfigs <reload|reloadall>"));
     }
 }
 
