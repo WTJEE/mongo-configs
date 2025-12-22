@@ -11,6 +11,7 @@ require_tool() {
     exit 1
   fi
 }
+# xd
 
 require_tool curl
 require_tool mvn
