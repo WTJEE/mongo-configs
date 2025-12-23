@@ -13,6 +13,8 @@ import xyz.wtje.mongoconfigs.core.mongo.MongoManager;
 import xyz.wtje.mongoconfigs.core.mongo.PublisherAdapter;
 import xyz.wtje.mongoconfigs.paper.config.LanguageConfiguration;
 import xyz.wtje.mongoconfigs.paper.gui.LanguageSelectionGUI;
+import xyz.wtje.mongoconfigs.paper.events.PlayerLanguageUpdateEvent;
+import org.bukkit.Bukkit;
 
 import java.time.Duration;
 import java.util.Base64;
@@ -34,18 +36,22 @@ public class LanguageManagerImpl implements LanguageManager {
     private final boolean verboseLogging;
 
     public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager) {
-        this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(), config.getPlayerLanguagesCollection(), false, false);
+        this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(),
+                config.getPlayerLanguagesCollection(), false, false);
     }
 
-    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager, String collectionName) {
+    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager,
+            String collectionName) {
         this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(), collectionName, false, false);
     }
 
-    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager, String databaseName, String collectionName) {
+    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager,
+            String databaseName, String collectionName) {
         this(configManager, config, mongoManager, databaseName, collectionName, false, false);
     }
 
-    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager, String databaseName, String collectionName, boolean debugLogging, boolean verboseLogging) {
+    public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager,
+            String databaseName, String collectionName, boolean debugLogging, boolean verboseLogging) {
         this.configManager = configManager;
         this.config = config;
         this.mongoManager = mongoManager;
@@ -66,34 +72,38 @@ public class LanguageManagerImpl implements LanguageManager {
         CompletableFuture<Void> initFuture;
         if (!databaseName.equals(mongoManager.getDatabase().getName())) {
             initFuture = mongoManager.collectionExists(databaseName, collectionName)
-                .thenCompose(exists -> {
-                    if (!exists) {
-                        logVerbose("Creating player languages collection in " + databaseName + ":" + collectionName);
-                        return mongoManager.createCollection(databaseName, collectionName);
-                    }
-                    logVerbose("Player languages collection already exists in " + databaseName + ":" + collectionName);
-                    return CompletableFuture.completedFuture(null);
-                })
-                .thenRun(() -> logVerbose("Player languages collection ready in " + databaseName + ":" + collectionName))
-                .exceptionally(throwable -> {
-                    LOGGER.warning("Error initializing remote player languages collection: " + throwable.getMessage());
-                    return null;
-                });
+                    .thenCompose(exists -> {
+                        if (!exists) {
+                            logVerbose(
+                                    "Creating player languages collection in " + databaseName + ":" + collectionName);
+                            return mongoManager.createCollection(databaseName, collectionName);
+                        }
+                        logVerbose(
+                                "Player languages collection already exists in " + databaseName + ":" + collectionName);
+                        return CompletableFuture.completedFuture(null);
+                    })
+                    .thenRun(() -> logVerbose(
+                            "Player languages collection ready in " + databaseName + ":" + collectionName))
+                    .exceptionally(throwable -> {
+                        LOGGER.warning(
+                                "Error initializing remote player languages collection: " + throwable.getMessage());
+                        return null;
+                    });
         } else {
             initFuture = mongoManager.collectionExists(collectionName)
-                .thenCompose(exists -> {
-                    if (!exists) {
-                        logVerbose("Creating player languages collection: " + collectionName);
-                        return mongoManager.createCollection(collectionName);
-                    }
-                    logVerbose("Player languages collection already exists: " + collectionName);
-                    return CompletableFuture.completedFuture(null);
-                })
-                .thenRun(() -> logVerbose("Player languages collection ready: " + collectionName))
-                .exceptionally(throwable -> {
-                    LOGGER.warning("Error initializing player languages collection: " + throwable.getMessage());
-                    return null;
-                });
+                    .thenCompose(exists -> {
+                        if (!exists) {
+                            logVerbose("Creating player languages collection: " + collectionName);
+                            return mongoManager.createCollection(collectionName);
+                        }
+                        logVerbose("Player languages collection already exists: " + collectionName);
+                        return CompletableFuture.completedFuture(null);
+                    })
+                    .thenRun(() -> logVerbose("Player languages collection ready: " + collectionName))
+                    .exceptionally(throwable -> {
+                        LOGGER.warning("Error initializing player languages collection: " + throwable.getMessage());
+                        return null;
+                    });
         }
 
         initFuture.thenRun(() -> logVerbose("LanguageManager initialized"));
@@ -116,21 +126,21 @@ public class LanguageManagerImpl implements LanguageManager {
 
     public CompletableFuture<String> getPlayerLanguageAsync(String playerId) {
         String cached = playerLanguagesCache.getIfPresent(playerId);
-        if (cached != null) return CompletableFuture.completedFuture(cached);
-        
+        if (cached != null)
+            return CompletableFuture.completedFuture(cached);
+
         MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
         return PublisherAdapter.toCompletableFuture(
-                collection.find(Filters.eq("_id", playerId)).first()
-            )
-            .thenApply(doc -> {
-                String lang = doc != null ? doc.getString("language") : config.getDefaultLanguage();
-                playerLanguagesCache.put(playerId, lang);
-                return lang;
-            })
-            .exceptionally(throwable -> {
-                LOGGER.warning("Error loading player language for " + playerId + ": " + throwable.getMessage());
-                return config.getDefaultLanguage();
-            });
+                collection.find(Filters.eq("_id", playerId)).first())
+                .thenApply(doc -> {
+                    String lang = doc != null ? doc.getString("language") : config.getDefaultLanguage();
+                    playerLanguagesCache.put(playerId, lang);
+                    return lang;
+                })
+                .exceptionally(throwable -> {
+                    LOGGER.warning("Error loading player language for " + playerId + ": " + throwable.getMessage());
+                    return config.getDefaultLanguage();
+                });
     }
 
     @Override
@@ -145,7 +155,8 @@ public class LanguageManagerImpl implements LanguageManager {
     public CompletableFuture<Void> setPlayerLanguageAsync(String playerId, String language) {
         return isLanguageSupported(language).thenCompose(supported -> {
             if (!supported) {
-                return CompletableFuture.failedFuture(new IllegalArgumentException("Unsupported language: " + language));
+                return CompletableFuture
+                        .failedFuture(new IllegalArgumentException("Unsupported language: " + language));
             }
 
             String currentLanguage = playerLanguagesCache.getIfPresent(playerId);
@@ -157,33 +168,34 @@ public class LanguageManagerImpl implements LanguageManager {
             playerLanguagesCache.put(playerId, language);
             logDebug("Updated language for player " + playerId + " to " + language);
 
+            Bukkit.getPluginManager().callEvent(new PlayerLanguageUpdateEvent(playerId, currentLanguage, language));
+
             MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
             return PublisherAdapter.toCompletableFuture(
-                    collection.find(Filters.eq("_id", playerId)).first()
-                )
-                .thenCompose(currentDoc -> {
-                    String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
-                    if (language.equals(currentDbLanguage)) {
-                        logDebug("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
-                        return CompletableFuture.completedFuture(null);
-                    }
+                    collection.find(Filters.eq("_id", playerId)).first())
+                    .thenCompose(currentDoc -> {
+                        String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
+                        if (language.equals(currentDbLanguage)) {
+                            logDebug("Language already set in database for player " + playerId + ": " + language
+                                    + ", skipping DB update");
+                            return CompletableFuture.completedFuture(null);
+                        }
 
-                    PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
+                        PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
 
-                    return PublisherAdapter.toCompletableFuture(
-                        collection.replaceOne(
-                            Filters.eq("_id", playerId),
-                            doc.toDocument(),
-                            new ReplaceOptions().upsert(true)
-                        )
-                    ).thenRun(() -> {
-                        logDebug("Saved language preference for " + playerId + ": " + language);
+                        return PublisherAdapter.toCompletableFuture(
+                                collection.replaceOne(
+                                        Filters.eq("_id", playerId),
+                                        doc.toDocument(),
+                                        new ReplaceOptions().upsert(true)))
+                                .thenRun(() -> {
+                                    logDebug("Saved language preference for " + playerId + ": " + language);
+                                });
+                    })
+                    .exceptionally(throwable -> {
+                        LOGGER.warning("Error saving player language: " + throwable.getMessage());
+                        throw new RuntimeException(throwable);
                     });
-                })
-                .exceptionally(throwable -> {
-                    LOGGER.warning("Error saving player language: " + throwable.getMessage());
-                    throw new RuntimeException(throwable);
-                });
         });
     }
 
@@ -260,10 +272,8 @@ public class LanguageManagerImpl implements LanguageManager {
             return false;
         }
     }
-    
-    
+
     public LanguageConfiguration getLanguageConfiguration() {
         return config;
     }
 }
-
