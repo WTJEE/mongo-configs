@@ -1,19 +1,23 @@
 package xyz.wtje.mongoconfigs.velocity.impl;
+
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import org.bson.Document;
 import xyz.wtje.mongoconfigs.api.ConfigManager;
 import xyz.wtje.mongoconfigs.api.LanguageManager;
+import xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener;
 import xyz.wtje.mongoconfigs.core.model.PlayerLanguageDocument;
 import xyz.wtje.mongoconfigs.core.mongo.MongoManager;
 import xyz.wtje.mongoconfigs.core.mongo.PublisherAdapter;
 import xyz.wtje.mongoconfigs.velocity.config.PluginConfiguration;
 
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
@@ -29,8 +33,10 @@ public class LanguageManagerImpl implements LanguageManager {
     private final String databaseName;
     private final Executor asyncExecutor;
     private volatile boolean shuttingDown = false;
+    private final List<LanguageUpdateListener> listeners = new CopyOnWriteArrayList<>();
 
-    public LanguageManagerImpl(ConfigManager configManager, PluginConfiguration pluginConfig, MongoManager mongoManager, String databaseName, String collectionName) {
+    public LanguageManagerImpl(ConfigManager configManager, PluginConfiguration pluginConfig, MongoManager mongoManager,
+            String databaseName, String collectionName) {
         this.configManager = configManager;
         this.pluginConfig = pluginConfig;
         this.mongoManager = mongoManager;
@@ -44,7 +50,8 @@ public class LanguageManagerImpl implements LanguageManager {
     public void initialize() {
         if (!databaseName.equals(mongoManager.getDatabase().getName())) {
             MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
-            LOGGER.info("Player languages will be stored in database: " + databaseName + ", collection: " + collectionName);
+            LOGGER.info(
+                    "Player languages will be stored in database: " + databaseName + ", collection: " + collectionName);
         } else {
             mongoManager.collectionExists(collectionName).thenCompose(exists -> {
                 if (!exists) {
@@ -55,10 +62,10 @@ public class LanguageManagerImpl implements LanguageManager {
                     return CompletableFuture.completedFuture(null);
                 }
             }).thenRun(() -> LOGGER.info("Player languages collection ready: " + collectionName))
-            .exceptionally(throwable -> {
-                LOGGER.warning("Error initializing player languages collection: " + throwable.getMessage());
-                return null;
-            });
+                    .exceptionally(throwable -> {
+                        LOGGER.warning("Error initializing player languages collection: " + throwable.getMessage());
+                        return null;
+                    });
         }
 
         LOGGER.info("LanguageManager initialized");
@@ -86,21 +93,21 @@ public class LanguageManagerImpl implements LanguageManager {
         }
 
         String cached = playerLanguagesCache.get(playerId);
-        if (cached != null) return CompletableFuture.completedFuture(cached);
-        
+        if (cached != null)
+            return CompletableFuture.completedFuture(cached);
+
         MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
         return PublisherAdapter.toCompletableFuture(
-                collection.find(Filters.eq("_id", playerId)).first()
-            )
-            .thenApplyAsync(doc -> {
-                String lang = doc != null ? doc.getString("language") : pluginConfig.getDefaultLanguage();
-                playerLanguagesCache.put(playerId, lang);
-                return lang;
-            }, asyncExecutor)
-            .exceptionally(throwable -> {
-                LOGGER.warning("Error loading player language for " + playerId + ": " + throwable.getMessage());
-                return pluginConfig.getDefaultLanguage();
-            });
+                collection.find(Filters.eq("_id", playerId)).first())
+                .thenApplyAsync(doc -> {
+                    String lang = doc != null ? doc.getString("language") : pluginConfig.getDefaultLanguage();
+                    playerLanguagesCache.put(playerId, lang);
+                    return lang;
+                }, asyncExecutor)
+                .exceptionally(throwable -> {
+                    LOGGER.warning("Error loading player language for " + playerId + ": " + throwable.getMessage());
+                    return pluginConfig.getDefaultLanguage();
+                });
     }
 
     @Override
@@ -119,7 +126,8 @@ public class LanguageManagerImpl implements LanguageManager {
 
         return isLanguageSupported(language).thenCompose(supported -> {
             if (!supported) {
-                return CompletableFuture.failedFuture(new IllegalArgumentException("Unsupported language: " + language));
+                return CompletableFuture
+                        .failedFuture(new IllegalArgumentException("Unsupported language: " + language));
             }
 
             String currentLanguage = playerLanguagesCache.get(playerId);
@@ -130,34 +138,34 @@ public class LanguageManagerImpl implements LanguageManager {
 
             playerLanguagesCache.put(playerId, language);
             LOGGER.fine("Updated language for player " + playerId + " to " + language);
+            fireListeners(playerId, currentLanguage, language);
 
             MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
             return PublisherAdapter.toCompletableFuture(
-                    collection.find(Filters.eq("_id", playerId)).first()
-                )
-                .thenComposeAsync(currentDoc -> {
-                    String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
-                    if (language.equals(currentDbLanguage)) {
-                        LOGGER.fine("Language already set in database for player " + playerId + ": " + language + ", skipping DB update");
-                        return CompletableFuture.completedFuture(null);
-                    }
+                    collection.find(Filters.eq("_id", playerId)).first())
+                    .thenComposeAsync(currentDoc -> {
+                        String currentDbLanguage = currentDoc != null ? currentDoc.getString("language") : null;
+                        if (language.equals(currentDbLanguage)) {
+                            LOGGER.fine("Language already set in database for player " + playerId + ": " + language
+                                    + ", skipping DB update");
+                            return CompletableFuture.completedFuture(null);
+                        }
 
-                    PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
+                        PlayerLanguageDocument doc = new PlayerLanguageDocument(playerId, language);
 
-                    return PublisherAdapter.toCompletableFuture(
-                        collection.replaceOne(
-                            Filters.eq("_id", playerId),
-                            doc.toDocument(),
-                            new ReplaceOptions().upsert(true)
-                        )
-                    ).thenRunAsync(() -> {
-                        LOGGER.fine("Saved language preference for " + playerId + ": " + language);
-                    }, asyncExecutor);
-                }, asyncExecutor)
-                .exceptionally(throwable -> {
-                    LOGGER.warning("Error saving player language: " + throwable.getMessage());
-                    throw new RuntimeException(throwable);
-                });
+                        return PublisherAdapter.toCompletableFuture(
+                                collection.replaceOne(
+                                        Filters.eq("_id", playerId),
+                                        doc.toDocument(),
+                                        new ReplaceOptions().upsert(true)))
+                                .thenRunAsync(() -> {
+                                    LOGGER.fine("Saved language preference for " + playerId + ": " + language);
+                                }, asyncExecutor);
+                    }, asyncExecutor)
+                    .exceptionally(throwable -> {
+                        LOGGER.warning("Error saving player language: " + throwable.getMessage());
+                        throw new RuntimeException(throwable);
+                    });
         });
     }
 
@@ -174,7 +182,8 @@ public class LanguageManagerImpl implements LanguageManager {
     @Override
     public CompletableFuture<Boolean> isLanguageSupported(String language) {
         var list = pluginConfig.getSupportedLanguages();
-        if (list == null || list.isEmpty()) return CompletableFuture.completedFuture(true);
+        if (list == null || list.isEmpty())
+            return CompletableFuture.completedFuture(true);
         return CompletableFuture.completedFuture(list.contains(language));
     }
 
@@ -214,6 +223,28 @@ public class LanguageManagerImpl implements LanguageManager {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    @Override
+    public void registerListener(LanguageUpdateListener listener) {
+        if (listener != null) {
+            listeners.add(listener);
+        }
+    }
+
+    @Override
+    public void unregisterListener(LanguageUpdateListener listener) {
+        listeners.remove(listener);
+    }
+
+    private void fireListeners(String playerId, String oldLanguage, String newLanguage) {
+        for (LanguageUpdateListener listener : listeners) {
+            try {
+                listener.onLanguageUpdate(playerId, oldLanguage, newLanguage);
+            } catch (Exception e) {
+                LOGGER.warning("Error in language update listener: " + e.getMessage());
+            }
         }
     }
 }

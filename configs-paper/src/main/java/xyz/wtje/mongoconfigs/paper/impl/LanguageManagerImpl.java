@@ -8,6 +8,7 @@ import com.mongodb.reactivestreams.client.MongoCollection;
 import org.bson.Document;
 import xyz.wtje.mongoconfigs.api.ConfigManager;
 import xyz.wtje.mongoconfigs.api.LanguageManager;
+import xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener;
 import xyz.wtje.mongoconfigs.core.model.PlayerLanguageDocument;
 import xyz.wtje.mongoconfigs.core.mongo.MongoManager;
 import xyz.wtje.mongoconfigs.core.mongo.PublisherAdapter;
@@ -18,8 +19,10 @@ import org.bukkit.Bukkit;
 
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 public class LanguageManagerImpl implements LanguageManager {
@@ -34,8 +37,10 @@ public class LanguageManagerImpl implements LanguageManager {
     private final String databaseName;
     private final boolean debugLogging;
     private final boolean verboseLogging;
+    private final List<LanguageUpdateListener> listeners = new CopyOnWriteArrayList<>();
 
     public LanguageManagerImpl(ConfigManager configManager, LanguageConfiguration config, MongoManager mongoManager) {
+
         this(configManager, config, mongoManager, config.getPlayerLanguagesDatabase(),
                 config.getPlayerLanguagesCollection(), false, false);
     }
@@ -169,6 +174,7 @@ public class LanguageManagerImpl implements LanguageManager {
             logDebug("Updated language for player " + playerId + " to " + language);
 
             Bukkit.getPluginManager().callEvent(new PlayerLanguageUpdateEvent(playerId, currentLanguage, language));
+            fireListeners(playerId, currentLanguage, language);
 
             MongoCollection<Document> collection = mongoManager.getCollection(databaseName, collectionName);
             return PublisherAdapter.toCompletableFuture(
@@ -275,5 +281,27 @@ public class LanguageManagerImpl implements LanguageManager {
 
     public LanguageConfiguration getLanguageConfiguration() {
         return config;
+    }
+
+    @Override
+    public void registerListener(LanguageUpdateListener listener) {
+        if (listener != null) {
+            listeners.add(listener);
+        }
+    }
+
+    @Override
+    public void unregisterListener(LanguageUpdateListener listener) {
+        listeners.remove(listener);
+    }
+
+    private void fireListeners(String playerId, String oldLanguage, String newLanguage) {
+        for (LanguageUpdateListener listener : listeners) {
+            try {
+                listener.onLanguageUpdate(playerId, oldLanguage, newLanguage);
+            } catch (Exception e) {
+                LOGGER.warning("Error in language update listener: " + e.getMessage());
+            }
+        }
     }
 }

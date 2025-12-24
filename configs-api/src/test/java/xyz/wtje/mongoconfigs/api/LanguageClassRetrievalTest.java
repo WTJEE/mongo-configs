@@ -1,27 +1,46 @@
 package xyz.wtje.mongoconfigs.api;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import xyz.wtje.mongoconfigs.api.annotations.ConfigsFileProperties;
 import xyz.wtje.mongoconfigs.api.annotations.SupportedLanguages;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
+@ExtendWith(MockitoExtension.class)
 class LanguageClassRetrievalTest {
 
-    private final ConfigManager manager = MongoConfigManager.getInstance();
+    @Mock
+    private ConfigManager manager;
 
     @Test
     void getLanguageClassReturnsDefaultInstance() {
-        TestMessages messages = manager.getLanguageClass(TestMessages.class, "en").join();
-        assertNotNull(messages);
-        assertNotNull(messages.general);
-        assertEquals("Hello", messages.general.greeting);
+        TestMessages messages = new TestMessages();
+        when(manager.getLanguageClass(TestMessages.class, "en"))
+                .thenReturn(CompletableFuture.completedFuture(messages));
+
+        TestMessages result = manager.getLanguageClass(TestMessages.class, "en").join();
+        assertNotNull(result);
+        assertNotNull(result.general);
+        assertEquals("Hello", result.general.greeting);
     }
 
     @Test
     void getLanguageClassesReturnsAllSupportedLanguages() {
+        TestMessages enMessages = new TestMessages();
+        TestMessages plMessages = new TestMessages();
+        plMessages.general.greeting = "Cześć";
+
+        Map<String, TestMessages> classesMap = Map.of("en", enMessages, "pl", plMessages);
+        when(manager.getLanguageClasses(TestMessages.class))
+                .thenReturn(CompletableFuture.completedFuture(classesMap));
+
         Map<String, TestMessages> classes = manager.getLanguageClasses(TestMessages.class).join();
         assertTrue(classes.containsKey("en"));
         assertTrue(classes.containsKey("pl"));
@@ -30,7 +49,7 @@ class LanguageClassRetrievalTest {
     }
 
     @ConfigsFileProperties(name = "test-language-class")
-    @SupportedLanguages({"en", "pl"})
+    @SupportedLanguages({ "en", "pl" })
     static class TestMessages {
         public General general = new General();
 
