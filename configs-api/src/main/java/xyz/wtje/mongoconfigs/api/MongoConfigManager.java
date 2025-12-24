@@ -812,4 +812,29 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         });
         return future;
     }
+
+    // Language update listeners
+    private final java.util.List<xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public void registerListener(xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener listener) {
+        if (listener != null) {
+            listeners.add(listener);
+        }
+    }
+
+    @Override
+    public void unregisterListener(xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener listener) {
+        listeners.remove(listener);
+    }
+
+    private void fireListeners(String playerId, String oldLanguage, String newLanguage) {
+        for (xyz.wtje.mongoconfigs.api.event.LanguageUpdateListener listener : listeners) {
+            try {
+                listener.onLanguageUpdate(playerId, oldLanguage, newLanguage);
+            } catch (Exception e) {
+                System.err.println("Error in language update listener: " + e.getMessage());
+            }
+        }
+    }
 }
