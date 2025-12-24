@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class MongoConfigManager implements ConfigManager, LanguageManager {
@@ -48,7 +50,15 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
     // Caches using Caffeine
     private final Cache<String, Messages> messagesCache;
     private final Cache<String, Object> configCache;
-    private final Cache<String, Map<String, Object>> languageDocuments;
+    private final com.github.benmanes.caffeine.cache.LoadingCache<String, Map<String, Object>> languageDocuments;
+
+    // Dedicated executor for async cache refresh - ensures instant background
+    // refresh
+    private final Executor cacheRefreshExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "MongoConfigs-CacheRefresh");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final ObjectMapper languageMapper;
     private final java.util.Set<String> registeredCollections = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -91,17 +101,18 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
 
         this.languageMapper = createLanguageMapper();
         this.messagesCache = Caffeine.newBuilder()
-                .expireAfterWrite(30, TimeUnit.MINUTES)
+                .expireAfterWrite(2, TimeUnit.HOURS)
                 .maximumSize(1000)
                 .build();
         this.configCache = Caffeine.newBuilder()
-                .expireAfterAccess(1, TimeUnit.HOURS)
+                .expireAfterAccess(2, TimeUnit.HOURS)
                 .maximumSize(5000)
                 .build();
         this.languageDocuments = Caffeine.newBuilder()
-                .expireAfterWrite(30, TimeUnit.MINUTES)
+                .refreshAfterWrite(10, TimeUnit.MINUTES)
                 .maximumSize(200)
-                .build();
+                .executor(cacheRefreshExecutor)
+                .build(this::loadLanguageDocumentFromMongo);
 
         System.out.println("ConfigManager initialized with MongoDB: " + mongoUri + " database: " + databaseName);
     }
@@ -119,17 +130,18 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
 
         this.languageMapper = createLanguageMapper();
         this.messagesCache = Caffeine.newBuilder()
-                .expireAfterWrite(30, TimeUnit.MINUTES)
+                .expireAfterWrite(2, TimeUnit.HOURS)
                 .maximumSize(1000)
                 .build();
         this.configCache = Caffeine.newBuilder()
-                .expireAfterAccess(1, TimeUnit.HOURS)
+                .expireAfterAccess(2, TimeUnit.HOURS)
                 .maximumSize(5000)
                 .build();
         this.languageDocuments = Caffeine.newBuilder()
-                .expireAfterWrite(30, TimeUnit.MINUTES)
+                .refreshAfterWrite(2, TimeUnit.HOURS)
                 .maximumSize(200)
-                .build();
+                .executor(cacheRefreshExecutor)
+                .build(this::loadLanguageDocumentFromMongo);
     }
 
     private static ObjectMapper createLanguageMapper() {
@@ -230,9 +242,14 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
     private void refreshCollection(String collection) {
         System.out.println("Refreshing collection: " + collection);
         messagesCache.invalidate(collection);
-        languageDocuments.invalidate(collection);
+        invalidateLanguageDocumentsForCollection(collection);
         configCache.asMap().entrySet()
                 .removeIf(entry -> entry.getKey().equals(collection) || entry.getKey().startsWith(collection + "."));
+    }
+
+    private void invalidateLanguageDocumentsForCollection(String collection) {
+        String prefix = collection + "::";
+        languageDocuments.asMap().keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     @Override
@@ -385,12 +402,16 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
 
     private Map<String, Object> loadLanguageDocument(String collectionId, String language) {
         String cacheKey = collectionId + "::" + language;
-        // Using get with mapping function for atomic compute-if-absent style behavior
-        // Warning: fetchLanguageDocumentFromMongoDB is synchronous blocking here due to
-        // Caffeine's computation requirement
-        // Ideally we should use asynchronous cache pattern, but for simplicity we block
-        // inside computation
-        return languageDocuments.get(cacheKey, k -> fetchLanguageDocumentFromMongoDB(collectionId, language));
+        // LoadingCache automatically handles refresh and loading
+        return languageDocuments.get(cacheKey);
+    }
+
+    private Map<String, Object> loadLanguageDocumentFromMongo(String cacheKey) {
+        String[] parts = cacheKey.split("::", 2);
+        if (parts.length != 2) {
+            return new ConcurrentHashMap<>();
+        }
+        return fetchLanguageDocumentFromMongoDB(parts[0], parts[1]);
     }
 
     private Map<String, Object> fetchLanguageDocumentFromMongoDB(String collectionId, String language) {
@@ -571,7 +592,7 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
             messagesCache.invalidate(collection);
             configCache.asMap().entrySet().removeIf(
                     entry -> entry.getKey().equals(collection) || entry.getKey().startsWith(collection + "."));
-            languageDocuments.invalidate(collection);
+            invalidateLanguageDocumentsForCollection(collection);
             registeredCollections.add(collection);
         });
     }
