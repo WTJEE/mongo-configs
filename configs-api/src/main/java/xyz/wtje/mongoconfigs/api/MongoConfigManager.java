@@ -418,13 +418,17 @@ public class MongoConfigManager implements ConfigManager, LanguageManager {
         try {
             Document doc = toFuture(database.getCollection(collectionId).find(Filters.eq("lang", language)).first())
                     .join();
-            if (doc != null) {
+            if (doc != null && !doc.isEmpty()) {
+                System.out.println("Successfully refreshed cache for: " + collectionId + "::" + language);
                 return new ConcurrentHashMap<>(doc);
             }
+            // Document not found - throw exception to keep old cached value
+            throw new RuntimeException("No document found for " + collectionId + "::" + language);
         } catch (Exception e) {
-            System.err.println("Failed to fetch language document: " + e.getMessage());
+            System.err.println("Failed to fetch language document (keeping old cache): " + e.getMessage());
+            // Throw exception so Caffeine keeps the old cached value
+            throw new RuntimeException("Cache refresh failed for " + collectionId + "::" + language, e);
         }
-        return new ConcurrentHashMap<>();
     }
 
     private Map<String, Object> cacheLanguageDocument(String collectionId, String language, Map<String, Object> data) {

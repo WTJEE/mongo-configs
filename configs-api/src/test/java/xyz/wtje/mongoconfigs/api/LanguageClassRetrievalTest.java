@@ -20,8 +20,7 @@ class LanguageClassRetrievalTest {
     private ConfigManager manager;
 
     @Test
-    void getLanguageClassReturnsDefaultInstance() {
-        TestMessages messages = new TestMessages();
+    void getLanguageClassReturnsDefaultInstance() {        TestMessages messages = new TestMessages();
         when(manager.getLanguageClass(TestMessages.class, "en"))
                 .thenReturn(CompletableFuture.completedFuture(messages));
 
