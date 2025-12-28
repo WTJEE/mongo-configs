@@ -140,29 +140,34 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public CompletableFuture<Set<String>> getCollections() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                Set<String> mongoCollections = mongoManager.getMongoCollections();
+        return mongoManager.getMongoCollectionsAsync()
+                .thenApplyAsync(mongoCollections -> {
+                    Set<String> allCollections = new HashSet<>(knownCollections);
 
-                Set<String> allCollections = new HashSet<>(knownCollections);
-                allCollections.addAll(mongoCollections);
+                    if (mongoCollections != null && !mongoCollections.isEmpty()) {
+                        allCollections.addAll(mongoCollections);
+                        knownCollections.addAll(mongoCollections);
+                    } else if (config.isDebugLogging()) {
+                        LOGGER.info("MongoDB returned no collections; using cached known collections: "
+                                + knownCollections.size());
+                    }
 
-                knownCollections.addAll(mongoCollections);
+                    if (config.isDebugLogging()) {
+                        int mongoCount = (mongoCollections == null) ? 0 : mongoCollections.size();
+                        LOGGER.info("Found " + allCollections.size() + " total collections (MongoDB: " + mongoCount
+                                + ", Known: " + knownCollections.size() + ")");
+                    }
 
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Found " + allCollections.size() + " total collections (MongoDB: " +
-                            mongoCollections.size() + ", Known: " + knownCollections.size() + ")");
-                }
+                    return allCollections;
 
-                return allCollections;
-
-            } catch (Exception e) {
-                if (config.isVerboseLogging()) {
-                    LOGGER.log(Level.WARNING, "Error getting MongoDB collections, returning known collections", e);
-                }
-                return new HashSet<>(knownCollections);
-            }
-        }, asyncExecutor);
+                }, asyncExecutor)
+                .exceptionally(throwable -> {
+                    if (config.isVerboseLogging()) {
+                        LOGGER.log(Level.WARNING, "Error getting MongoDB collections, returning known collections",
+                                throwable);
+                    }
+                    return new HashSet<>(knownCollections);
+                });
     }
 
     public CompletableFuture<Set<String>> getSupportedLanguages(String collection) {
@@ -394,35 +399,7 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     private CompletableFuture<Set<String>> getCollectionsAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            Set<String> allCollections;
-            try {
-                allCollections = mongoManager.getMongoCollections();
-                if (config.isDebugLogging()) {
-                    LOGGER.info(
-                            "Found " + allCollections.size() + " collections directly from MongoDB: " + allCollections);
-                }
-
-                if (allCollections.isEmpty()) {
-                    allCollections = new HashSet<>(knownCollections);
-                    if (config.isDebugLogging()) {
-                        LOGGER.info("Using known collections: " + allCollections);
-                    }
-                } else {
-                    knownCollections.addAll(allCollections);
-                }
-
-            } catch (Exception e) {
-                if (config.isVerboseLogging()) {
-                    LOGGER.log(Level.SEVERE, "Error getting collections from MongoDB", e);
-                }
-                allCollections = new HashSet<>(knownCollections);
-                if (config.isDebugLogging()) {
-                    LOGGER.info("Fallback to known collections: " + allCollections);
-                }
-            }
-            return allCollections;
-        }, asyncExecutor);
+        return getCollections();
     }
 
     private CompletableFuture<Void> prepareCollectionsAsync(Set<String> allCollections) {

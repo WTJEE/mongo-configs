@@ -231,7 +231,7 @@ public class MongoManager {
 
             java.util.List<String> collectionList = PublisherAdapter.toCompletableFutureList(
                 database.listCollectionNames()
-            ).getNow(java.util.List.of());
+            ).join();
 
             collections.addAll(collectionList);
 
