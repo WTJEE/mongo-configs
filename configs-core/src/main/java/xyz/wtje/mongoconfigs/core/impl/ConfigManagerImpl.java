@@ -1386,21 +1386,12 @@ public class ConfigManagerImpl implements ConfigManager {
 
             @Override
             public CompletableFuture<String> get(String path) {
-                return get(path, config.getDefaultLanguage());
+                return resolveMessageWithFallback(id, config.getDefaultLanguage(), path);
             }
 
             @Override
             public CompletableFuture<String> get(String path, String language) {
-                try {
-                    String message = cacheManager.getMessage(id, language, path, (String) null);
-                    if (message == null) {
-                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
-                    }
-                    return CompletableFuture.completedFuture(message);
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
-                    return CompletableFuture.completedFuture(path);
-                }
+                return resolveMessageWithFallback(id, normalizeLanguageInput(language), path);
             }
 
             @Override
@@ -1410,17 +1401,8 @@ public class ConfigManagerImpl implements ConfigManager {
 
             @Override
             public CompletableFuture<String> get(String path, String language, Object... placeholders) {
-                try {
-                    String message = cacheManager.getMessage(id, language, path, (String) null);
-                    if (message == null) {
-                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
-                    }
-                    String formatted = messageFormatter.format(message, placeholders);
-                    return CompletableFuture.completedFuture(formatted);
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
-                    return CompletableFuture.completedFuture(path);
-                }
+                return resolveMessageWithFallback(id, normalizeLanguageInput(language), path)
+                        .thenApply(message -> messageFormatter.format(message, placeholders));
             }
 
             @Override
@@ -1430,26 +1412,20 @@ public class ConfigManagerImpl implements ConfigManager {
 
             @Override
             public CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders) {
-                try {
-                    String message = cacheManager.getMessage(id, language, path, (String) null);
-                    if (message == null) {
-                        message = cacheManager.getMessage(id, config.getDefaultLanguage(), path, path);
-                    }
-                    if (placeholders == null || placeholders.isEmpty()) {
-                        return CompletableFuture.completedFuture(message);
-                    }
+                return resolveMessageWithFallback(id, normalizeLanguageInput(language), path)
+                        .thenApply(message -> {
+                            if (placeholders == null || placeholders.isEmpty()) {
+                                return message;
+                            }
 
-                    String result = message;
-                    for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
-                        String placeholder = "{" + entry.getKey() + "}";
-                        String value = String.valueOf(entry.getValue());
-                        result = result.replace(placeholder, value);
-                    }
-                    return CompletableFuture.completedFuture(result);
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting message: " + id + ":" + language + ":" + path, e);
-                    return CompletableFuture.completedFuture(path);
-                }
+                            String result = message;
+                            for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+                                String placeholder = "{" + entry.getKey() + "}";
+                                String value = String.valueOf(entry.getValue());
+                                result = result.replace(placeholder, value);
+                            }
+                            return result;
+                        });
             }
 
             @Override
@@ -1459,22 +1435,96 @@ public class ConfigManagerImpl implements ConfigManager {
 
             @Override
             public CompletableFuture<List<String>> getList(String path, String language) {
-                try {
-                    @SuppressWarnings("unchecked")
-                    List<String> list = cacheManager.getMessage(id, language, path, (List<String>) null);
-                    if (list == null) {
-                        @SuppressWarnings("unchecked")
-                        List<String> defaultList = cacheManager.getMessage(id, config.getDefaultLanguage(), path,
-                                (List<String>) null);
-                        list = defaultList != null ? defaultList : java.util.Collections.singletonList(path);
-                    }
-                    return CompletableFuture.completedFuture(list);
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error getting message list: " + id + ":" + language + ":" + path, e);
-                    return CompletableFuture.completedFuture(java.util.Collections.singletonList(path));
-                }
+                return resolveMessageListWithFallback(id, normalizeLanguageInput(language), path);
             }
         };
+    }
+
+    private String normalizeLanguageInput(String language) {
+        return (language == null || language.isBlank()) ? config.getDefaultLanguage() : language;
+    }
+
+    private CompletableFuture<String> resolveMessageWithFallback(String collection, String language, String key) {
+        return resolveMessageOnce(collection, language, key)
+                .thenCompose(found -> {
+                    if (found != null) {
+                        return CompletableFuture.completedFuture(found);
+                    }
+                    if (!language.equals(config.getDefaultLanguage())) {
+                        return resolveMessageOnce(collection, config.getDefaultLanguage(), key);
+                    }
+                    return CompletableFuture.completedFuture(null);
+                })
+                .exceptionally(throwable -> {
+                    LOGGER.log(Level.WARNING, "Error loading message: " + collection + ":" + language + ":" + key,
+                            throwable);
+                    return null;
+                })
+                .thenApply(value -> value != null ? value : key);
+    }
+
+    private CompletableFuture<String> resolveMessageOnce(String collection, String language, String key) {
+        String cached = cacheManager.getMessage(collection, language, key, (String) null);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached);
+        }
+
+        return mongoManager.getLanguage(collection, language)
+                .thenApply(doc -> {
+                    if (doc != null && doc.getData() != null) {
+                        cacheManager.putMessageData(collection, language, doc.getData());
+                        Object val = getNestedValue(doc.getData(), key);
+                        return val != null ? val.toString() : null;
+                    }
+                    return null;
+                });
+    }
+
+    private CompletableFuture<List<String>> resolveMessageListWithFallback(String collection, String language,
+            String key) {
+        return resolveMessageListOnce(collection, language, key)
+                .thenCompose(list -> {
+                    if (list != null) {
+                        return CompletableFuture.completedFuture(list);
+                    }
+                    if (!language.equals(config.getDefaultLanguage())) {
+                        return resolveMessageListOnce(collection, config.getDefaultLanguage(), key);
+                    }
+                    return CompletableFuture.completedFuture(null);
+                })
+                .exceptionally(throwable -> {
+                    LOGGER.log(Level.WARNING,
+                            "Error loading message list: " + collection + ":" + language + ":" + key, throwable);
+                    return null;
+                })
+                .thenApply(list -> (list != null && !list.isEmpty()) ? list : java.util.List.of(key));
+    }
+
+    private CompletableFuture<List<String>> resolveMessageListOnce(String collection, String language, String key) {
+        @SuppressWarnings("unchecked")
+        List<String> cached = cacheManager.getMessage(collection, language, key, (List<String>) null);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached);
+        }
+
+        return mongoManager.getLanguage(collection, language)
+                .thenApply(doc -> {
+                    if (doc != null && doc.getData() != null) {
+                        cacheManager.putMessageData(collection, language, doc.getData());
+                        Object val = getNestedValue(doc.getData(), key);
+                        if (val instanceof java.util.List<?> rawList) {
+                            java.util.List<String> copy = new java.util.ArrayList<>(rawList.size());
+                            for (Object element : rawList) {
+                                copy.add(element == null ? "null" : element.toString());
+                            }
+                            return java.util.List.copyOf(copy);
+                        }
+                        if (val != null) {
+                            return java.util.List.of(val.toString());
+                        }
+                    }
+                    return null;
+                });
     }
 
     @Override
