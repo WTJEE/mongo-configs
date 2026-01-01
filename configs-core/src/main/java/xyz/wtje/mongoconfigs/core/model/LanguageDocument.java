@@ -23,7 +23,21 @@ public class LanguageDocument {
     public static LanguageDocument fromDocument(Document doc) {
         LanguageDocument out = new LanguageDocument();
         out.lang = doc.getString("lang");
-        out.updatedAt = doc.getDate("updatedAt");
+        Object updatedRaw = doc.get("updatedAt");
+        if (updatedRaw instanceof Date) {
+            out.updatedAt = (Date) updatedRaw;
+        } else if (updatedRaw instanceof Long) {
+            out.updatedAt = new Date((Long) updatedRaw);
+        } else if (updatedRaw instanceof String) {
+            try {
+                out.updatedAt = Date.from(Instant.parse((String) updatedRaw));
+            } catch (Exception ignored) {
+                out.updatedAt = null;
+            }
+        }
+        if (out.updatedAt == null) {
+            out.updatedAt = Date.from(Instant.now());
+        }
         java.util.Map<String, Object> map = new java.util.HashMap<>();
         for (java.util.Map.Entry<String, Object> e : doc.entrySet()) {
             String k = e.getKey();
