@@ -94,9 +94,28 @@ public class MongoManager {
     public CompletableFuture<ConfigDocument> getConfig(String collection) {
         MongoCollection<Document> coll = database.getCollection(collection);
 
+        // Najpierw szukaj dokumentu z _id: "config" (tradycyjny format)
         return PublisherAdapter.toCompletableFuture(
             coll.find(Filters.eq("_id", "config")).first()
-        ).thenApply(doc -> doc != null ? ConfigDocument.fromDocument(doc) : null);
+        ).thenCompose(doc -> {
+            if (doc != null) {
+                return CompletableFuture.completedFuture(ConfigDocument.fromDocument(doc));
+            }
+            
+            // Fallback: szukaj dokumentu z _id równym nazwie kolekcji
+            return PublisherAdapter.toCompletableFuture(
+                coll.find(Filters.eq("_id", collection)).first()
+            ).thenCompose(collectionIdDoc -> {
+                if (collectionIdDoc != null) {
+                    return CompletableFuture.completedFuture(ConfigDocument.fromDocument(collectionIdDoc));
+                }
+                
+                // Ostatni fallback: znajdź dokument bez pola "lang" (config-only document)
+                return PublisherAdapter.toCompletableFuture(
+                    coll.find(Filters.exists("lang", false)).first()
+                ).thenApply(configOnlyDoc -> configOnlyDoc != null ? ConfigDocument.fromDocument(configOnlyDoc) : null);
+            });
+        });
     }
 
     public CompletableFuture<Void> saveConfig(String collection, ConfigDocument config) {

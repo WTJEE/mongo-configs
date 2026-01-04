@@ -340,6 +340,7 @@ public final class ChangeStreamWatcher {
             if (isConfigDocument(docId, fullDocument)) {
                 Map<String, Object> configData = copyDocumentExcluding(fullDocument, Set.of("_id", "updatedAt"));
                 cacheManager.replaceConfigData(collectionName, configData);
+                LOGGER.info("✅ APPLIED CONFIG DOCUMENT to cache: " + collectionName + " (docId=" + docId + ", keys=" + configData.keySet().size() + ")");
                 return;
             }
 
@@ -347,6 +348,9 @@ public final class ChangeStreamWatcher {
             if (lang != null && !lang.isEmpty()) {
                 Map<String, Object> messageData = copyDocumentExcluding(fullDocument, Set.of("_id", "lang", "updatedAt"));
                 cacheManager.replaceLanguageData(collectionName, lang, messageData);
+                LOGGER.info("✅ APPLIED LANGUAGE DOCUMENT to cache: " + collectionName + ":" + lang + " (keys=" + messageData.keySet().size() + ")");
+            } else {
+                LOGGER.info("⚠️ Document has no 'lang' field and was not recognized as config: " + collectionName + " (docId=" + docId + ")");
             }
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Error applying change stream document to cache for collection: " + collectionName, e);
@@ -370,7 +374,8 @@ public final class ChangeStreamWatcher {
                 }
             }
 
-            if ("config".equals(docId)) {
+            // Fallback - jeśli docId to "config" lub nazwa kolekcji, usuń config data
+            if ("config".equals(docId) || (docId != null && docId.equals(collectionName))) {
                 cacheManager.replaceConfigData(collectionName, null);
             }
         } catch (Exception e) {
@@ -379,19 +384,40 @@ public final class ChangeStreamWatcher {
     }
 
     private boolean isConfigDocument(String docId, Document document) {
+        // Dokument jest configiem jeśli:
+        // 1. _id == "config" (tradycyjny format)
+        // 2. _id == nazwa kolekcji (nowy format)
+        // 3. Dokument nie ma pola "lang" (co oznacza że to nie jest dokument językowy)
+        
         if ("config".equals(docId)) {
             return true;
         }
+        
+        // Sprawdź czy _id równa się nazwie kolekcji
+        if (docId != null && docId.equals(collectionName)) {
+            return true;
+        }
+        
         if (document == null) {
             return false;
         }
+        
+        // Jeśli dokument nie ma pola "lang", traktuj jako config
+        String lang = document.getString("lang");
+        if (lang == null || lang.isEmpty()) {
+            // Dodatkowe sprawdzenie - nie traktuj pustych dokumentów jako config
+            if (document.size() > 1) { // więcej niż tylko _id
+                return true;
+            }
+        }
+        
         Object idValue = document.get("_id");
         if (idValue == null) {
             return false;
         }
         
-        if (idValue instanceof String) {
-            return "config".equals(idValue);
+        if (idValue instanceof String strId) {
+            return "config".equals(strId) || strId.equals(collectionName);
         }
         
         return false;

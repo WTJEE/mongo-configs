@@ -31,24 +31,57 @@ public class ConfigDocument {
         Object idObj = doc.get("_id");
         if (idObj instanceof ObjectId) {
             config.id = (ObjectId) idObj;
-        } else if (idObj instanceof String) {
-            if (!"config".equals(idObj)) {
+        } else if (idObj instanceof String strId) {
+            // Nie próbuj parsować "config" lub nazwy kolekcji jako ObjectId
+            if (!"config".equals(strId)) {
                 try {
-                    config.id = new ObjectId((String) idObj);
+                    config.id = new ObjectId(strId);
                 } catch (IllegalArgumentException e) {
-                    config.id = new ObjectId();
+                    // To jest prawdopodobnie nazwa kolekcji, nie ObjectId
+                    config.id = null;
                 }
             }
         }
 
         config.name = doc.getString("name");
+        
+        // Sprawdź czy dane są w polu "data" (tradycyjny format) 
+        // czy bezpośrednio w dokumencie (flat format)
         Document dataDoc = doc.get("data", Document.class);
-        if (dataDoc != null) {
+        if (dataDoc != null && !dataDoc.isEmpty()) {
+            // Tradycyjny format: dane w polu "data"
             config.data = new HashMap<>(dataDoc);
         } else {
+            // Flat format: dane bezpośrednio w dokumencie
+            // Kopiuj wszystko oprócz pól systemowych
             config.data = new HashMap<>();
+            for (Map.Entry<String, Object> entry : doc.entrySet()) {
+                String key = entry.getKey();
+                // Pomijaj pola systemowe
+                if ("_id".equals(key) || "name".equals(key) || "updatedAt".equals(key) || 
+                    "_type".equals(key) || "_version".equals(key) || "data".equals(key)) {
+                    continue;
+                }
+                config.data.put(key, entry.getValue());
+            }
         }
-        config.updatedAt = doc.getDate("updatedAt");
+        
+        // Obsłuż updatedAt zapisane jako różne typy
+        Object updatedRaw = doc.get("updatedAt");
+        if (updatedRaw instanceof Date) {
+            config.updatedAt = (Date) updatedRaw;
+        } else if (updatedRaw instanceof Long) {
+            config.updatedAt = new Date((Long) updatedRaw);
+        } else if (updatedRaw instanceof String strDate) {
+            try {
+                config.updatedAt = Date.from(Instant.parse(strDate));
+            } catch (Exception ignored) {
+                config.updatedAt = Date.from(Instant.now());
+            }
+        } else {
+            config.updatedAt = Date.from(Instant.now());
+        }
+        
         return config;
     }
 

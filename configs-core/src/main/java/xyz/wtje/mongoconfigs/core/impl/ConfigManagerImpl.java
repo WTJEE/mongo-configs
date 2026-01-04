@@ -263,6 +263,16 @@ public class ConfigManagerImpl implements ConfigManager {
                                     ensureLanguagesFuture = CompletableFuture.completedFuture(null);
                                 }
 
+                                // ZAWSZE zapisz config data do cache jeśli istnieje (przed sprawdzeniem języków)
+                                if (configDoc != null && configDoc.getData() != null) {
+                                    cacheManager.putConfigData(collection, configDoc.getData());
+                                    if (config.isDebugLogging()) {
+                                        LOGGER.info("✅ Successfully cached CONFIG DATA for collection: " + collection);
+                                    }
+                                } else if (config.isVerboseLogging()) {
+                                    LOGGER.info("No config data found for collection: " + collection);
+                                }
+
                                 return ensureLanguagesFuture
                                         .thenCompose(v2 -> discoverLanguages(collection))
                                         .thenCompose(actualLanguages -> {
@@ -270,9 +280,18 @@ public class ConfigManagerImpl implements ConfigManager {
                                             languagesToLoad.addAll(actualLanguages);
 
                                             if (languagesToLoad.isEmpty()) {
-                                                LOGGER.warning("No language documents detected for collection: "
-                                                        + collection + " – cache cannot be refreshed.");
+                                                // Brak dokumentów językowych - ale config już został zapisany powyżej
+                                                if (config.isDebugLogging()) {
+                                                    LOGGER.info("No language documents for collection: " + collection
+                                                            + " – config-only collection (config data already cached)");
+                                                }
                                                 collectionLanguages.remove(collection);
+
+                                                // Zakończ reload powodzeniem - config został zapisany
+                                                LOGGER.info("✅ ZAKOŃCZONO RELOAD KOLEKCJI (config-only): " + collection +
+                                                        " | Config=" + (configDoc != null ? "ZAŁADOWANY" : "BRAK") +
+                                                        " | Timestamp=" + System.currentTimeMillis());
+                                                notifyReloadListeners(collection);
                                                 return CompletableFuture.completedFuture(null);
                                             }
 
@@ -281,20 +300,6 @@ public class ConfigManagerImpl implements ConfigManager {
                                             if (config.isDebugLogging()) {
                                                 LOGGER.info("Refreshing cache for collection: " + collection
                                                         + " with languages " + languagesToLoad);
-                                            }
-
-                                            if (invalidateCache) {
-                                                cacheManager.invalidateCollection(collection);
-                                            }
-
-                                            if (configDoc != null && configDoc.getData() != null) {
-                                                cacheManager.putConfigData(collection, configDoc.getData());
-                                                if (config.isDebugLogging()) {
-                                                    LOGGER.info(
-                                                            "Successfully cached config for collection: " + collection);
-                                                }
-                                            } else if (config.isVerboseLogging()) {
-                                                LOGGER.warning("No config data found for collection: " + collection);
                                             }
 
                                             List<CompletableFuture<LanguageDocument>> languageFutures = languagesToLoad
