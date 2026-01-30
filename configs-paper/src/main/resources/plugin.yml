@@ -2,9 +2,10 @@ name: MongoConfigs
 version: "${project.version}"
 main: xyz.wtje.mongoconfigs.paper.MongoConfigsPlugin
 api-version: "1.20"
+folia-supported: false
 author: aiikk
 website: https://github.com/aiikk/mongo-configs
-description: Advanced MongoDB configuration and translation management library
+description: Advanced MongoDB configuration and translation management library (Requires Java 21+ for Virtual Threads)
 
 
 

@@ -23,10 +23,10 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import org.bson.Document;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -48,6 +48,9 @@ public class ConfigManagerImpl implements ConfigManager {
     private final ObjectMapper languageMapper;
     private final Map<String, Set<Consumer<String>>> reloadListeners = new ConcurrentHashMap<>();
     private final Map<String, xyz.wtje.mongoconfigs.core.ChangeStreamWatcher> changeStreamWatchers = new ConcurrentHashMap<>();
+    
+    // Shutdown flag to prevent operations after close
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public ConfigManagerImpl(MongoConfig config) {
         this.config = config;
@@ -102,18 +105,44 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public void shutdown() {
+        if (!closed.compareAndSet(false, true)) {
+            return; // Already shut down
+        }
+        
+        LOGGER.info("ConfigManager shutdown initiated...");
 
+        // Stop all change stream watchers first
         for (xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher : changeStreamWatchers.values()) {
             try {
                 watcher.stop();
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Error stopping change stream watcher", e);
+                LOGGER.log(Level.FINE, "Error stopping change stream watcher", e);
             }
         }
         changeStreamWatchers.clear();
+        
+        // Close cache manager (shuts down virtual executor)
+        try {
+            cacheManager.close(config.getShutdownTimeoutMs());
+        } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error closing cache manager", e);
+        }
 
-        mongoManager.close();
+        // Close MongoDB connection last
+        try {
+            mongoManager.close();
+        } catch (Exception e) {
+            LOGGER.log(Level.FINE, "Error closing MongoDB connection", e);
+        }
+        
         LOGGER.info("ConfigManager shutdown complete");
+    }
+    
+    /**
+     * Returns whether this ConfigManager has been shut down.
+     */
+    public boolean isClosed() {
+        return closed.get();
     }
 
     private boolean isIgnoredCollection(String collectionName) {
@@ -184,16 +213,20 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public CompletableFuture<Void> reloadCollection(String collection, boolean invalidateCache) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
         if (isIgnoredDatabase() || isIgnoredCollection(collection)) {
             LOGGER.info("Skipping reload for ignored collection: " + collection);
             return CompletableFuture.completedFuture(null);
         }
         return CompletableFuture.runAsync(() -> {
+            if (closed.get()) return;
 
-            LOGGER.info("­čöü START RELOAD KOLEKCJI: " + collection + " (invalidateCache=" + invalidateCache + ")");
+            LOGGER.info("[RELOAD] Starting collection reload: " + collection + " (invalidateCache=" + invalidateCache + ")");
 
             if (invalidateCache) {
-                LOGGER.info("­čž╣ INWALIDACJA CACHE dla kolekcji: " + collection);
+                LOGGER.info("[CACHE] Invalidating cache for collection: " + collection);
                 cacheManager.invalidateCollection(collection);
             }
         }, asyncExecutor)
@@ -755,38 +788,46 @@ public class ConfigManagerImpl implements ConfigManager {
             return;
         }
 
-        LOGGER.info("­čÜÇ Setting up new change stream for collection: " + collectionName);
+        LOGGER.info("[SETUP] Setting up new change stream for collection: " + collectionName);
 
         try {
             xyz.wtje.mongoconfigs.core.ChangeStreamWatcher watcher = new xyz.wtje.mongoconfigs.core.ChangeStreamWatcher(
                     mongoManager.getCollection(collectionName),
-                    cacheManager);
+                    cacheManager,
+                    config);
 
             watcher.setReloadCallback(changedCollection -> {
+                if (closed.get()) return; // Skip if shutdown in progress
+                
                 CompletableFuture.runAsync(() -> {
+                    if (closed.get()) return; // Double-check
                     try {
-
-                        LOGGER.info("ÔÖ╗´ŞĆ ROZPOCZYNAM OD┼ÜWIE┼╗ANIE KOLEKCJI po wykryciu zmiany (Change Stream): "
+                        LOGGER.info("[REFRESH] Starting collection refresh after change detection: "
                                 + changedCollection);
 
-                        // KRYTYCZNE: invalidateCache=true aby wyczy┼Ťci─ç stary cache!
+                        // invalidateCache=true to clear old cache!
                         reloadCollection(changedCollection, true)
                                 .thenRun(() -> {
-                                    LOGGER.info("Ôťů ZAKO┼âCZONO OD┼ÜWIE┼╗ANIE KOLEKCJI (cache prze┼éadowany): "
-                                            + changedCollection);
-
-                                    notifyReloadListeners(changedCollection);
+                                    if (!closed.get()) {
+                                        LOGGER.info("[OK] Collection refresh completed: "
+                                                + changedCollection);
+                                        notifyReloadListeners(changedCollection);
+                                    }
                                 })
                                 .exceptionally(throwable -> {
-                                    LOGGER.log(Level.WARNING,
-                                            "ÔŁî B┼ü─äD podczas od┼Ťwie┼╝ania kolekcji po Change Stream: "
+                                    if (!closed.get()) {
+                                        LOGGER.log(Level.WARNING,
+                                            "[ERROR] Failed to refresh collection after Change Stream: "
                                                     + changedCollection,
                                             throwable);
+                                    }
                                     return null;
                                 });
                     } catch (Exception e) {
-                        LOGGER.log(Level.WARNING,
-                                "ÔŁî B┼ü─äD obs┼éugi callbacku Change Stream dla: " + changedCollection, e);
+                        if (!closed.get()) {
+                            LOGGER.log(Level.WARNING,
+                                    "[ERROR] Failed to handle Change Stream callback for: " + changedCollection, e);
+                        }
                     }
                 }, asyncExecutor);
             });
@@ -794,7 +835,7 @@ public class ConfigManagerImpl implements ConfigManager {
             watcher.start();
             changeStreamWatchers.put(collectionName, watcher);
 
-            LOGGER.info("Ôťů Successfully setup change stream watcher for collection: " + collectionName);
+            LOGGER.info("[OK] Successfully setup change stream watcher for collection: " + collectionName);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to setup change stream for collection: " + collectionName, e);
         }
@@ -1262,6 +1303,10 @@ public class ConfigManagerImpl implements ConfigManager {
     }
 
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
         String cached = cacheManager.getMessage(collection, language, key);
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
@@ -1270,6 +1315,7 @@ public class ConfigManagerImpl implements ConfigManager {
         // Cache miss - fetch from MongoDB
         return mongoManager.getLanguage(collection, language)
                 .thenApply(doc -> {
+                    if (closed.get()) return null;
                     if (doc != null && doc.getData() != null) {
                         // Populate cache with the whole document to avoid repeated fetches
                         cacheManager.putMessageData(collection, language, doc.getData());

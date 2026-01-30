@@ -1,218 +1,179 @@
-# MongoConfigs Library
+# MongoConfigs - Project Import Analysis & Documentation
 
-Advanced MongoDB configuration and translation management library with full async support, designed for high-performance Minecraft servers (Paper/Velocity).
+> ⚠️ **REQUIRES JAVA 21+** - This library uses Virtual Threads (Project Loom) for zero main-thread blocking!
 
-## 🌟 Core Features
+> 🤖 **For AI Assistants**: See [AGENTS.md](AGENTS.md) for complete API documentation, coding patterns, and rules for generating code that uses this library.
 
-- **🚀 Async First**: Built from the ground up using `CompletableFuture` and Reactive Streams. No blocking the main thread.
-- **⚡ Caffeine Caching**: Intelligent caching with "Smart Refresh" (Read-Through) - messages never disappear, even if cache expires.
-- **🔄 Auto-Updates**: Change Streams support means changes in MongoDB are instantly reflected on all servers without reloads.
-- **📦 Bulk Operations**: Optimized database writes using bulk operations to minimize network overhead.
-- **🧩 Cross-Platform**: Native support for Paper and Velocity, sharing the same core logic.
+> 📚 **Wiki**: Visit our [GitHub Wiki](.github/wiki/Home.md) for user documentation.
 
----
+## 🚀 Why Java 21?
 
-## 📚 API Reference & Imports
+MongoConfigs leverages **Java 21+ Virtual Threads** for maximum performance:
 
-Here is a breakdown of the key classes you will use, their imports, and what they do.
-
-### 1. Main Managers
-**Package**: `xyz.wtje.mongoconfigs.api`
-
-| Class | Import | Description |
-|-------|--------|-------------|
-| **MongoConfigManager** | `import xyz.wtje.mongoconfigs.api.MongoConfigManager;` | The entry point for the API. Use `getInstance()` to get the singleton instance. |
-| **ConfigManager** | `import xyz.wtje.mongoconfigs.api.ConfigManager;` | The main interface you interact with. Contains methods like `getMessageAsync`, `set`, `get`. |
-
-### 2. Annotations (For Typed Configs)
-**Package**: `xyz.wtje.mongoconfigs.api.annotations`
-
-| Annotation | Import | Description |
-|------------|--------|-------------|
-| **@Config** | `import xyz.wtje.mongoconfigs.api.annotations.Config;` | Marks a class as a configuration POJO. You specify the `id` (document ID) here. |
-| **@Collection** | `import xyz.wtje.mongoconfigs.api.annotations.Collection;` | (Optional) Specifies which MongoDB collection to store this config in. |
-
-### 3. Core Implementation (Advanced)
-**Package**: `xyz.wtje.mongoconfigs.core`
-
-| Class | Import | Description |
-|-------|--------|-------------|
-| **ConfigManagerImpl** | `import xyz.wtje.mongoconfigs.core.impl.ConfigManagerImpl;` | The internal implementation used by plugins. You usually don't need this unless initializing manually. |
-| **MongoConfig** | `import xyz.wtje.mongoconfigs.core.config.MongoConfig;` | Configuration object for the library itself (connection string, cache settings, threads). |
-
----
-
-## 💻 Usage Examples
-
-
-### 1. Getting Localized Messages (The "Smart" Way)
-This is the most common use case. It retrieves a message from cache. If missing/expired, it fetches from DB instantly.
+| Feature | Benefit |
+|---------|--------|
+| `Executors.newVirtualThreadPerTaskExecutor()` | Ultra-lightweight threads (~1KB vs ~1MB) |
+| Non-blocking async operations | Zero main thread lag |
+| Millions of concurrent tasks | Handle any server load |
 
 ```java
-import xyz.wtje.mongoconfigs.api.MongoConfigManager;
-import xyz.wtje.mongoconfigs.api.ConfigManager;
-
-public class MessageHandler {
-    private final ConfigManager configManager = MongoConfigManager.getInstance();
-
-    public void sendMessage(Player player, String key) {
-        String lang = player.getLocale().toString(); // e.g., "en_us"
-        
-        configManager.getMessageAsync("messages_collection", lang, key, "&cDefault Message")
-            .thenAccept(message -> {
-                player.sendMessage(ColorUtils.colorize(message));
-            });
-    }
-}
-```
-
-### 2. Using Typed Configs (POJOs)
-Map your Java classes directly to MongoDB documents.
-
-**The Config Class:**
-```java
-import xyz.wtje.mongoconfigs.api.annotations.Config;
-import xyz.wtje.mongoconfigs.api.annotations.Collection;
-
-@Config(id = "server-settings")
-@Collection(name = "configurations")
-public class ServerSettings {
-    private int maxPlayers = 100;
-    private String welcomeMessage = "Welcome!";
-    private boolean maintenanceMode = false;
-
-    // Getters and Setters...
-}
-```
-
-**Loading/Saving:**
-```java
-import xyz.wtje.mongoconfigs.api.MongoConfigManager;
-
-// Save
-ServerSettings settings = new ServerSettings();
-settings.setMaxPlayers(200);
-MongoConfigManager.getInstance().setObject(settings);
-
-// Load
-MongoConfigManager.getInstance().getObject(ServerSettings.class)
-    .thenAccept(loadedSettings -> {
-        System.out.println("Max Players: " + loadedSettings.getMaxPlayers());
-    });
-```
-
-### 3. Raw Key-Value Access
-For simple values not tied to a POJO.
-
-```java
-// Set
-configManager.set("global. multiplier", 2.5);
-
-// Get
-configManager.get("global.multiplier", Double.class)
-    .thenAccept(multiplier -> {
-        System.out.println("Current multiplier: " + multiplier);
-    });
+// All async operations run on virtual threads - NEVER blocks main thread!
+messages.use("welcome", msg -> player.sendMessage(msg));
 ```
 
 ---
 
-## 🔧 Platform Support
+This document provides a comprehensive analysis of every library and import used within the **MongoConfigs** project. It details exactly what each import does, which module it belongs to, and how it contributes to the library's functionality.
 
-### Paper/Spigot
-The `configs-paper` plugin automatically initializes the core. You just need to depend on it.
-- **Command**: `/mongoconfigs reload` - Refreshes local cache if Change Streams are off.
+## 📊 Import Summary
 
-### Velocity
-The `configs-velocity` plugin provides the same functionality for proxies.
-- **Command**: `/mongoconfigs reload`
-
-## ⚙️ Performance Tuning
-In your `plugins/MongoConfigs/config.yml`:
-
-```yaml
-mongo:
-  url: "mongodb://localhost:27017"
-  database: "minecraft"
-  
-cache:
-  max-size: 10000       # Max entries in RAM
-  ttl-seconds: 1800     # 30 minutes before "soft expire"
-  
-performance:
-  io-threads: 4         # Parallel DB operations
-  worker-threads: 4     # Parallel processing
+| Category | Package Prefix | Role | Count (Approx) |
+|----------|---------------|------|----------------|
+| **Core Java** | `java.*` | Standard functions (Async, I/O, Util) | ~60+ |
+| **Database** | `com.mongodb.*`, `org.bson.*` | Reactive MongoDB interaction | ~25+ |
+| **Reactive** | `org.reactivestreams.*` | Async Stream Standards | ~5 |
+| **Caching** | `com.github.benmanes.caffeine.*` | High-performance in-memory caching | ~2 |
+| **JSON/Serialization** | `com.fasterxml.jackson.*` | Object <> Document Mapping | ~10 |
+| **Text Engine** | `net.kyori.adventure.*` | Modern Formatting (MiniMessage) | ~15 |
+| **Bukkit/Paper** | `org.bukkit.*` | Minecraft Server (Spigot) API | ~30+ |
+| **Velocity** | `com.velocitypowered.*` | Minecraft Proxy API | ~25+ |
+| **Testing** | `org.junit.*`, `org.mockito.*` | Unit Testing & Mocking | ~15+ |
 
 ---
 
-## 🤖 AI / Developer Cheatsheet
+## 📘 1. Java Standard Library (`java.*`)
 
-**Copy-paste this context for your AI assistant:**
+These are the building blocks of the application, included in the JDK.
 
-### 1. Essential Imports
-```java
-// Core Managers
-import xyz.wtje.mongoconfigs.api.MongoConfigManager; // Singleton Access
-import xyz.wtje.mongoconfigs.api.ConfigManager;      // Main Interface
-import xyz.wtje.mongoconfigs.api.LanguageManager;    // Player Language Handling
+### ⚡ Concurrency (`java.util.concurrent`)
+**Purpose:** Handles all asynchronous tasks to ensure the main server thread never freezes.
+- `java.util.concurrent.CompletableFuture`: The backbone of this library. Represents a result that will be available in the future. Used for almost all API return types (`getMessageAsync`).
+- `java.util.concurrent.ConcurrentHashMap`: A thread-safe map used for caching configs and languages in memory without race conditions.
+- `java.util.concurrent.Executor`, `ExecutorService`: Interfaces for managing thread pools (worker threads).
+- `java.util.concurrent.ForkJoinPool`: The default pool used for non-blocking async operations.
+- `java.util.concurrent.atomic.*` (`AtomicBoolean`, `AtomicInteger`, `AtomicReference`): Variables that can be updated thread-safely without locks. Used for tracking state (e.g., initial load completion).
+- `java.util.concurrent.TimeUnit`: Utility for specifying time durations (e.g., "SECONDS", "MILLISECONDS").
 
-// Annotations (for POJOs)
-import xyz.wtje.mongoconfigs.api.annotations.Config;
-import xyz.wtje.mongoconfigs.api.annotations.Collection;
+### 📦 Collections & Util (`java.util`)
+**Purpose:** storage structures for data.
+- `List`, `ArrayList`, `CopyOnWriteArrayList`: Ordered lists of items (e.g., list of loaded languages). `CopyOnWrite` is used for thread safety when reading frequently.
+- `Map`, `HashMap`, `LinkedHashMap`: Key-Value storage (e.g., `Config Key -> Value`).
+- `Set`, `HashSet`: Unique collections (e.g., set of active collection names).
+- `UUID`: Universally Unique Identifier, used for identifying players.
+- `Optional`: Container object which may or may not contain a non-null value.
+- `Base64`: Used for encoding/decoding custom texture data (skulls) in GUIs.
 
-// Utilities
-import java.util.concurrent.CompletableFuture;       // Async return type
-```
+### 📥 Input/Output (`java.io`, `java.nio`)
+**Purpose:** Reading local files like `config.yml`.
+- `File`, `FileInputStream`, `InputStream`: accessing raw file streams.
+- `Files`, `Path`: Newer NIO (Non-blocking I/O) file access methods used in the Velocity module.
+- `IOException`: Error thrown when file reading fails.
 
-### 2. Retrieving Messages (With Placeholders)
-**Syntax:** `{placeholder}` in MongoDB document.
-**Java Usage:** `varargs` in `key, value` pairs.
+### 🧠 Reflection & Annotations (`java.lang.reflect`, `java.lang.annotation`)
+**Purpose:** Parsing the custom `@Config` annotations to dynamically load classes.
+- `Method`, `Field`:Accessing class members dynamically.
+- `@Retention`, `@Target`, `@ElementType`: Meta-annotations defining how our custom annotations (`@Config`, `@Collection`) behave.
 
-**Code:**
-```java
-// MongoDB: "welcome": "Hello {player}, you have {coins} coins!"
-configManager.getMessageAsync("messages", "en", "welcome", 
-    "player", "Steve", 
-    "coins", 100
-).thenAccept(serialized -> {
-    player.sendMessage(ColorUtils.colorize(serialized));
-});
-```
+---
 
-### 3. Adding/Updating Messages Programmatically
-Use this to inject default messages if they don't exist.
+## 🍃 2. MongoDB Reactive Driver (`com.mongodb.*`, `org.bson.*`)
 
-```java
-// Asynchronous Set
-Map<String, Object> defaults = Map.of(
-    "welcome", "&aHello {player}!",
-    "error.not_found", "&cPlayer not found."
-);
-configManager.getCacheManager().putMessageDataAsync("messages", "en", defaults); 
-// Note: This puts into cache. For permanent DB storage, use mongoManager direct access or saveConfig.
-```
+**Purpose:** Connects to the database in a purely non-blocking way using Reactive Streams.
 
-### 4. Typed Configuration (Best Practice)
-Don't use raw `get/set` for everything. Use Classes.
+### Client & Connection
+- `com.mongodb.reactivestreams.client.MongoClient`: The root connection object to the database server.
+- `com.mongodb.reactivestreams.client.MongoDatabase`: Represents a specific database (e.g., "minecraft").
+- `com.mongodb.reactivestreams.client.MongoCollection`: Represents a collection (table) inside the DB.
+- `com.mongodb.ConnectionString`: Parses the URI (e.g., `mongodb://user:pass@host...`).
 
-```java
-@Config(id = "economy_settings") 
-public class EconomyConfig {
-    public double startingBalance = 100.0;
-    public boolean enabled = true;
-}
+### Models & Logic
+- `org.bson.Document`: The standard representation of a BSON document (JSON-like) in Java.
+- `com.mongodb.client.model.Filters`: Helper to create queries (e.g., `Filters.eq("playerId", uuid)`).
+- `com.mongodb.client.model.ReplaceOptions`: Settings for saving data (e.g., "Upsert": create if not exists).
+- `com.mongodb.client.model.changestream.*` (`ChangeStreamDocument`, `FullDocument`): Classes for handling **Change Streams**, which allow the plugin to react instantly to database updates made elsewhere.
 
-// Load
-manager.getObject(EconomyConfig.class).thenAccept(config -> ...);
+### 🌊 Reactive Streams (`org.reactivestreams`)
+**Purpose:** Standard interface for asynchronous stream processing with non-blocking back pressure.
+- `Publisher`: Emits data (e.g., a query result).
+- `Subscriber`: Listens for data.
+- `Subscription`: Manages the link between Publisher and Subscriber.
 
-// Save
-manager.setObject(new EconomyConfig());
-```
+---
 
-### 5. Common Methods Reference
-- `getMessageAsync(coll, lang, key)`: Get unformatted message.
-- `getMessageAsync(coll, lang, key, k1, v1...)`: Get + Format placeholders.
-- `set(key, value)`: Save generic config value.
-- `get(key, Class<T>)`: Get generic config value.
-- `reloadAll()`: Forces refresh from MongoDB (useful for manual edits).
-```
+## ☕ 3. Caffeine Cache (`com.github.benmanes.caffeine`)
+
+**Purpose:** State-of-the-art caching library that performs significantly better than standard Maps.
+
+- `com.github.benmanes.caffeine.cache.Cache`: The main interface for the cache.
+- `com.github.benmanes.caffeine.cache.Caffeine`: The builder used to configure the cache (timings, size limits).
+- **Usage:** Used in `CacheManager` to store messages. Configured with `expireAfterAccess` to automatically remove unused messages after a set time.
+
+---
+
+## 📜 4. Jackson JSON (`com.fasterxml.jackson`)
+
+**Purpose:** Advanced Object Mapping. Converting Java Objects (POJOs) to Database Documents and vice-versa.
+
+- `ObjectMapper`: The heavy-lifter that performs the conversion.
+- `JsonAutoDetect`, `PropertyAccessor`: Configures Jackson to see private fields in your config classes.
+- `DeserializationFeature`: Configures tolerance (e.g., don't crash if a field is missing).
+- `JavaTimeModule`: Helper to serialize Java `Date` and `Instant` objects correctly.
+
+---
+
+## 🎨 5. Adventure API (`net.kyori.adventure`)
+
+**Purpose:** The modern standard for Minecraft text, colors, and translations.
+
+- `net.kyori.adventure.text.Component`: Represents a text message with style (supersedes simple Strings).
+- `net.kyori.adventure.text.minimessage.MiniMessage`: Parser for the `<red>Hello <gradient:red:blue>World` format.
+- `net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer`: Converts modern components back to `&aOld &cColors` for legacy support.
+- `net.kyori.adventure.text.format.NamedTextColor`: Standard colors (Red, Blue, etc.).
+
+---
+
+## 🎮 6. Platform Specific Imports
+
+### A. Spigot / Paper (`org.bukkit.*`)
+Used only in the **configs-paper** module.
+- `org.bukkit.plugin.java.JavaPlugin`: The main class for any Spigot plugin.
+- `org.bukkit.event.Listener`, `@EventHandler`: Handling server events (Join, Quit).
+- `org.bukkit.command.*`: Handling commands (`/mongo reload`).
+- `org.bukkit.entity.Player`: Represents a connected player.
+- `org.bukkit.inventory.*`: GUI creation (Inventories, ItemStacks).
+
+### B. Velocity (`com.velocitypowered.*`)
+Used only in the **configs-velocity** module.
+- `com.velocitypowered.api.plugin.Plugin`: Velocity plugin entry point.
+- `com.velocitypowered.api.proxy.ProxyServer`: Interaction with the proxy.
+- `com.velocitypowered.api.event.Subscribe`: Listener for Velocity events.
+- `com.google.inject.Inject`: **Guice Injection**. Velocity uses dependency injection to give you instances of the Server, Logger, etc.
+
+---
+
+## 🧩 7. Internal Project Modules (`xyz.wtje.mongoconfigs`)
+
+How the project parts talk to each other.
+
+- **`xyz.wtje.mongoconfigs.api.*`**: The public interfaces.
+    - `MongoConfigManager`: Singleton access point.
+    - `ConfigManager`: Interface for getting/setting data.
+    - `annotations.*`: `@Config`, `@Collection` definition.
+- **`xyz.wtje.mongoconfigs.core.*`**: The brains of the operation.
+    - `mongo.MongoManager`: Manages the DB connection.
+    - `impl.ConfigManagerImpl`: The code that actually runs the logic defined in the API.
+    - `util.*`: Helpers for Color and Async logic.
+- **`xyz.wtje.mongoconfigs.paper/velocity`**: Platform wrappers.
+    - Connect the specific platform (Paper/Velocity) to the Core.
+
+---
+
+## 🧪 8. Testing (`org.junit`, `org.mockito`)
+Used only in `src/test`.
+- `org.junit.jupiter.api.Test`: Marks a method as a test.
+- `org.junit.jupiter.api.Assertions.*`: Checks if results are correct (`assertEquals`, `assertTrue`).
+- `org.mockito.*`: Creates "fake" objects (Mocking) to simulate a database or player connecting without actually starting a server.
+
+---
+
+*Generated by GitHub Copilot on request.*

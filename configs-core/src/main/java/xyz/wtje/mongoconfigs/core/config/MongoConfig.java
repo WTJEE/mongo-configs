@@ -22,6 +22,10 @@ public class MongoConfig {
     private boolean enableChangeStreams = true;
     private int changeStreamResumeRetries = 5;
     private long changeStreamResumeDelayMs = 1000;
+    private long changeStreamPollingIntervalMs = 3000;
+    private int changeStreamMaxReconnectAttempts = 3;
+    private int changeStreamBaseDelayMs = 1000;
+    private long shutdownTimeoutMs = 5000;
 
     private int ioThreads = Math.max(2, Runtime.getRuntime().availableProcessors() / 2);
     private int workerThreads = Runtime.getRuntime().availableProcessors();
@@ -90,6 +94,18 @@ public class MongoConfig {
 
     public long getChangeStreamResumeDelayMs() { return changeStreamResumeDelayMs; }
     public void setChangeStreamResumeDelayMs(long changeStreamResumeDelayMs) { this.changeStreamResumeDelayMs = changeStreamResumeDelayMs; }
+
+    public long getChangeStreamPollingIntervalMs() { return changeStreamPollingIntervalMs; }
+    public void setChangeStreamPollingIntervalMs(long changeStreamPollingIntervalMs) { this.changeStreamPollingIntervalMs = changeStreamPollingIntervalMs; }
+
+    public int getChangeStreamMaxReconnectAttempts() { return changeStreamMaxReconnectAttempts; }
+    public void setChangeStreamMaxReconnectAttempts(int changeStreamMaxReconnectAttempts) { this.changeStreamMaxReconnectAttempts = changeStreamMaxReconnectAttempts; }
+
+    public int getChangeStreamBaseDelayMs() { return changeStreamBaseDelayMs; }
+    public void setChangeStreamBaseDelayMs(int changeStreamBaseDelayMs) { this.changeStreamBaseDelayMs = changeStreamBaseDelayMs; }
+
+    public long getShutdownTimeoutMs() { return shutdownTimeoutMs; }
+    public void setShutdownTimeoutMs(long shutdownTimeoutMs) { this.shutdownTimeoutMs = shutdownTimeoutMs; }
 
     public int getIoThreads() { return ioThreads; }
     public void setIoThreads(int ioThreads) { this.ioThreads = ioThreads; }

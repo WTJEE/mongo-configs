@@ -11,8 +11,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArraySet;
-
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,9 +30,22 @@ public class CacheManager {
     private final Cache<String, Object> configCache;
     private final AtomicLong configRequests;
     private final AtomicLong messageRequests;
+    
+    // Lock for atomic cache refresh operations - prevents reads during reload
+    private final ReadWriteLock messageRefreshLock = new ReentrantReadWriteLock();
+    private final ReadWriteLock configRefreshLock = new ReentrantReadWriteLock();
+    
+    // Virtual thread executor for non-blocking async operations (Java 21+)
+    private final ExecutorService virtualExecutor;
+    
+    // Shutdown flag to prevent operations after close
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     // Listeners for invalidation events
     private final Set<Consumer<String>> invalidationListeners = new CopyOnWriteArraySet<>();
+    
+    // Listeners for refresh completion events
+    private final Set<Consumer<String>> refreshCompleteListeners = new CopyOnWriteArraySet<>();
 
     public CacheManager() {
         this(0, null, true);
@@ -40,6 +59,11 @@ public class CacheManager {
 
         this.configRequests = new AtomicLong(0);
         this.messageRequests = new AtomicLong(0);
+        
+        // Create virtual thread executor for non-blocking operations (Java 21+)
+        // Each task runs on its own lightweight virtual thread - zero main thread blocking!
+        // Virtual threads are extremely lightweight (~1KB vs ~1MB for platform threads)
+        this.virtualExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
         Caffeine<Object, Object> msgBuilder = Caffeine.newBuilder();
         Caffeine<Object, Object> cfgBuilder = Caffeine.newBuilder();
@@ -72,24 +96,46 @@ public class CacheManager {
     public <T> T getMessage(String collection, String language, String key, T defaultValue) {
         messageRequests.incrementAndGet();
         String cacheKey = collection + ":" + language + ":" + key;
-        Object cached = messageCache.getIfPresent(cacheKey);
-        return cached != null ? (T) cached : defaultValue;
+        
+        // Use read lock to ensure consistent reads during cache refresh
+        messageRefreshLock.readLock().lock();
+        try {
+            Object cached = messageCache.getIfPresent(cacheKey);
+            return cached != null ? (T) cached : defaultValue;
+        } finally {
+            messageRefreshLock.readLock().unlock();
+        }
     }
 
     public String getMessage(String collection, String language, String key) {
         messageRequests.incrementAndGet();
         String cacheKey = collection + ":" + language + ":" + key;
-        Object cached = messageCache.getIfPresent(cacheKey);
-        return cached != null ? cached.toString() : null;
+        
+        // Use read lock to ensure consistent reads during cache refresh
+        messageRefreshLock.readLock().lock();
+        try {
+            Object cached = messageCache.getIfPresent(cacheKey);
+            return cached != null ? cached.toString() : null;
+        } finally {
+            messageRefreshLock.readLock().unlock();
+        }
     }
 
+    /**
+     * Gets a message asynchronously using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key) {
-        return CompletableFuture.completedFuture(getMessage(collection, language, key));
+        return CompletableFuture.supplyAsync(() -> getMessage(collection, language, key), virtualExecutor);
     }
 
+    /**
+     * Gets a message asynchronously with a default value using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
     public CompletableFuture<String> getMessageAsync(String collection, String language, String key,
             String defaultValue) {
-        return CompletableFuture.completedFuture(getMessage(collection, language, key, defaultValue));
+        return CompletableFuture.supplyAsync(() -> getMessage(collection, language, key, defaultValue), virtualExecutor);
     }
 
     public void putMessage(String collection, String language, String key, Object value) {
@@ -123,16 +169,64 @@ public class CacheManager {
             return;
         }
         String prefix = collection + ":" + language + ":";
-        // Caffeine doesn't support prefix removal efficiently, so we must iterate keys
-        // provided keys
-        // However, invalidation by prefix implies we know what is in cache or we
-        // iterate.
-        // For correctness we should probably iterate.
-        // Or if 'replace' implies clearing old ones first? yes.
-        invalidateMessagesWithPrefix(prefix);
-
-        if (data != null && !data.isEmpty()) {
-            putMessageData(collection, language, data);
+        
+        // Use write lock for atomic replacement - prevents stale reads during reload
+        messageRefreshLock.writeLock().lock();
+        try {
+            // First add new data, THEN invalidate old entries not in new data
+            // This ensures no window where data is missing
+            if (data != null && !data.isEmpty()) {
+                putMessageData(collection, language, data);
+            }
+            
+            // Now clean up any old entries that are no longer in the new data
+            Set<String> newKeys = data != null ? flattenKeys(data, prefix) : Set.of();
+            for (String key : messageCache.asMap().keySet()) {
+                if (key.startsWith(prefix) && !newKeys.contains(key)) {
+                    messageCache.invalidate(key);
+                }
+            }
+            
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine("Atomically replaced language data for " + collection + ":" + language + 
+                           " (keys=" + (data != null ? data.size() : 0) + ")");
+            }
+        } finally {
+            messageRefreshLock.writeLock().unlock();
+        }
+        
+        // Notify listeners after lock is released
+        notifyRefreshComplete(collection + ":" + language);
+    }
+    
+    /**
+     * Atomically replaces language data with new data using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
+    public CompletableFuture<Void> replaceLanguageDataAsync(String collection, String language, Map<String, Object> data) {
+        return CompletableFuture.runAsync(() -> replaceLanguageData(collection, language, data), virtualExecutor);
+    }
+    
+    private Set<String> flattenKeys(Map<String, Object> data, String prefix) {
+        Set<String> keys = new java.util.HashSet<>();
+        flattenKeysRecursive(data, prefix, keys);
+        return keys;
+    }
+    
+    private void flattenKeysRecursive(Map<String, Object> data, String prefix, Set<String> result) {
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || key.isEmpty()) continue;
+            
+            String fullKey = prefix + key;
+            
+            if (entry.getValue() instanceof Map<?, ?> nested) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> nestedMap = (Map<String, Object>) nested;
+                flattenKeysRecursive(nestedMap, fullKey + ".", result);
+            } else {
+                result.add(fullKey);
+            }
         }
     }
 
@@ -213,10 +307,44 @@ public class CacheManager {
         if (collection == null || collection.isEmpty()) {
             return;
         }
-        invalidateConfigWithPrefix(collection + ":");
-        if (data != null && !data.isEmpty()) {
-            putConfigData(collection, data);
+        String prefix = collection + ":";
+        
+        // Use write lock for atomic replacement - prevents stale reads during reload
+        configRefreshLock.writeLock().lock();
+        try {
+            // First add new data, THEN invalidate old entries not in new data
+            if (data != null && !data.isEmpty()) {
+                putConfigData(collection, data);
+            }
+            
+            // Now clean up any old entries that are no longer in the new data
+            Set<String> newKeys = data != null ? 
+                data.keySet().stream().map(k -> prefix + k).collect(java.util.stream.Collectors.toSet()) : 
+                Set.of();
+            for (String key : configCache.asMap().keySet()) {
+                if (key.startsWith(prefix) && !newKeys.contains(key)) {
+                    configCache.invalidate(key);
+                }
+            }
+            
+            if (LOGGER.isLoggable(Level.FINE)) {
+                LOGGER.fine("Atomically replaced config data for " + collection + 
+                           " (keys=" + (data != null ? data.size() : 0) + ")");
+            }
+        } finally {
+            configRefreshLock.writeLock().unlock();
         }
+        
+        // Notify listeners after lock is released
+        notifyRefreshComplete(collection + ":config");
+    }
+    
+    /**
+     * Atomically replaces config data using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
+    public CompletableFuture<Void> replaceConfigDataAsync(String collection, Map<String, Object> data) {
+        return CompletableFuture.runAsync(() -> replaceConfigData(collection, data), virtualExecutor);
     }
 
     private void invalidateConfigWithPrefix(String prefix) {
@@ -251,17 +379,32 @@ public class CacheManager {
     @SuppressWarnings("unchecked")
     public <T> T get(String key, T defaultValue) {
         configRequests.incrementAndGet();
-        Object cached = configCache.getIfPresent(key);
-        return cached != null ? (T) cached : defaultValue;
+        
+        // Use read lock to ensure consistent reads during cache refresh
+        configRefreshLock.readLock().lock();
+        try {
+            Object cached = configCache.getIfPresent(key);
+            return cached != null ? (T) cached : defaultValue;
+        } finally {
+            configRefreshLock.readLock().unlock();
+        }
     }
 
+    /**
+     * Gets a config value asynchronously using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
     public CompletableFuture<Object> getAsync(String key) {
-        return CompletableFuture.completedFuture(get(key, null));
+        return CompletableFuture.supplyAsync(() -> get(key, null), virtualExecutor);
     }
 
+    /**
+     * Gets a config value asynchronously with a default value using virtual threads.
+     * This method is completely non-blocking and safe for main thread usage.
+     */
     @SuppressWarnings("unchecked")
     public <T> CompletableFuture<T> getAsync(String key, T defaultValue) {
-        return CompletableFuture.completedFuture(get(key, defaultValue));
+        return CompletableFuture.supplyAsync(() -> get(key, defaultValue), virtualExecutor);
     }
 
     public void put(String key, Object value) {
@@ -297,7 +440,7 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> invalidateCollectionAsync(String collection) {
-        return CompletableFuture.runAsync(() -> invalidateCollection(collection));
+        return CompletableFuture.runAsync(() -> invalidateCollection(collection), virtualExecutor);
     }
 
     public void invalidateAll() {
@@ -314,8 +457,7 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> invalidateAllAsync() {
-        invalidateAll();
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture.runAsync(this::invalidateAll, virtualExecutor);
     }
 
     public void invalidateMessages(String collection) {
@@ -341,6 +483,31 @@ public class CacheManager {
 
     public void removeInvalidationListener(Consumer<String> listener) {
         invalidationListeners.remove(listener);
+    }
+    
+    /**
+     * Adds a listener that is notified when a cache refresh completes.
+     * This is useful for triggering actions after new data is loaded.
+     */
+    public void addRefreshCompleteListener(Consumer<String> listener) {
+        refreshCompleteListeners.add(listener);
+    }
+    
+    /**
+     * Removes a refresh complete listener.
+     */
+    public void removeRefreshCompleteListener(Consumer<String> listener) {
+        refreshCompleteListeners.remove(listener);
+    }
+    
+    private void notifyRefreshComplete(String key) {
+        for (Consumer<String> listener : refreshCompleteListeners) {
+            try {
+                listener.accept(key);
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error in refresh complete listener", e);
+            }
+        }
     }
 
     public void refresh(String collection) {
@@ -381,7 +548,65 @@ public class CacheManager {
     }
 
     public CompletableFuture<Void> cleanUpAsync() {
+        return CompletableFuture.runAsync(this::cleanUp, virtualExecutor);
+    }
+    
+    /**
+     * Returns the virtual thread executor for non-blocking async operations.
+     * Uses Java 21+ virtual threads for maximum concurrency without thread overhead.
+     */
+    public Executor getVirtualExecutor() {
+        return virtualExecutor;
+    }
+    
+    /**
+     * Returns whether this cache manager has been closed.
+     */
+    public boolean isClosed() {
+        return closed.get();
+    }
+    
+    /**
+     * Closes the cache manager and releases all resources.
+     * Shuts down the virtual thread executor and clears all caches.
+     * 
+     * @param timeoutMs Maximum time to wait for executor shutdown in milliseconds
+     */
+    public void close(long timeoutMs) {
+        if (!closed.compareAndSet(false, true)) {
+            return; // Already closed
+        }
+        
+        // Shutdown virtual executor
+        if (virtualExecutor != null && !virtualExecutor.isShutdown()) {
+            virtualExecutor.shutdown();
+            try {
+                if (!virtualExecutor.awaitTermination(timeoutMs, TimeUnit.MILLISECONDS)) {
+                    LOGGER.fine("Virtual executor did not terminate in time, forcing shutdown");
+                    virtualExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                virtualExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        
+        // Clear caches
         cleanUp();
-        return CompletableFuture.completedFuture(null);
+        messageCache.invalidateAll();
+        configCache.invalidateAll();
+        
+        // Clear listeners
+        invalidationListeners.clear();
+        refreshCompleteListeners.clear();
+        
+        LOGGER.info("CacheManager closed");
+    }
+    
+    /**
+     * Closes the cache manager with a default timeout of 5 seconds.
+     */
+    public void close() {
+        close(5000);
     }
 }

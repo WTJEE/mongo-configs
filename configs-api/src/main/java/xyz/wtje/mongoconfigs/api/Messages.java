@@ -5,6 +5,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
+/**
+ * Interface for retrieving localized messages.
+ * All async methods use virtual threads (Java 21+) and are completely non-blocking,
+ * making them safe to call from any thread including the main server thread.
+ */
 public interface Messages {
     CompletableFuture<String> get(String path);
     CompletableFuture<String> get(String path, String language);
@@ -19,6 +24,55 @@ public interface Messages {
     
     CompletableFuture<List<String>> getList(String path);
     CompletableFuture<List<String>> getList(String path, String language);
+    
+    /**
+     * Gets a message and passes it to the consumer.
+     * Non-blocking and safe for main thread usage.
+     * 
+     * @param path The message path
+     * @param consumer The consumer to receive the message
+     */
+    default void use(String path, Consumer<String> consumer) {
+        get(path).thenAccept(consumer);
+    }
+    
+    /**
+     * Gets a message for a specific language and passes it to the consumer.
+     * Non-blocking and safe for main thread usage.
+     * 
+     * @param path The message path
+     * @param language The language code
+     * @param consumer The consumer to receive the message
+     */
+    default void use(String path, String language, Consumer<String> consumer) {
+        get(path, language).thenAccept(consumer);
+    }
+    
+    /**
+     * Gets a formatted message and passes it to the consumer.
+     * Non-blocking and safe for main thread usage.
+     * 
+     * @param path The message path
+     * @param consumer The consumer to receive the message
+     * @param placeholders The placeholder values
+     */
+    default void useFormat(String path, Consumer<String> consumer, Object... placeholders) {
+        get(path, placeholders).thenAccept(consumer);
+    }
+    
+    /**
+     * Gets a formatted message for a specific language and passes it to the consumer.
+     * Non-blocking and safe for main thread usage.
+     * 
+     * @param path The message path
+     * @param language The language code
+     * @param consumer The consumer to receive the message
+     * @param placeholders The placeholder values
+     */
+    default void useFormat(String path, String language, Consumer<String> consumer, Object... placeholders) {
+        get(path, language, placeholders).thenAccept(consumer);
+    }
+    
     default View view() {
         return new View(this, null);
     }

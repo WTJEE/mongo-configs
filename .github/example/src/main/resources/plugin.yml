@@ -1,9 +1,0 @@
-﻿name: HelpGuiExample
-version: 1.0.0
-main: xyz.wtje.example.help.HelpExamplePlugin
-api-version: "1.20"
-depend: [MongoConfigs]
-commands:
-  helpui:
-    description: Opens the MongoConfigs powered help GUI
-    usage: /helpui

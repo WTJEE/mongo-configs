@@ -1,10 +1,12 @@
 jdk:
-  - openjdk17
+  - openjdk21
 before_install:
-  - sdk install java 17.0.3-tem
-  - sdk use java 17.0.3-tem
+  # Install Java 21 with SDKMAN for Virtual Threads support
+  - sdk install java 21.0.2-tem
+  - sdk use java 21.0.2-tem
   - sdk install maven
+  - java -version
   - mvn -v
 install:
-  # Build API, CORE and Paper modules
+  # Build API, CORE and Paper modules with Java 21+
   - mvn clean install -Dmaven.javadoc.skip=true -DskipTests -pl configs-api,configs-core,configs-paper -am

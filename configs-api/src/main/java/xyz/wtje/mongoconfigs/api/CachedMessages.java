@@ -9,59 +9,144 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 final class CachedMessages implements Messages {
+    private final String id;
     private final String defaultLanguage;
     private final Set<String> supportedLanguages;
     private final Map<String, Map<String, MessageValue>> values = new ConcurrentHashMap<>();
     private volatile boolean needsRefresh = false;
+    
+    // Lock for atomic cache operations - prevents stale reads during reload
+    private final ReadWriteLock cacheLock = new ReentrantReadWriteLock();
+    
+    // Virtual thread executor for non-blocking operations (Java 21+)
+    // Each task runs on its own lightweight virtual thread - zero main thread blocking!
+    private static final Executor ASYNC_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     CachedMessages(String id, String defaultLanguage, String[] supportedLanguages) {
+        this.id = id;
         this.defaultLanguage = defaultLanguage;
         this.supportedLanguages = new LinkedHashSet<>(Arrays.asList(supportedLanguages));
         this.supportedLanguages.add(defaultLanguage);
     }
+    
+    /**
+     * Returns the collection ID for this messages instance.
+     */
+    String getId() {
+        return id;
+    }
 
+    /**
+     * Atomically replaces default language values.
+     * Uses write lock to ensure no stale reads during update.
+     */
     void replaceDefaults(Map<String, Object> rawValues) {
-        Map<String, MessageValue> normalized = normalize(rawValues);
-        values.put(defaultLanguage, new ConcurrentHashMap<>(normalized));
-        for (String language : supportedLanguages) {
-            if (language.equals(defaultLanguage)) {
-                continue;
+        cacheLock.writeLock().lock();
+        try {
+            Map<String, MessageValue> normalized = normalize(rawValues);
+            values.put(defaultLanguage, new ConcurrentHashMap<>(normalized));
+            for (String language : supportedLanguages) {
+                if (language.equals(defaultLanguage)) {
+                    continue;
+                }
+                values.compute(language, (lang, existing) -> {
+                    Map<String, MessageValue> next = existing != null ? new ConcurrentHashMap<>(existing) : new ConcurrentHashMap<>();
+                    normalized.forEach(next::putIfAbsent);
+                    return next;
+                });
             }
+            needsRefresh = false;
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+    }
+    
+    /**
+     * Atomically replaces default values using virtual threads.
+     * Non-blocking and safe for main thread usage.
+     */
+    CompletableFuture<Void> replaceDefaultsAsync(Map<String, Object> rawValues) {
+        return CompletableFuture.runAsync(() -> replaceDefaults(rawValues), ASYNC_EXECUTOR);
+    }
+
+    /**
+     * Atomically merges language-specific values.
+     * Uses write lock to ensure no stale reads during update.
+     */
+    void mergeLanguage(String language, Map<String, Object> rawValues) {
+        cacheLock.writeLock().lock();
+        try {
+            Map<String, MessageValue> normalized = normalize(rawValues);
             values.compute(language, (lang, existing) -> {
                 Map<String, MessageValue> next = existing != null ? new ConcurrentHashMap<>(existing) : new ConcurrentHashMap<>();
-                normalized.forEach(next::putIfAbsent);
+                next.putAll(normalized);
                 return next;
             });
+            needsRefresh = false;
+        } finally {
+            cacheLock.writeLock().unlock();
         }
-        needsRefresh = false;
     }
-
-    void mergeLanguage(String language, Map<String, Object> rawValues) {
-        Map<String, MessageValue> normalized = normalize(rawValues);
-        values.compute(language, (lang, existing) -> {
-            Map<String, MessageValue> next = existing != null ? new ConcurrentHashMap<>(existing) : new ConcurrentHashMap<>();
-            next.putAll(normalized);
-            return next;
-        });
-        needsRefresh = false;
-    }
-
     
+    /**
+     * Atomically merges language values using virtual threads.
+     * Non-blocking and safe for main thread usage.
+     */
+    CompletableFuture<Void> mergeLanguageAsync(String language, Map<String, Object> rawValues) {
+        return CompletableFuture.runAsync(() -> mergeLanguage(language, rawValues), ASYNC_EXECUTOR);
+    }
+
+    /**
+     * Invalidates all cached values atomically.
+     * Uses write lock to ensure no stale reads during invalidation.
+     */
     void invalidate() {
-        values.clear();
-        needsRefresh = true;
+        cacheLock.writeLock().lock();
+        try {
+            values.clear();
+            needsRefresh = true;
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
+    }
+    
+    /**
+     * Invalidates cached values for a specific language.
+     */
+    void invalidateLanguage(String language) {
+        cacheLock.writeLock().lock();
+        try {
+            values.remove(language);
+            needsRefresh = true;
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
     }
 
     
     boolean needsRefresh() {
-        return needsRefresh || values.isEmpty();
+        cacheLock.readLock().lock();
+        try {
+            return needsRefresh || values.isEmpty();
+        } finally {
+            cacheLock.readLock().unlock();
+        }
     }
 
     
     void markForRefresh() {
-        needsRefresh = true;
+        cacheLock.writeLock().lock();
+        try {
+            needsRefresh = true;
+        } finally {
+            cacheLock.writeLock().unlock();
+        }
     }
 
     private Map<String, MessageValue> normalize(Map<String, Object> raw) {
@@ -77,23 +162,28 @@ final class CachedMessages implements Messages {
     }
 
     private MessageValue resolve(String language, String path) {
-        if (language != null) {
-            Map<String, MessageValue> langValues = values.get(language);
-            if (langValues != null) {
-                MessageValue value = langValues.get(path);
+        cacheLock.readLock().lock();
+        try {
+            if (language != null) {
+                Map<String, MessageValue> langValues = values.get(language);
+                if (langValues != null) {
+                    MessageValue value = langValues.get(path);
+                    if (value != null) {
+                        return value;
+                    }
+                }
+            }
+            Map<String, MessageValue> defaults = values.get(defaultLanguage);
+            if (defaults != null) {
+                MessageValue value = defaults.get(path);
                 if (value != null) {
                     return value;
                 }
             }
+            return null;
+        } finally {
+            cacheLock.readLock().unlock();
         }
-        Map<String, MessageValue> defaults = values.get(defaultLanguage);
-        if (defaults != null) {
-            MessageValue value = defaults.get(path);
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
     }
 
     private String missing(String path, String language) {
@@ -108,9 +198,11 @@ final class CachedMessages implements Messages {
 
     @Override
     public CompletableFuture<String> get(String path, String language) {
-        MessageValue value = resolve(language, path);
-        String result = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
-        return CompletableFuture.completedFuture(result);
+        // Use virtual threads for non-blocking async resolution
+        return CompletableFuture.supplyAsync(() -> {
+            MessageValue value = resolve(language, path);
+            return value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
+        }, ASYNC_EXECUTOR);
     }
 
     @Override
@@ -120,9 +212,12 @@ final class CachedMessages implements Messages {
 
     @Override
     public CompletableFuture<String> get(String path, String language, Object... placeholders) {
-        MessageValue value = resolve(language, path);
-        String template = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
-        return CompletableFuture.completedFuture(applyPlaceholders(template, placeholders));
+        // Use virtual threads for non-blocking async resolution
+        return CompletableFuture.supplyAsync(() -> {
+            MessageValue value = resolve(language, path);
+            String template = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
+            return applyPlaceholders(template, placeholders);
+        }, ASYNC_EXECUTOR);
     }
 
     @Override
@@ -132,16 +227,21 @@ final class CachedMessages implements Messages {
 
     @Override
     public CompletableFuture<List<String>> getList(String path, String language) {
-        MessageValue value = resolve(language, path);
-        List<String> list = value != null ? value.asList(missing(path, language)) : List.of(missing(path, language));
-        return CompletableFuture.completedFuture(list);
+        // Use virtual threads for non-blocking async resolution
+        return CompletableFuture.supplyAsync(() -> {
+            MessageValue value = resolve(language, path);
+            return value != null ? value.asList(missing(path, language)) : List.of(missing(path, language));
+        }, ASYNC_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<String> get(String path, String language, Map<String, Object> placeholders) {
-        MessageValue value = resolve(language, path);
-        String template = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
-        return CompletableFuture.completedFuture(applyMapPlaceholders(template, placeholders));
+        // Use virtual threads for non-blocking async resolution
+        return CompletableFuture.supplyAsync(() -> {
+            MessageValue value = resolve(language, path);
+            String template = value != null ? value.asString(path, language, defaultLanguage) : missing(path, language);
+            return applyMapPlaceholders(template, placeholders);
+        }, ASYNC_EXECUTOR);
     }
 
     @Override

@@ -1,9 +1,12 @@
 # Messages API
 
+> **🤖 For AI Assistants**: This page explains the concepts. For complete coding patterns and rules, see **[AGENTS.md](../../AGENTS.md)**.
+
 ## Overview
+
 The Messages API provides a powerful, async-first system for managing localized messages from MongoDB. All operations are fully asynchronous with instant cache updates and real-time synchronization via Change Streams.
 
-This page shows how to model your messages as plain Java objects (POJOs) so they can be synchronized with MongoConfigs. Following the pattern gives you type-safe defaults, lets writers work directly in MongoDB, and keeps lookups non-blocking. If you are unfamiliar with typed configs, skim [Creating Configs](Creating-Configs) first.
+**⚠️ CRITICAL**: All operations are **non-blocking** using Java 21+ Virtual Threads. Never use `.join()` or `.get()` on the main thread!
 
 ## Define the POJO
 
@@ -85,7 +88,7 @@ public class PluginMessages {
 When you depend on the Paper plugin module, the `ConfigManager` is already configured from `config.yml`. Read it from `MongoConfigsAPI` and register your defaults.
 
 ```java
-public final class HelpPlugin implements JavaPlugin {
+public final class HelpPlugin extends JavaPlugin {
     private ConfigManager configManager;
     private Messages messages;
 
@@ -109,33 +112,92 @@ public final class HelpPlugin implements JavaPlugin {
 
 Embedding the library outside Paper works the same way: instantiate `ConfigManagerImpl` with your `MongoConfig`, call `getOrCreateFromObject`, and handle the `CompletableFuture` asynchronously just like the server modules do.
 
-## Reading values in handlers
+## Reading values (NON-BLOCKING!)
+
+### Method 1: Consumer-based (RECOMMENDED)
+
+```java
+// Simple message
+messages.use("gui.title", title -> gui.setTitle(color(title)));
+
+// With language
+messages.use("general.playerJoined", "pl", msg -> player.sendMessage(msg));
+
+// With placeholders (varargs: key, value, key, value...)
+messages.useFormat("general.playerJoined", "pl", 
+    msg -> player.sendMessage(msg),
+    "player", player.getName(),
+    "online", Bukkit.getOnlinePlayers().size());
+
+// List of messages
+messages.useList("commands.helpList", list -> 
+    list.forEach(player::sendMessage));
+```
+
+### Method 2: CompletableFuture
 
 ```java
 messages.get("gui.title").thenAccept(title -> gui.setTitle(color(title)));
 messages.getList("commands.helpList").thenAccept(list -> list.forEach(player::sendMessage));
+
+// With language
+messages.get("general.playerJoined", "pl", "player", player.getName())
+    .thenAccept(msg -> player.sendMessage(msg));
+
+// With Map placeholders
+messages.get("general.playerJoined", "pl", 
+        Map.of("player", player.getName(), "server", "Lobby"))
+    .thenAccept(msg -> player.sendMessage(msg));
 ```
 
-You can also fetch language-specific variants:
+### Method 3: View API (for multiple messages)
 
 ```java
-messages.get("general.playerJoined", "pl", "player", player.getName());
+// Create view for a specific language
+Messages.View view = messages.view(playerLanguage);
+
+// Use multiple times - reuses the language
+view.use("motd.line1", player::sendMessage);
+view.use("motd.line2", player::sendMessage);
+view.use("motd.line3", player::sendMessage);
+
+// Async futures
+view.future("welcome.message").thenAccept(msg -> player.sendMessage(msg));
+
+// Lists
+view.listFuture("rules").thenAccept(rules -> rules.forEach(player::sendMessage));
 ```
 
-Keep chaining futures when you interact with Bukkit/Velocity objects. If you really need synchronous access, create a `Messages.View` after the initial load. **All** `View` methods call `CompletableFuture#join`, so use them only after the data is cached and never on a busy game thread.
+**⚠️ WARNING**: `Messages.View#get/format/list` call `CompletableFuture#join()` internally. Only use them from background threads or after you know the data is cached. **Never use on the main thread during player interactions!**
 
 ```java
-Messages.View msg = messages.view(playerLanguage);
-String joined = msg.format("general.playerJoined", player.getName());
-List<String> motd = msg.list("general.motd");
-player.sendMessage(color(joined));
-motd.forEach(line -> player.sendMessage(color(line)));
+// ❌ BAD - Can block main thread!
+String msg = messages.view("pl").get("welcome.message");
+
+// ✅ GOOD - Async callback
+messages.view("pl").use("welcome.message", msg -> player.sendMessage(msg));
 ```
 
-`Messages.View` simply blocks until the cached value is available, which is handy for background tasks or precomputed menus. Prefer the asynchronous variants in player-facing code so you never stall the main loop.
+## Full Example: PlayerJoinEvent
 
-
-If you must touch Bukkit API objects, use `Bukkit.getScheduler().runTask` inside the continuation to hop back to the main thread.
+```java
+@EventHandler
+public void onJoin(PlayerJoinEvent event) {
+    Player player = event.getPlayer();
+    
+    // Get language and send messages - all async!
+    langManager.usePlayerLanguage(player.getUniqueId(), lang -> {
+        Messages.View view = messages.view(lang);
+        
+        view.use("join.welcome", msg -> player.sendMessage(msg));
+        view.use("join.motd", msg -> player.sendMessage(msg));
+        
+        // List of rules
+        view.useList("rules", rules -> 
+            rules.forEach(player::sendMessage));
+    });
+}
+```
 
 ## Fetching Typed Language Classes
 
@@ -159,8 +221,13 @@ configManager.getLanguageClasses(PluginMessages.class)
 ```
 
 Both methods complete on worker threads and never touch the main server thread. They fall back to the default language when a translation is missing, so your command handlers always receive a fully populated object.
+
 ## Keeping it fast
 
+- **Use `messages.use()`** instead of `messages.get().thenAccept()` for cleaner code.
+- **Reuse Views** when sending multiple messages to the same player.
+- **Preload language** in PlayerJoinEvent to avoid lookups during gameplay.
+- **Use MessageService wrapper** - see [AGENTS.md](../../AGENTS.md) for the pattern.
 - Reuse the same `PluginMessages` instance when calling `getOrCreateFromObject` so schema discovery happens once.
 - Avoid `join()` or `get()` on the main thread; chain futures or schedule sync callbacks to the game thread.
 - Call `configManager.reloadCollection("help-messages")` or `reloadAll()` asynchronously if you need live updates; caches are warmed automatically.
@@ -168,5 +235,3 @@ Both methods complete on worker threads and never touch the main server thread. 
 - If you use custom colour processing, the Paper module wires in `BukkitColorProcessor`. Replace it once at startup via `configManager.setColorProcessor` if you need different formatting.
 
 Continue with [Best Practices](Best-Practices) for production advice or jump ahead to the [Example Plugin](Example-Plugin).
-
-
