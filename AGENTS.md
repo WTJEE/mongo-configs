@@ -1,13 +1,20 @@
 # MongoConfigs - AI Agent Documentation
 
 > **WERSJA**: 1.0.0  
-> **JAVA**: 21+ (wymagane dla Virtual Threads)  
+> **JAVA**: 21+ (WYMAGANE dla Virtual Threads - `Executors.newVirtualThreadPerTaskExecutor()`)  
 > **ARCHITEKTURA**: Modularna (API → Core → Platform)
 > **PRIORYTET**: ZERO BLOCKING MAIN THREAD
+> **JITPACK**: `com.github.aiikk:mongo-configs:1.0.0`
 
 ## 🎯 INSTRUKCJA DLA AI
 
 Jesteś AI agentem generującym kod dla MongoConfigs. **NIGDY nie generuj kodu blokującego main thread**. Zawsze używaj async/consumer pattern.
+
+### ⚠️ KRYTYCZNE ZASADY:
+1. **NIE UŻYWAJ `.join()`, `.get()` na CompletableFuture** - blokuje main thread!
+2. **ZAWSZE używaj `messages.use()` lub `.thenAccept()`** - non-blocking!
+3. **NIE cache'uj Messages.View** - twórz świeży dla każdej operacji
+4. **PRELOADUJ język w PlayerJoinEvent** - unikaj query przy każdej wiadomości
 
 ---
 
@@ -15,13 +22,13 @@ Jesteś AI agentem generującym kod dla MongoConfigs. **NIGDY nie generuj kodu b
 
 ```
 mongo-configs/
-├── configs-api/          # Publiczne API - interfejsy i annotacje
-├── configs-core/         # Implementacja core (cache, mongo, async)
-├── configs-paper/        # Implementacja Paper/Spigot
-└── configs-velocity/     # Implementacja Velocity Proxy
+├── configs-api/          # Publiczne API - interfejsy i annotacje (TYLKO TO IMPORTUJ!)
+├── configs-core/         # Implementacja core (cache, mongo, async) - NIE IMPORTUJ!
+├── configs-paper/        # Implementacja Paper/Spigot - runtime dependency
+└── configs-velocity/     # Implementacja Velocity Proxy - runtime dependency
 ```
 
-**Zasada**: Pluginy używają tylko `configs-api` jako `provided` dependency.
+**Zasada**: Pluginy używają TYLKO `configs-api` jako `provided` dependency. Core i Paper/Velocity są runtime!
 
 ---
 
@@ -31,9 +38,9 @@ mongo-configs/
 
 ```xml
 <dependencies>
-    <!-- MongoConfigs API - REQUIRED -->
+    <!-- MongoConfigs API - REQUIRED (provided = runtime przez MongoConfigs plugin) -->
     <dependency>
-        <groupId>xyz.wtje</groupId>
+        <groupId>com.github.aiikk</groupId>
         <artifactId>configs-api</artifactId>
         <version>1.0.0</version>
         <scope>provided</scope>
@@ -49,16 +56,23 @@ mongo-configs/
 </dependencies>
 
 <repositories>
-    <repository>
-        <id>papermc</id>
-        <url>https://repo.papermc.io/repository/maven-public/</url>
-    </repository>
+    <!-- JitPack dla MongoConfigs -->
     <repository>
         <id>jitpack.io</id>
         <url>https://jitpack.io</url>
     </repository>
+    <!-- PaperMC -->
+    <repository>
+        <id>papermc</id>
+        <url>https://repo.papermc.io/repository/maven-public/</url>
+    </repository>
 </repositories>
 ```
+
+### ⚠️ WYMAGANIA RUNTIME:
+- **Java 21+** - Virtual Threads nie działają na starszych wersjach!
+- **MongoConfigs plugin** zainstalowany na serwerze (dostarcza runtime implementację)
+- **MongoDB 4.0+** dla Change Streams (lub dowolna wersja bez real-time updates)
 
 ### Kluczowe biblioteki w projekcie:
 
@@ -224,6 +238,12 @@ public interface ConfigManager {
     // ========== MESSAGES ==========
     Messages findById(String id);
     
+    // ========== DIRECT MESSAGE ACCESS (dla zaawansowanych) ==========
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key);
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, String defaultValue);
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, Object... placeholders);
+    CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders);
+    
     // ========== JĘZYKI ==========
     CompletableFuture<Set<String>> getSupportedLanguages(String collection);
     <T> CompletableFuture<T> getLanguageClass(Class<T> type, String language);
@@ -233,8 +253,14 @@ public interface ConfigManager {
     <T> CompletableFuture<Void> createFromObject(T messageObject);
     <T> CompletableFuture<Messages> getOrCreateFromObject(T messageObject);
     
+    // ========== PLATFORM SPECIFIC (opcjonalne) ==========
+    default void setColorProcessor(Object colorProcessor);  // Paper: MiniMessage/Legacy
+    default Object getMongoManager();  // Dostęp do raw MongoDB
+    default Object getTypedConfigManager();  // Dostęp do typed configs
+    
     // ========== LISTENERS ==========
-    void addReloadListener(String collection, Consumer<String> listener);
+    default void addReloadListener(String collection, Consumer<String> listener);  // "*" = all
+    default void removeReloadListener(String collection, Consumer<String> listener);
 }
 ```
 
@@ -686,28 +712,73 @@ public class MyMessages {
 
 ---
 
-## 8. PLACEHOLDERS
+## 8. PLACEHOLDERS - ZOPTYMALIZOWANE
 
 ### Format: `{placeholder}`
 
+Placeholdery są przetwarzane przez `MessageFormatter` z optymalizacjami:
+- **Regex pre-compiled** - `Pattern.compile("\\{([^}]+)\\}")` 
+- **StringBuilder** zamiast String concatenation
+- **Named pairs** (key, value, key, value) lub **positional** (automatyczne mapowanie)
+
+### Sposoby użycia:
+
 ```java
-// W definicji
+// Definicja w POJO
 public String welcome = "Welcome {player}! You have {coins} coins.";
 
-// Użycie - varargs (key, value, key, value...)
+// ========== SPOSÓB 1: Named pairs (ZALECANE) ==========
+// Format: "key1", value1, "key2", value2, ...
 messages.get("welcome", "pl", "player", "Steve", "coins", 100)
-    .thenAccept(msg -> ...);  // "Welcome Steve! You have 100 coins."
+    .thenAccept(msg -> player.sendMessage(msg));
+// Wynik: "Welcome Steve! You have 100 coins."
 
-// Użycie - Map
+// ========== SPOSÓB 2: Map (dla wielu placeholderów) ==========
 messages.get("welcome", "pl", Map.of(
     "player", player.getName(),
-    "coins", player.getCoins()
-)).thenAccept(msg -> ...);
+    "coins", economyAPI.getBalance(player)
+)).thenAccept(msg -> player.sendMessage(msg));
 
-// Użycie w MessageService
-msg.send(player, "general.welcome", 
-    Map.of("player", player.getName()),
+// ========== SPOSÓB 3: Przez MessageService (NAJLEPSZE) ==========
+// Z Map:
+msg.send(player, "welcome", 
+    Map.of("player", player.getName(), "coins", 100),
     player::sendMessage);
+
+// Z varargs:
+msg.send(player, "welcome", player::sendMessage, 
+    "player", player.getName(), 
+    "coins", 100);
+
+// ========== SPOSÓB 4: Positional (automatyczne) ==========
+// Jeśli wiadomość ma {player} i {coins}, a podasz tylko wartości:
+messages.get("welcome", "pl", "Steve", 100)
+    .thenAccept(msg -> ...);
+// Automatycznie mapuje: player=Steve, coins=100 (w kolejności wystąpienia)
+```
+
+### ⚡ Optymalizacja placeholderów:
+
+```java
+// ❌ ŹLE - tworzenie Map przy każdym wywołaniu
+for (Player p : players) {
+    msg.send(p, "welcome", Map.of("player", p.getName()), p::sendMessage);
+}
+
+// ✅ DOBRZE - reuse wzorca, różne wartości
+for (Player p : players) {
+    msg.send(p, "welcome", p::sendMessage, "player", p.getName());
+}
+
+// ✅ NAJLEPIEJ - batch dla broadcast
+String[] names = players.stream().map(Player::getName).toArray(String[]::new);
+// Pobierz raz, formatuj dla każdego
+messages.get("welcome", "en").thenAccept(template -> {
+    for (int i = 0; i < players.size(); i++) {
+        String formatted = template.replace("{player}", names[i]);
+        players.get(i).sendMessage(formatted);
+    }
+});
 ```
 
 ---

@@ -121,6 +121,14 @@ public class ConfigManagerImpl implements ConfigManager {
         }
         changeStreamWatchers.clear();
         
+        // Give pending async operations time to complete before closing resources
+        // This prevents "server session pool is open" errors during shutdown
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
         // Close cache manager (shuts down virtual executor)
         try {
             cacheManager.close(config.getShutdownTimeoutMs());
@@ -1484,8 +1492,11 @@ public class ConfigManagerImpl implements ConfigManager {
                     return CompletableFuture.completedFuture(null);
                 })
                 .exceptionally(throwable -> {
-                    LOGGER.log(Level.WARNING, "Error loading message: " + collection + ":" + language + ":" + key,
-                            throwable);
+                    // Don't log errors during shutdown - they're expected
+                    if (!closed.get()) {
+                        LOGGER.log(Level.WARNING, "Error loading message: " + collection + ":" + language + ":" + key,
+                                throwable);
+                    }
                     return null;
                 })
                 .thenApply(value -> value != null ? value : key);
@@ -1521,8 +1532,11 @@ public class ConfigManagerImpl implements ConfigManager {
                     return CompletableFuture.completedFuture(null);
                 })
                 .exceptionally(throwable -> {
-                    LOGGER.log(Level.WARNING,
-                            "Error loading message list: " + collection + ":" + language + ":" + key, throwable);
+                    // Don't log errors during shutdown - they're expected
+                    if (!closed.get()) {
+                        LOGGER.log(Level.WARNING,
+                                "Error loading message list: " + collection + ":" + language + ":" + key, throwable);
+                    }
                     return null;
                 })
                 .thenApply(list -> (list != null && !list.isEmpty()) ? list : java.util.List.of(key));

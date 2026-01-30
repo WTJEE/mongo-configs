@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 public class MongoManager {
@@ -29,6 +30,9 @@ public class MongoManager {
     private final MongoDatabase database;
     private final MongoConfig config;
     private final ExecutorService executorService;
+    
+    // Shutdown flag to prevent operations after close
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public MongoManager(MongoConfig config) {
         this.config = config;
@@ -92,6 +96,9 @@ public class MongoManager {
     }
 
     public CompletableFuture<ConfigDocument> getConfig(String collection) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
         MongoCollection<Document> coll = database.getCollection(collection);
 
         // Najpierw szukaj dokumentu z _id: "config" (tradycyjny format)
@@ -119,6 +126,9 @@ public class MongoManager {
     }
 
     public CompletableFuture<Void> saveConfig(String collection, ConfigDocument config) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
         MongoCollection<Document> coll = database.getCollection(collection);
         config.updateTimestamp();
 
@@ -136,6 +146,9 @@ public class MongoManager {
     }
 
     public CompletableFuture<LanguageDocument> getLanguage(String collection, String language) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
         MongoCollection<Document> coll = database.getCollection(collection);
 
         return PublisherAdapter.toCompletableFuture(
@@ -144,6 +157,9 @@ public class MongoManager {
     }
 
     public CompletableFuture<Void> saveLanguage(String collection, LanguageDocument languageDoc) {
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(null);
+        }
         MongoCollection<Document> coll = database.getCollection(collection);
         languageDoc.updateTimestamp();
 
@@ -329,16 +345,27 @@ public class MongoManager {
         return config.getWorkerThreads();
     }
 
-    public void close() {
-        if (mongoClient != null) {
-            mongoClient.close();
-            LOGGER.info("MongoDB connection closed");
-        }
+    /**
+     * Returns whether this MongoManager has been closed.
+     */
+    public boolean isClosed() {
+        return closed.get();
+    }
 
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return; // Already closed
+        }
+        
+        LOGGER.info("MongoManager shutdown initiated...");
+
+        // First, shutdown executor to stop accepting new tasks
         if (executorService != null && !executorService.isShutdown()) {
             executorService.shutdown();
             try {
-                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                // Wait for pending tasks to complete
+                if (!executorService.awaitTermination(config.getShutdownTimeoutMs(), TimeUnit.MILLISECONDS)) {
+                    LOGGER.fine("Executor did not terminate in time, forcing shutdown");
                     executorService.shutdownNow();
                 }
                 LOGGER.info("MongoDB executor service closed");
@@ -347,6 +374,25 @@ public class MongoManager {
                 Thread.currentThread().interrupt();
             }
         }
+        
+        // Give pending MongoDB operations a moment to complete
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        // Close MongoDB client last
+        if (mongoClient != null) {
+            try {
+                mongoClient.close();
+                LOGGER.info("MongoDB connection closed");
+            } catch (Exception e) {
+                LOGGER.fine("Error closing MongoDB client: " + e.getMessage());
+            }
+        }
+        
+        LOGGER.info("MongoManager shutdown complete");
     }
 }
 

@@ -3,6 +3,7 @@ package xyz.wtje.mongoconfigs.api;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface ConfigManager {
@@ -57,6 +58,27 @@ public interface ConfigManager {
     
     CompletableFuture<String> getMessageAsync(String collection, String language, String key, Map<String, Object> placeholders);
     
+    
+    /**
+     * Registers a listener to be notified when a collection is reloaded.
+     * Use "*" as collection name to listen for all collections.
+     * 
+     * @param collection The collection name to listen for, or "*" for all
+     * @param listener The listener to notify with the collection name
+     */
+    default void addReloadListener(String collection, Consumer<String> listener) {
+        // Default no-op, implementations should override
+    }
+    
+    /**
+     * Removes a previously registered reload listener.
+     * 
+     * @param collection The collection name
+     * @param listener The listener to remove
+     */
+    default void removeReloadListener(String collection, Consumer<String> listener) {
+        // Default no-op, implementations should override
+    }
     
     
     default <T> CompletableFuture<T> getLanguageClass(Class<T> type, String language) {

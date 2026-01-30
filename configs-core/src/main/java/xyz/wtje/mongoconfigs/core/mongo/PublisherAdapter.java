@@ -10,11 +10,42 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class PublisherAdapter {
+    
+    private static final Logger LOGGER = Logger.getLogger(PublisherAdapter.class.getName());
 
     private PublisherAdapter() {
         throw new UnsupportedOperationException("Utility class");
+    }
+
+    /**
+     * Checks if the throwable is a shutdown-related error that should be silently ignored.
+     */
+    private static boolean isShutdownError(Throwable t) {
+        if (t == null) return false;
+        
+        String message = t.getMessage();
+        if (message != null) {
+            // Check for session pool closed error
+            if (message.contains("server session pool is open") ||
+                message.contains("session pool") ||
+                message.contains("Client has been closed") ||
+                message.contains("MongoClient has been closed") ||
+                message.contains("Connection pool was closed")) {
+                return true;
+            }
+        }
+        
+        // Check cause chain
+        Throwable cause = t.getCause();
+        if (cause != null && cause != t) {
+            return isShutdownError(cause);
+        }
+        
+        return false;
     }
 
     public static <T> CompletableFuture<T> toCompletableFuture(Publisher<T> publisher) {
@@ -101,7 +132,13 @@ public final class PublisherAdapter {
             @Override
             public void onError(Throwable t) {
                 if (completed.compareAndSet(false, true)) {
-                    future.completeExceptionally(new CompletionException(t));
+                    // During shutdown, return empty list instead of throwing
+                    if (isShutdownError(t)) {
+                        LOGGER.log(Level.FINE, "Ignoring shutdown-related error in list publisher", t);
+                        future.complete(new ArrayList<>(results));
+                    } else {
+                        future.completeExceptionally(new CompletionException(t));
+                    }
                 }
             }
 
@@ -149,7 +186,13 @@ public final class PublisherAdapter {
             @Override
             public void onError(Throwable t) {
                 if (completed.compareAndSet(false, true)) {
-                    future.completeExceptionally(new CompletionException(t));
+                    // During shutdown, complete normally instead of throwing
+                    if (isShutdownError(t)) {
+                        LOGGER.log(Level.FINE, "Ignoring shutdown-related error in void publisher", t);
+                        future.complete(null);
+                    } else {
+                        future.completeExceptionally(new CompletionException(t));
+                    }
                 }
             }
 
